@@ -1,32 +1,16 @@
-/*
- * Copyright (c) 2024 RedN Farm App Team
- * 
- * This file is part of RedN Farm App, licensed under the MIT License.
- * See the LICENSE file for details.
- *
- * Designers:
- * - Elion Bahague
- * - Eyo Bahague
- * - Rick Bahague
- *
- * Coders:
- * - Piggy, the RedN AI Coder
- * - Rick Bahague
- */
-
 package com.redn.farm.ui.screens.about
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,19 +36,23 @@ fun AboutScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // App Info Section
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         text = "RedN Farm App",
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
@@ -72,14 +60,16 @@ fun AboutScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "A comprehensive farm management application built with modern Android development practices.",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = "© 2025 REDN Team",
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
             }
 
             // Team Section
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -87,49 +77,36 @@ fun AboutScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Development Team",
+                        text = "Design & Testing Team",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    
-                    Text(
-                        text = "Designers",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Divider()
                     TeamMember(
                         name = "Elion Bahague",
-                        role = "UI/UX Designer"
-                    )
-                    TeamMember(
-                        name = "Eyo Bahague",
-                        role = "UI/UX Designer"
-                    )
-                    TeamMember(
-                        name = "Rick Bahague",
-                        role = "UI/UX Designer"
+                        role = "Bug Hunter 1, Tester",
+                        description = "UI/UX Design and QA"
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    Text(
-                        text = "Coders",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium
-                    )
                     TeamMember(
-                        name = "Piggy",
-                        role = "RedN AI Coder"
+                        name = "Eyo Bahague",
+                        role = "Bug Hunter 2, Tester",
+                        description = "UI/UX Design and QA"
                     )
+
                     TeamMember(
                         name = "Rick Bahague",
-                        role = "Developer"
+                        role = "Lead Designer",
+                        description = "UI/UX Design, Architecture, Database"
                     )
+                    // Add other team members here
                 }
             }
 
-            // Technology Stack
-            Card(modifier = Modifier.fillMaxWidth()) {
+            // Technologies Section
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -137,45 +114,22 @@ fun AboutScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Technology Stack",
+                        text = "Built with",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    TechStackItem(
-                        icon = Icons.Default.Code,
-                        name = "Claude-Sonnet",
-                        description = "Primary Large Language Model"
-                    )
-                    TechStackItem(
-                        icon = Icons.Default.Code,
-                        name = "Cursor",
-                        description = "Primary AI Code Editor"
-                    )
-                    TechStackItem(
-                        icon = Icons.Default.Code,
-                        name = "Kotlin",
-                        description = "Primary programming language"
-                    )
-                    TechStackItem(
-                        icon = Icons.Default.Brush,
-                        name = "Jetpack Compose",
-                        description = "Modern UI toolkit"
-                    )
-                    TechStackItem(
-                        icon = Icons.Default.Storage,
-                        name = "Room Database",
-                        description = "Local data persistence"
-                    )
-                    TechStackItem(
-                        icon = Icons.Default.Architecture,
-                        name = "MVVM Architecture",
-                        description = "Clean and maintainable codebase"
+                    Divider()
+                    Technology(
+                        name = "Piggy AI",
+                        version = "RedN AI Coding Assistant"
                     )
                 }
             }
 
             // License Section
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -187,38 +141,19 @@ fun AboutScreen(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
+                    Divider()
                     Text(
-                        text = "MIT License",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "Copyright © 2024 RedN Farm App Team",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-
-            // Contact Section
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Contact",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "For support and inquiries:",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = "farmapp@redn.asia",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = """
+                            This app is licensed under the MIT License.
+                            
+                            Copyright (c) 2024 REDN Team
+                            
+                            Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+                            
+                            The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+                        """.trimIndent(),
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Justify
                     )
                 }
             }
@@ -229,58 +164,48 @@ fun AboutScreen(
 @Composable
 private fun TeamMember(
     name: String,
-    role: String
+    role: String,
+    description: String
 ) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Icon(
-            Icons.Default.Person,
-            contentDescription = null,
-            modifier = Modifier.size(24.dp)
+        Text(
+            text = name,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold
         )
-        Spacer(modifier = Modifier.width(8.dp))
-        Column {
-            Text(
-                text = name,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = role,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
+        Text(
+            text = role,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodySmall
+        )
     }
 }
 
 @Composable
-private fun TechStackItem(
-    icon: ImageVector,
+private fun Technology(
     name: String,
-    description: String
+    version: String
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            modifier = Modifier.size(24.dp)
+        Text(
+            text = name,
+            style = MaterialTheme.typography.bodyMedium
         )
-        Spacer(modifier = Modifier.width(8.dp))
-        Column {
-            Text(
-                text = name,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
+        Text(
+            text = version,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary
+        )
     }
 } 

@@ -1,47 +1,64 @@
-# Farm App
+# RedN Farm App
 
-A comprehensive farm management application built with modern Android development practices.
-
-## Overview
-
-RedN Farm App is a powerful tool designed to help farmers manage their agricultural operations efficiently. The app provides features for tracking inventory, managing orders, monitoring farm operations, handling employee payments, and more.
+A comprehensive Android application for managing farm operations, inventory, and transactions.
 
 ## Features
 
-- 📊 Inventory Management
-- 🌾 Farm Operations Tracking
-- 💰 Financial Management
-- 👥 Employee Management
-- 📦 Order Processing
-- 📱 Modern Material Design 3 UI
-- 📈 Data Export Capabilities
-- 🔄 Sample Data Generation
+- Customer Management
+- Product & Inventory Management
+- Order Processing
+- Farm Operations Tracking
+- Employee Payment Management
+- Remittance Tracking
+- Data Export & Import
+- Sample Data Generation
 
 ## Technology Stack
-- **LLM**: Claude-Sonnet
-- **LLM Coding IDE**: Cursor.com
-- **Language**: Kotlin
-- **UI Framework**: Jetpack Compose
-- **Architecture**: MVVM (Model-View-ViewModel)
-- **Database**: Room
-- **Dependency Injection**: Hilt
-- **Concurrency**: Kotlin Coroutines & Flow
-- **Build System**: Gradle
 
-## Team
+- Android Jetpack Compose for modern UI development
+- Kotlin Coroutines & Flow for asynchronous operations
+- Room Database for local data persistence
+- Material Design 3 for consistent and beautiful UI
+- MVVM Architecture with Clean Architecture principles
+- Dependency Injection with Hilt
+- CSV Export/Import functionality
 
-### Designers
+## Development Team
+
+### UI/UX Designer
 - Elion Bahague
 - Eyo Bahague
 - Rick Bahague
+- 
+### Built With
+- **Piggy AI**
+  - AI Coding Assistant / Cursor.com
+  
+## Getting Started
 
-### Coders
-- Piggy, the RedN AI Coder
-- Rick Bahague
+### Prerequisites
+- Android Studio Arctic Fox or later
+- JDK 11 or later
+- Android SDK 21 or later
 
-### Bug Hunters & Testers
-- Elion Bahague
-- Eyo Bahague
+### Installation
+1. Clone the repository
+```bash
+git clone https://github.com/RickBahague/redn-farm-app.git
+```
+2. Open the project in Android Studio
+3. Sync project with Gradle files
+4. Run the app on an emulator or physical device
+
+## Contributing
+
+We welcome contributions to improve the Farm Management App. Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
@@ -49,19 +66,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- Material Design 3 for the UI/UX guidelines
-- Android Jetpack libraries
-- [Add other acknowledgments]
-
-## Contributing
-
-We welcome contributions! Please read our contributing guidelines before submitting pull requests.
+- Thanks to the Android development community for the excellent tools and libraries
+- Material Design team for the design system
+- All contributors who have helped shape this project
 
 ## Contact
 
-For any inquiries about the project, please contact:
-farmapp@redn.asia
+For any inquiries or support, please contact:
+- Rick Bahague - [farmapp@redn.asia]
 
----
+## Project Status
 
-Made with ❤️ by the RedN Farm App Team 
+Current Version: 1.0.0
+Status: Active Development 

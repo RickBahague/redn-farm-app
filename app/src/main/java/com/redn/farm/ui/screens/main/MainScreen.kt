@@ -47,7 +47,7 @@ fun MainScreen(
                                 text = "Yongy & Eyo's FARM",
                                 style = MaterialTheme.typography.headlineMedium.copy(
                                     fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp
+                                    letterSpacing = 2.sp
                                 ),
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -59,10 +59,7 @@ fun MainScreen(
                     },
                     actions = {
                         IconButton(onClick = onNavigateToAbout) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = "About"
-                            )
+                            Icon(Icons.Default.Info, contentDescription = "About")
                         }
                     }
                 )
