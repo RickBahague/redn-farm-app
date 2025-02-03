@@ -1,6 +1,8 @@
 /build/
 /app/build/
-/app/src/main/assets/  
+/app/src/main/assets/
+/app/release/
+/app/redn-farm.keystore
 
 # Local configuration file (sdk path, etc)
 local.properties
