@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="600" height="400" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg">
+    <!-- Orders Icon -->
+    <g transform="translate(100,100)">
+        <rect x="0" y="0" width="60" height="80" rx="5" fill="#4CAF50"/>
+        <line x1="10" y1="20" x2="50" y2="20" stroke="white" stroke-width="2"/>
+        <line x1="10" y1="40" x2="50" y2="40" stroke="white" stroke-width="2"/>
+        <line x1="10" y1="60" x2="50" y2="60" stroke="white" stroke-width="2"/>
+    </g>
+    
+    <!-- Products Icon -->
+    <g transform="translate(200,100)">
+        <circle cx="30" cy="30" r="30" fill="#81C784"/>
+        <path d="M20,30 L40,30 M30,20 L30,40" stroke="white" stroke-width="3"/>
+    </g>
+    
+    <!-- Farm Operations Icon -->
+    <g transform="translate(300,100)">
+        <path d="M30,0 L60,30 L0,30 Z" fill="#388E3C"/>
+        <rect x="10" y="30" width="40" height="40" fill="#388E3C"/>
+        <path d="M20,40 L40,40 M20,50 L40,50 M20,60 L40,60" stroke="white" stroke-width="2"/>
+    </g>
+    
+    <!-- Employees Icon -->
+    <g transform="translate(400,100)">
+        <circle cx="30" cy="20" r="15" fill="#66BB6A"/>
+        <path d="M10,60 C10,40 50,40 50,60" fill="#66BB6A"/>
+    </g>
+    
+    <!-- Acquisitions Icon -->
+    <g transform="translate(100,250)">
+        <rect x="10" y="10" width="40" height="30" fill="#43A047"/>
+        <path d="M15,25 L45,25" stroke="white" stroke-width="2"/>
+        <circle cx="30" cy="40" r="10" fill="#43A047"/>
+    </g>
+    
+    <!-- Remittance Icon -->
+    <g transform="translate(200,250)">
+        <rect x="5" y="15" width="50" height="30" rx="5" fill="#2E7D32"/>
+        <text x="15" y="35" fill="white" font-size="20">$</text>
+    </g>
+</svg> 

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="300" height="600" viewBox="0 0 300 600" xmlns="http://www.w3.org/2000/svg">
+    <!-- Phone Frame -->
+    <rect width="300" height="600" rx="30" fill="#E0E0E0"/>
+    <rect x="10" y="10" width="280" height="580" rx="25" fill="#FFFFFF"/>
+    
+    <!-- Status Bar -->
+    <rect x="10" y="10" width="280" height="30" rx="25" fill="#4CAF50"/>
+    
+    <!-- App Content -->
+    <text x="30" y="60" font-size="20" fill="#212121">Farm Manager</text>
+    
+    <!-- Menu Items -->
+    <g transform="translate(20,80)">
+        <!-- Orders -->
+        <rect width="260" height="70" rx="10" fill="#E8F5E9"/>
+        <text x="20" y="30" font-size="16" fill="#2E7D32">Orders</text>
+        <text x="20" y="50" font-size="12" fill="#757575">Manage customer orders</text>
+    </g>
+    
+    <g transform="translate(20,160)">
+        <!-- Products -->
+        <rect width="260" height="70" rx="10" fill="#E8F5E9"/>
+        <text x="20" y="30" font-size="16" fill="#2E7D32">Products</text>
+        <text x="20" y="50" font-size="12" fill="#757575">Inventory management</text>
+    </g>
+    
+    <g transform="translate(20,240)">
+        <!-- Farm Operations -->
+        <rect width="260" height="70" rx="10" fill="#E8F5E9"/>
+        <text x="20" y="30" font-size="16" fill="#2E7D32">Farm Operations</text>
+        <text x="20" y="50" font-size="12" fill="#757575">Track daily activities</text>
+    </g>
+    
+    <g transform="translate(20,320)">
+        <!-- Employees -->
+        <rect width="260" height="70" rx="10" fill="#E8F5E9"/>
+        <text x="20" y="30" font-size="16" fill="#2E7D32">Employees</text>
+        <text x="20" y="50" font-size="12" fill="#757575">Staff management</text>
+    </g>
+    
+    <g transform="translate(20,400)">
+        <!-- Acquisitions -->
+        <rect width="260" height="70" rx="10" fill="#E8F5E9"/>
+        <text x="20" y="30" font-size="16" fill="#2E7D32">Acquisitions</text>
+        <text x="20" y="50" font-size="12" fill="#757575">Track produce purchases</text>
+    </g>
+    
+    <g transform="translate(20,480)">
+        <!-- Remittance -->
+        <rect width="260" height="70" rx="10" fill="#E8F5E9"/>
+        <text x="20" y="30" font-size="16" fill="#2E7D32">Remittance</text>
+        <text x="20" y="50" font-size="12" fill="#757575">Payment tracking</text>
+    </g>
+</svg> 
