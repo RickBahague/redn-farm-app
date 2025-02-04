@@ -20,9 +20,11 @@ import com.redn.farm.ui.screens.farmops.FarmOperationsScreen
 import com.redn.farm.ui.screens.farmops.history.FarmOperationHistoryScreen
 import com.redn.farm.ui.screens.export.ExportScreen
 import com.redn.farm.ui.screens.about.AboutScreen
+import com.redn.farm.ui.screens.database.DatabaseMigrationScreen
 import androidx.compose.ui.Modifier
 
 sealed class Screen(val route: String) {
+    object DatabaseMigration : Screen("database_migration")
     object Main : Screen("main")
     object Products : Screen("products")
     object Customers : Screen("customers")
@@ -51,9 +53,18 @@ fun NavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Main.route,
+        startDestination = Screen.DatabaseMigration.route,
         modifier = modifier
     ) {
+        composable(Screen.DatabaseMigration.route) {
+            DatabaseMigrationScreen(
+                onDatabaseReady = {
+                    navController.navigate(Screen.Main.route) {
+                        popUpTo(Screen.DatabaseMigration.route) { inclusive = true }
+                    }
+                }
+            )
+        }
         composable(Screen.Main.route) {
             MainScreen(
                 onNavigateToOrders = {
