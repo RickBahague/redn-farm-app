@@ -21,9 +21,11 @@ import com.redn.farm.ui.screens.farmops.history.FarmOperationHistoryScreen
 import com.redn.farm.ui.screens.export.ExportScreen
 import com.redn.farm.ui.screens.about.AboutScreen
 import com.redn.farm.ui.screens.database.DatabaseMigrationScreen
+import com.redn.farm.ui.screens.login.LoginScreen
 import androidx.compose.ui.Modifier
 
 sealed class Screen(val route: String) {
+    object Login : Screen("login")
     object DatabaseMigration : Screen("database_migration")
     object Main : Screen("main")
     object Products : Screen("products")
@@ -53,9 +55,19 @@ fun NavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = Screen.DatabaseMigration.route,
+        startDestination = Screen.Login.route,
         modifier = modifier
     ) {
+        composable(Screen.Login.route) {
+            LoginScreen(
+                onLoginSuccess = {
+                    navController.navigate(Screen.DatabaseMigration.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         composable(Screen.DatabaseMigration.route) {
             DatabaseMigrationScreen(
                 onDatabaseReady = {
