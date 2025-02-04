@@ -38,6 +38,8 @@ import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.BorderStroke
 
 private fun formatDate(timestamp: Long): String {
     return LocalDateTime.ofInstant(
@@ -127,8 +129,6 @@ fun EditOrderScreen(
                                         val success = PrinterUtils.printMessage(context, message)
                                         if (success) {
                                             Toast.makeText(context, "Print job sent successfully", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            Toast.makeText(context, "Failed to print", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 } catch (e: Exception) {
@@ -923,8 +923,22 @@ private fun ProductSelectionDialog(
     var selectedProduct by remember { mutableStateOf<Product?>(null) }
     var quantity by remember { mutableStateOf("") }
     var isPerKg by remember { mutableStateOf(true) }
+    var searchQuery by remember { mutableStateOf("") }
     
     val products by viewModel.products.collectAsState()
+    val isWideScreen = LocalConfiguration.current.screenWidthDp > 600
+
+    // Filter products based on search query
+    val filteredProducts = remember(products, searchQuery) {
+        if (searchQuery.isBlank()) {
+            products
+        } else {
+            products.filter { product ->
+                product.product_name.contains(searchQuery, ignoreCase = true) ||
+                product.product_description.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -937,12 +951,29 @@ private fun ProductSelectionDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (selectedProduct == null) {
+                    // Search bar
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Search Products") },
+                        leadingIcon = { Icon(Icons.Default.Search, "Search") },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Clear, "Clear search")
+                                }
+                            }
+                        },
+                        singleLine = true
+                    )
+
                     // Product selection list
                     LazyColumn(
-                        modifier = Modifier.height(300.dp),
+                        modifier = Modifier.height(400.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(products) { product ->
+                        items(filteredProducts) { product ->
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -959,7 +990,25 @@ private fun ProductSelectionDialog(
                                     )
                                     Text(
                                         text = product.product_description,
-                                        style = MaterialTheme.typography.bodyMedium
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        if (filteredProducts.isEmpty() && searchQuery.isNotEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(32.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "No products found",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -981,57 +1030,93 @@ private fun ProductSelectionDialog(
                             )
                             Text(
                                 text = selectedProduct!!.product_description,
-                                style = MaterialTheme.typography.bodyMedium
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
 
-                    // Show current prices
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Unit type selection
                     val productPrice = viewModel.getLatestProductPrice(selectedProduct!!.product_id)
-                    productPrice?.let { price ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedCard(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { isPerKg = true },
+                            border = BorderStroke(
+                                width = 2.dp,
+                                color = if (isPerKg) MaterialTheme.colorScheme.primary 
+                                       else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                            )
                         ) {
-                            Text(
-                                text = "Per Kg: ${CurrencyFormatter.format(price.per_kg_price ?: 0.0)}",
-                                style = MaterialTheme.typography.bodyMedium
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = "Per Kilogram",
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                                Text(
+                                    text = productPrice?.per_kg_price?.let { 
+                                        CurrencyFormatter.format(it)
+                                    } ?: "N/A",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = if (isPerKg) MaterialTheme.colorScheme.primary 
+                                           else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        OutlinedCard(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { isPerKg = false },
+                            border = BorderStroke(
+                                width = 2.dp,
+                                color = if (!isPerKg) MaterialTheme.colorScheme.primary 
+                                       else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                             )
-                            Text(
-                                text = "Per Piece: ${CurrencyFormatter.format(price.per_piece_price ?: 0.0)}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    text = "Per Piece",
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                                Text(
+                                    text = productPrice?.per_piece_price?.let { 
+                                        CurrencyFormatter.format(it)
+                                    } ?: "N/A",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = if (!isPerKg) MaterialTheme.colorScheme.primary 
+                                           else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     // Quantity input
                     OutlinedTextField(
                         value = quantity,
-                        onValueChange = { 
-                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                quantity = it
-                            }
-                        },
+                        onValueChange = { quantity = it },
                         label = { Text("Quantity") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    // Per kg/piece switch
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(if (isPerKg) "Per Kilogram" else "Per Piece")
-                        Switch(
-                            checked = isPerKg,
-                            onCheckedChange = { isPerKg = it }
-                        )
-                    }
-
-                    // Show total calculation
+                    // Show total
                     val currentUnitPrice = if (isPerKg) {
                         productPrice?.per_kg_price
                     } else {
@@ -1040,19 +1125,48 @@ private fun ProductSelectionDialog(
 
                     quantity.toDoubleOrNull()?.let { qty ->
                         val total = qty * currentUnitPrice
-                        Column(
+                        Card(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.End
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
                         ) {
-                            Text(
-                                text = "Unit Price: ${CurrencyFormatter.format(currentUnitPrice)}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                text = "Total: ${CurrencyFormatter.format(total)}",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Unit Price:",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Text(
+                                        text = CurrencyFormatter.format(currentUnitPrice),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Total:",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Text(
+                                        text = CurrencyFormatter.format(total),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
                         }
                     }
                 }

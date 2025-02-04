@@ -5,8 +5,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,47 +45,107 @@ fun FarmOperationDialog(
         )
     }
     var showProductSelection by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
     
     var showDatePicker by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
     
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy", Locale.getDefault())
+    val isWideScreen = LocalConfiguration.current.screenWidthDp > 600
 
-    // Determine screen width for responsive layout
-    val configuration = LocalConfiguration.current
-    val screenWidth = configuration.screenWidthDp.dp
-    val isWideScreen = screenWidth > 600.dp
+    // Filter products based on search query
+    val filteredProducts = remember(products, searchQuery) {
+        if (searchQuery.isBlank()) {
+            products
+        } else {
+            products.filter { product ->
+                product.product_name.contains(searchQuery, ignoreCase = true) ||
+                product.product_description.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
 
     if (showProductSelection) {
         AlertDialog(
             onDismissRequest = { showProductSelection = false },
             title = { Text("Select Product") },
             text = {
-                LazyVerticalGrid(
-                    columns = if (isWideScreen) GridCells.Fixed(2) else GridCells.Fixed(1),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(products) { product ->
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selectedProduct = product
-                                    showProductSelection = false
+                    // Search bar
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Search Products") },
+                        leadingIcon = { Icon(Icons.Default.Search, "Search") },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Clear, "Clear search")
                                 }
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text(
-                                    text = product.product_name,
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                if (product.product_description.isNotEmpty()) {
+                            }
+                        },
+                        singleLine = true
+                    )
+
+                    // Product list
+                    LazyVerticalGrid(
+                        columns = if (isWideScreen) GridCells.Fixed(2) else GridCells.Fixed(1),
+                        modifier = Modifier.height(400.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(
+                            items = filteredProducts,
+                            key = { it.product_id }
+                        ) { product ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedProduct = product
+                                        showProductSelection = false
+                                        searchQuery = "" // Reset search when product is selected
+                                    }
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp)
+                                ) {
                                     Text(
-                                        text = product.product_description,
-                                        style = MaterialTheme.typography.bodySmall
+                                        text = product.product_name,
+                                        style = MaterialTheme.typography.titleMedium
                                     )
+                                    if (product.product_description.isNotEmpty()) {
+                                        Text(
+                                            text = product.product_description,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (filteredProducts.isEmpty()) {
+                            item(span = { GridItemSpan(if (isWideScreen) 2 else 1) }) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(32.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (searchQuery.isNotEmpty()) {
+                                        Text(
+                                            text = "No products found",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -90,7 +153,10 @@ fun FarmOperationDialog(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showProductSelection = false }) {
+                TextButton(onClick = { 
+                    showProductSelection = false
+                    searchQuery = "" // Reset search when dialog is closed
+                }) {
                     Text("Cancel")
                 }
             }

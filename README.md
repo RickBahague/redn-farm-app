@@ -29,7 +29,7 @@ A comprehensive Android application for managing farm operations, inventory, and
 - Elion Bahague
 - Eyo Bahague
 - Rick Bahague
-- 
+
 ### Built With
 - **Piggy AI**
   - AI Coding Assistant / Cursor.com
