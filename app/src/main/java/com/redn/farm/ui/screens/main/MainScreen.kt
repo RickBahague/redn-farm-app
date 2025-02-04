@@ -32,7 +32,8 @@ fun MainScreen(
     onNavigateToEmployees: () -> Unit,
     onNavigateToFarmOps: () -> Unit,
     onNavigateToExport: () -> Unit,
-    onNavigateToAbout: () -> Unit
+    onNavigateToAbout: () -> Unit,
+    onLogout: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -60,6 +61,9 @@ fun MainScreen(
                     actions = {
                         IconButton(onClick = onNavigateToAbout) {
                             Icon(Icons.Default.Info, contentDescription = "About")
+                        }
+                        IconButton(onClick = onLogout) {
+                            Icon(Icons.Default.Logout, contentDescription = "Logout")
                         }
                     }
                 )
@@ -367,7 +371,8 @@ fun MainScreenPreview() {
             onNavigateToEmployees = {},
             onNavigateToFarmOps = {},
             onNavigateToExport = {},
-            onNavigateToAbout = {}
+            onNavigateToAbout = {},
+            onLogout = {}
         )
     }
 } 

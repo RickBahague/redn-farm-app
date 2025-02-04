@@ -99,18 +99,18 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-                text = "Default credentials:",
-                style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                text = "Admin: admin/admin123",
-                style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                text = "User: user/user123",
-                style = MaterialTheme.typography.bodySmall
-            )
+//            Text(
+//                text = "Default credentials:",
+//                style = MaterialTheme.typography.bodySmall
+//            )
+//            Text(
+//                text = "Admin: admin/admin123",
+//                style = MaterialTheme.typography.bodySmall
+//            )
+//            Text(
+//                text = "User: user/user123",
+//                style = MaterialTheme.typography.bodySmall
+//            )
         }
     }
 } 
