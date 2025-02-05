@@ -51,9 +51,9 @@ fun MainScreen(
                         ) {
                             Text(
                                 text = "Yongy & Eyo's FARM",
-                                style = MaterialTheme.typography.headlineMedium.copy(
+                                style = MaterialTheme.typography.headlineSmall.copy(
                                     fontWeight = FontWeight.Bold,
-                                    letterSpacing = 2.sp
+                                    letterSpacing = 1.sp
                                 ),
                                 color = MaterialTheme.colorScheme.primary
                             )

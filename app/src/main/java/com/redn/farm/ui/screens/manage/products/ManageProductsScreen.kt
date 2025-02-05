@@ -364,7 +364,7 @@ fun EditProductDialog(
                                 discountedPerKgPrice = it
                             }
                         },
-                        label = { Text("Disc. per kg") },
+                        label = { Text("Per kg") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         prefix = { Text("₱") },
                         singleLine = true,
@@ -377,7 +377,7 @@ fun EditProductDialog(
                                 discountedPerPiecePrice = it
                             }
                         },
-                        label = { Text("Disc. per pc") },
+                        label = { Text("Per pc") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         prefix = { Text("₱") },
                         singleLine = true,
@@ -671,7 +671,7 @@ private fun AddProductDialog(
                                 discountedPerKgPrice = it
                             }
                         },
-                        label = { Text("Disc. per kg") },
+                        label = { Text("Per kg") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         prefix = { Text("₱") },
                         singleLine = true,
@@ -684,7 +684,7 @@ private fun AddProductDialog(
                                 discountedPerPiecePrice = it
                             }
                         },
-                        label = { Text("Disc. per pc") },
+                        label = { Text("Per pc") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         prefix = { Text("₱") },
                         singleLine = true,
