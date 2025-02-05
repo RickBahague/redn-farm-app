@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.redn.farm.data.local.FarmDatabase
 import com.redn.farm.data.local.security.PasswordManager
+import com.redn.farm.data.local.session.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -22,8 +23,22 @@ sealed class LoginState {
 
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val database = FarmDatabase.getDatabase(application)
+    private val sessionManager = SessionManager(application)
     private val _loginState = MutableStateFlow<LoginState>(LoginState.Initial)
     val loginState: StateFlow<LoginState> = _loginState
+
+    init {
+        // Check session on initialization
+        checkSession()
+    }
+
+    private fun checkSession() {
+        if (!sessionManager.isLoggedIn()) {
+            _loginState.value = LoginState.Initial
+        } else {
+            _loginState.value = LoginState.Success
+        }
+    }
 
     fun login(username: String, password: String) {
         viewModelScope.launch {
@@ -58,6 +73,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (isPasswordValid) {
                     Log.d("LoginViewModel", "Login successful")
+                    sessionManager.createSession(username)
                     _loginState.value = LoginState.Success
                 } else {
                     Log.d("LoginViewModel", "Password verification failed")
@@ -68,6 +84,12 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 _loginState.value = LoginState.Error("Login failed: ${e.message}")
             }
         }
+    }
+
+    fun logout() {
+        sessionManager.endSession()
+        _loginState.value = LoginState.Initial
+        Log.d("LoginViewModel", "User logged out")
     }
 
     companion object {

@@ -61,6 +61,7 @@ fun EditOrderScreen(
     var showAddProductDialog by remember { mutableStateOf(false) }
     var showPaymentConfirmDialog by remember { mutableStateOf<Boolean?>(null) }
     var hasChanges by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
 
@@ -108,7 +109,7 @@ fun EditOrderScreen(
                                     // Launch in a coroutine since printMessage is suspend
                                     CoroutineScope(Dispatchers.Main).launch {
                                         val message = buildString {
-                                            appendLine("Farm Manager")
+                                            appendLine("REDN GREENS FRESH")
                                             appendLine("Order #${currentOrder.order_id}")
                                             appendLine("Date: ${formatDate(currentOrder.order_date)}")
                                             appendLine("Customer: ${currentOrder.customerName}")
@@ -123,7 +124,12 @@ fun EditOrderScreen(
                                             appendLine("--------------------------------")
                                             appendLine("Total: ${CurrencyFormatter.format(currentOrder.total_amount)}")
                                             appendLine(if (currentOrder.is_paid) "PAID" else "UNPAID")
-                                            appendLine("\nThank you for your business!")
+                                            appendLine("\n[ ] PREPARED FOR DELIVERY")
+                                            appendLine("\n[ ] DELIVERED")
+                                            appendLine("\nMarami pong salamat!")
+                                            appendLine("\nvisit: https://www.facebook.com/redngreen03/")
+                                            appendLine("Mobile: 0998.849.0469")
+
                                         }
 
                                         val success = PrinterUtils.printMessage(context, message)
@@ -193,14 +199,27 @@ fun EditOrderScreen(
                                 text = currentOrder.customerContact,
                                 style = MaterialTheme.typography.bodyMedium
                             )
-                            Text(
-                                text = LocalDateTime.ofInstant(
-                                    Instant.ofEpochMilli(currentOrder.order_date),
-                                    ZoneId.systemDefault()
-                                ).format(DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm")),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = LocalDateTime.ofInstant(
+                                        Instant.ofEpochMilli(currentOrder.order_date),
+                                        ZoneId.systemDefault()
+                                    ).format(DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm")),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (!currentOrder.is_paid) {
+                                    IconButton(
+                                        onClick = { showDatePicker = true }
+                                    ) {
+                                        Icon(Icons.Default.Edit, "Edit Date")
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -422,6 +441,26 @@ fun EditOrderScreen(
                             Text("Cancel")
                         }
                     }
+                )
+            }
+
+            if (showDatePicker) {
+                DatePickerDialog(
+                    onDismissRequest = { showDatePicker = false },
+                    onDateSelected = { selectedDate ->
+                        val updatedOrder = currentOrder.copy(
+                            order_date = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                            order_update_date = System.currentTimeMillis()
+                        )
+                        order = updatedOrder
+                        hasChanges = true
+                        viewModel.updateOrderDate(orderId, selectedDate.atStartOfDay())
+                        showDatePicker = false
+                    },
+                    initialDate = LocalDate.ofInstant(
+                        Instant.ofEpochMilli(currentOrder.order_date),
+                        ZoneId.systemDefault()
+                    )
                 )
             }
         }
