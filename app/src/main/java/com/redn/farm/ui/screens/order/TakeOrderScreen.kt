@@ -169,8 +169,8 @@ fun TakeOrderScreen(
         if (showProductDialog) {
             ProductSelectionDialog(
                 onDismiss = { showProductDialog = false },
-                onProductSelected = { product, quantity, isPerKg ->
-                    viewModel.addToCart(product, quantity, isPerKg)
+                onProductSelected = { product, quantity, isPerKg, useDiscountedPrice ->
+                    viewModel.addToCart(product, quantity, isPerKg, useDiscountedPrice)
                     showProductDialog = false
                 }
             )

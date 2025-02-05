@@ -32,6 +32,8 @@ class ProductRepository @Inject constructor(
                     product_id = price.product_id,
                     per_kg_price = price.per_kg_price,
                     per_piece_price = price.per_piece_price,
+                    discounted_per_kg_price = price.discounted_per_kg_price,
+                    discounted_per_piece_price = price.discounted_per_piece_price,
                     date_created = price.date_created
                 )
             }
@@ -46,6 +48,8 @@ class ProductRepository @Inject constructor(
                     product_id = it.product_id,
                     per_kg_price = it.per_kg_price,
                     per_piece_price = it.per_piece_price,
+                    discounted_per_kg_price = it.discounted_per_kg_price,
+                    discounted_per_piece_price = it.discounted_per_piece_price,
                     date_created = it.date_created
                 )
             }
@@ -112,6 +116,8 @@ class ProductRepository @Inject constructor(
                 product_id = price.product_id,
                 per_kg_price = price.per_kg_price,
                 per_piece_price = price.per_piece_price,
+                discounted_per_kg_price = price.discounted_per_kg_price,
+                discounted_per_piece_price = price.discounted_per_piece_price,
                 date_created = price.date_created
             )
         )
@@ -151,6 +157,8 @@ class ProductRepository @Inject constructor(
                 product_id = productPrice.product_id,
                 per_kg_price = productPrice.per_kg_price,
                 per_piece_price = productPrice.per_piece_price,
+                discounted_per_kg_price = productPrice.discounted_per_kg_price,
+                discounted_per_piece_price = productPrice.discounted_per_piece_price,
                 date_created = LocalDateTime.now() // Always use current time for new prices
             )
         )

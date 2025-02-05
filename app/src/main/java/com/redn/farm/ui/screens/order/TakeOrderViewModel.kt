@@ -102,12 +102,12 @@ class TakeOrderViewModel(application: Application) : AndroidViewModel(applicatio
         _searchQuery.value = query
     }
 
-    fun addToCart(product: Product, quantity: Double, isPerKg: Boolean) {
+    fun addToCart(product: Product, quantity: Double, isPerKg: Boolean, useDiscountedPrice: Boolean = false) {
         val productPrice = getLatestProductPrice(product.product_id)
         val price = if (isPerKg) {
-            productPrice?.per_kg_price
+            if (useDiscountedPrice) productPrice?.discounted_per_kg_price else productPrice?.per_kg_price
         } else {
-            productPrice?.per_piece_price
+            if (useDiscountedPrice) productPrice?.discounted_per_piece_price else productPrice?.per_piece_price
         } ?: 0.0
 
         val cartItem = CartItem(

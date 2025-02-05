@@ -10,14 +10,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.redn.farm.config.AppConfig
 import com.redn.farm.ui.theme.FarmTheme
 
@@ -33,7 +37,8 @@ fun MainScreen(
     onNavigateToFarmOps: () -> Unit,
     onNavigateToExport: () -> Unit,
     onNavigateToAbout: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    viewModel: MainViewModel = viewModel()
 ) {
     Scaffold(
         topBar = {
@@ -62,7 +67,12 @@ fun MainScreen(
                         IconButton(onClick = onNavigateToAbout) {
                             Icon(Icons.Default.Info, contentDescription = "About")
                         }
-                        IconButton(onClick = onLogout) {
+                        IconButton(
+                            onClick = {
+                                viewModel.logout()
+                                onLogout()
+                            }
+                        ) {
                             Icon(Icons.Default.Logout, contentDescription = "Logout")
                         }
                     }

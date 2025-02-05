@@ -220,30 +220,51 @@ private fun ProductCard(
                 text = product.product_name,
                 style = MaterialTheme.typography.titleMedium
             )
-            Text(
-                text = product.product_description,
-                style = MaterialTheme.typography.bodyMedium
-            )
+//            Text(
+//                text = product.product_description,
+//                style = MaterialTheme.typography.bodyMedium
+//            )
             productPrice?.let { price ->
+                // Regular Prices
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    price.per_kg_price?.let {
-                        Text(
-                            text = "Per Kg: ${CurrencyFormatter.format(it)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                    Column {
+                        price.per_kg_price?.let {
+                            Text(
+                                text = "Per Kg: ${CurrencyFormatter.format(it)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            // Show discounted price if available
+                            price.discounted_per_kg_price?.let { discounted ->
+                                Text(
+                                    text = "Disc: ${CurrencyFormatter.format(discounted)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
                     }
-                    price.per_piece_price?.let {
-                        Text(
-                            text = "Per Piece: ${CurrencyFormatter.format(it)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                    Column(horizontalAlignment = Alignment.End) {
+                        price.per_piece_price?.let {
+                            Text(
+                                text = "Per Piece: ${CurrencyFormatter.format(it)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            // Show discounted price if available
+                            price.discounted_per_piece_price?.let { discounted ->
+                                Text(
+                                    text = "Disc: ${CurrencyFormatter.format(discounted)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -263,50 +284,106 @@ fun EditProductDialog(
     var description by remember { mutableStateOf(product.product_description) }
     var perKgPrice by remember { mutableStateOf(productPrice?.per_kg_price?.toString() ?: "") }
     var perPiecePrice by remember { mutableStateOf(productPrice?.per_piece_price?.toString() ?: "") }
+    var discountedPerKgPrice by remember { mutableStateOf(productPrice?.discounted_per_kg_price?.toString() ?: "") }
+    var discountedPerPiecePrice by remember { mutableStateOf(productPrice?.discounted_per_piece_price?.toString() ?: "") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Edit Product") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // Product Details
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Product Name") },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("Description") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 2
                 )
-                OutlinedTextField(
-                    value = perKgPrice,
-                    onValueChange = { 
-                        if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                            perKgPrice = it
-                        }
-                    },
-                    label = { Text("Price per kg") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    prefix = { Text("₱") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                
+                // Regular Prices Section
+                Text(
+                    text = "Regular Prices",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
                 )
-                OutlinedTextField(
-                    value = perPiecePrice,
-                    onValueChange = { 
-                        if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                            perPiecePrice = it
-                        }
-                    },
-                    label = { Text("Price per piece") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    prefix = { Text("₱") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = perKgPrice,
+                        onValueChange = { 
+                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
+                                perKgPrice = it
+                            }
+                        },
+                        label = { Text("Per kg") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        prefix = { Text("₱") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = perPiecePrice,
+                        onValueChange = { 
+                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
+                                perPiecePrice = it
+                            }
+                        },
+                        label = { Text("Per piece") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        prefix = { Text("₱") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Discounted Prices Section
+                Text(
+                    text = "Discounted Prices",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = discountedPerKgPrice,
+                        onValueChange = { 
+                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
+                                discountedPerKgPrice = it
+                            }
+                        },
+                        label = { Text("Disc. per kg") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        prefix = { Text("₱") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = discountedPerPiecePrice,
+                        onValueChange = { 
+                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
+                                discountedPerPiecePrice = it
+                            }
+                        },
+                        label = { Text("Disc. per pc") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        prefix = { Text("₱") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         },
         confirmButton = {
@@ -320,6 +397,8 @@ fun EditProductDialog(
                         product_id = product.product_id,
                         per_kg_price = perKgPrice.toDoubleOrNull(),
                         per_piece_price = perPiecePrice.toDoubleOrNull(),
+                        discounted_per_kg_price = discountedPerKgPrice.toDoubleOrNull(),
+                        discounted_per_piece_price = discountedPerPiecePrice.toDoubleOrNull(),
                         date_created = LocalDateTime.now()
                     )
                     onSave(updatedProduct, updatedPrice)
@@ -512,12 +591,15 @@ private fun AddProductDialog(
     var description by remember { mutableStateOf("") }
     var perKgPrice by remember { mutableStateOf("") }
     var perPiecePrice by remember { mutableStateOf("") }
+    var discountedPerKgPrice by remember { mutableStateOf("") }
+    var discountedPerPiecePrice by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add New Product") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // Product Details
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -529,34 +611,86 @@ private fun AddProductDialog(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("Description") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 2
                 )
-                OutlinedTextField(
-                    value = perKgPrice,
-                    onValueChange = { 
-                        if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                            perKgPrice = it
-                        }
-                    },
-                    label = { Text("Price per kg") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    prefix = { Text("₱") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                
+                // Regular Prices Section
+                Text(
+                    text = "Regular Prices",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
                 )
-                OutlinedTextField(
-                    value = perPiecePrice,
-                    onValueChange = { 
-                        if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                            perPiecePrice = it
-                        }
-                    },
-                    label = { Text("Price per piece") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    prefix = { Text("₱") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = perKgPrice,
+                        onValueChange = { 
+                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
+                                perKgPrice = it
+                            }
+                        },
+                        label = { Text("Per kg") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        prefix = { Text("₱") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = perPiecePrice,
+                        onValueChange = { 
+                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
+                                perPiecePrice = it
+                            }
+                        },
+                        label = { Text("Per piece") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        prefix = { Text("₱") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Discounted Prices Section
+                Text(
+                    text = "Discounted Prices",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = discountedPerKgPrice,
+                        onValueChange = { 
+                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
+                                discountedPerKgPrice = it
+                            }
+                        },
+                        label = { Text("Disc. per kg") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        prefix = { Text("₱") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = discountedPerPiecePrice,
+                        onValueChange = { 
+                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
+                                discountedPerPiecePrice = it
+                            }
+                        },
+                        label = { Text("Disc. per pc") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        prefix = { Text("₱") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         },
         confirmButton = {
@@ -573,6 +707,8 @@ private fun AddProductDialog(
                         product_id = "", // Will be updated after product insertion
                         per_kg_price = perKgPrice.toDoubleOrNull(),
                         per_piece_price = perPiecePrice.toDoubleOrNull(),
+                        discounted_per_kg_price = discountedPerKgPrice.toDoubleOrNull(),
+                        discounted_per_piece_price = discountedPerPiecePrice.toDoubleOrNull(),
                         date_created = LocalDateTime.now()
                     )
                     onSave(newProduct, newPrice)

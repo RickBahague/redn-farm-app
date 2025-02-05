@@ -4,6 +4,7 @@ import androidx.room.*
 import com.redn.farm.data.local.entity.OrderEntity
 import com.redn.farm.data.local.entity.OrderItemEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import java.time.LocalDateTime
 
 @Dao
@@ -96,6 +97,16 @@ interface OrderDao {
     suspend fun truncate() {
         truncateOrderItems()
         truncateOrders()
+    }
+
+    @Transaction
+    suspend fun deleteOrderAndItems(orderId: Int) {
+        // Only delete if the order is unpaid
+        val order = getOrderById(orderId).first()
+        if (order?.order?.is_paid == false) {
+            deleteOrderItems(orderId)
+            deleteUnpaidOrder(orderId)
+        }
     }
 }
 

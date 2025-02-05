@@ -55,8 +55,8 @@ class OrderRepository(private val orderDao: OrderDao) {
     }
 
     suspend fun deleteOrder(orderId: Int) {
-        // Only unpaid orders can be deleted
-        orderDao.deleteUnpaidOrder(orderId)
+        // Use the transaction method that deletes both order and its items
+        orderDao.deleteOrderAndItems(orderId)
     }
 
     suspend fun truncate() {

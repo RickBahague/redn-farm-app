@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
         RemittanceEntity::class,
         UserEntity::class
     ],
-    version = 2
+    version = 3
 )
 @TypeConverters(DateTimeConverter::class, EnumConverters::class)
 abstract class FarmDatabase : RoomDatabase() {
@@ -72,6 +72,21 @@ abstract class FarmDatabase : RoomDatabase() {
                 database.execSQL("""
                     CREATE UNIQUE INDEX IF NOT EXISTS index_users_username 
                     ON users (username)
+                """.trimIndent())
+            }
+        }
+
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Add discounted price columns to product_prices table
+                database.execSQL("""
+                    ALTER TABLE product_prices 
+                    ADD COLUMN discounted_per_kg_price REAL
+                """.trimIndent())
+                
+                database.execSQL("""
+                    ALTER TABLE product_prices 
+                    ADD COLUMN discounted_per_piece_price REAL
                 """.trimIndent())
             }
         }
@@ -123,7 +138,7 @@ abstract class FarmDatabase : RoomDatabase() {
                         }
                     }
                 })
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
                 
                 Log.d("FarmDatabase", "Database instance built")

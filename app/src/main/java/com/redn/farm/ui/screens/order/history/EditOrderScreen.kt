@@ -62,6 +62,8 @@ fun EditOrderScreen(
     var showPaymentConfirmDialog by remember { mutableStateOf<Boolean?>(null) }
     var hasChanges by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var showDeleteItemDialog by remember { mutableStateOf<OrderItem?>(null) }
+    var showDeleteOrderDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
 
@@ -101,6 +103,14 @@ fun EditOrderScreen(
                     }
                 },
                 actions = {
+                    // Delete button - only show for unpaid orders
+                    if (order?.is_paid == false) {
+                        IconButton(
+                            onClick = { showDeleteOrderDialog = true }
+                        ) {
+                            Icon(Icons.Default.Delete, "Delete Order")
+                        }
+                    }
                     // Print button
                     IconButton(
                         onClick = {
@@ -129,7 +139,6 @@ fun EditOrderScreen(
                                             appendLine("\nMarami pong salamat!")
                                             appendLine("\nvisit: https://www.facebook.com/redngreen03/")
                                             appendLine("Mobile: 0998.849.0469")
-
                                         }
 
                                         val success = PrinterUtils.printMessage(context, message)
@@ -318,12 +327,7 @@ fun EditOrderScreen(
                                     onEditItem = { if (!currentOrder.is_paid) showEditItemDialog = it },
                                     onRemoveItem = { itemToRemove -> 
                                         if (!currentOrder.is_paid) {
-                                            orderItems = orderItems - itemToRemove
-                                            // Update order total by subtracting the removed item's total
-                                            order = currentOrder.copy(
-                                                total_amount = currentOrder.total_amount - itemToRemove.total_price
-                                            )
-                                            hasChanges = true
+                                            showDeleteItemDialog = itemToRemove
                                         }
                                     },
                                     isEditable = !currentOrder.is_paid
@@ -461,6 +465,62 @@ fun EditOrderScreen(
                         Instant.ofEpochMilli(currentOrder.order_date),
                         ZoneId.systemDefault()
                     )
+                )
+            }
+
+            // Add delete item confirmation dialog
+            showDeleteItemDialog?.let { itemToDelete ->
+                AlertDialog(
+                    onDismissRequest = { showDeleteItemDialog = null },
+                    title = { Text("Delete Item") },
+                    text = { 
+                        Text("Are you sure you want to delete ${itemToDelete.product_name} from the order?")
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                orderItems = orderItems - itemToDelete
+                                // Update order total by subtracting the removed item's total
+                                order = order?.copy(
+                                    total_amount = (order?.total_amount ?: 0.0) - itemToDelete.total_price
+                                )
+                                hasChanges = true
+                                showDeleteItemDialog = null
+                            }
+                        ) {
+                            Text("Delete")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteItemDialog = null }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+            // Add delete order confirmation dialog
+            if (showDeleteOrderDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteOrderDialog = false },
+                    title = { Text("Delete Order") },
+                    text = { Text("Are you sure you want to delete this order? This action cannot be undone.") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                viewModel.deleteOrder(orderId)
+                                showDeleteOrderDialog = false
+                                onNavigateBack()
+                            }
+                        ) {
+                            Text("Delete")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteOrderDialog = false }) {
+                            Text("Cancel")
+                        }
+                    }
                 )
             }
         }
@@ -833,6 +893,7 @@ private fun EditOrderItemDialog(
 ) {
     var quantity by remember { mutableStateOf(item.quantity.toString()) }
     var isPerKg by remember { mutableStateOf(item.is_per_kg) }
+    var useDiscountedPrice by remember { mutableStateOf(false) }
     val productPrice = viewModel.getLatestProductPrice(item.product_id)
 
     AlertDialog(
@@ -843,7 +904,7 @@ private fun EditOrderItemDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Product Name
                 Text(
@@ -851,19 +912,46 @@ private fun EditOrderItemDialog(
                     style = MaterialTheme.typography.titleMedium
                 )
 
-                // Current Prices Info
-                productPrice?.let { price ->
+                // Regular Prices Section
+                Text(
+                    text = "Regular Prices",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Per Kg: ${CurrencyFormatter.format(productPrice?.per_kg_price ?: 0.0)}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "Per Piece: ${CurrencyFormatter.format(productPrice?.per_piece_price ?: 0.0)}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                // Discounted Prices Section
+                if (productPrice?.discounted_per_kg_price != null || productPrice?.discounted_per_piece_price != null) {
+                    Text(
+                        text = "Discounted Prices",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Per Kg: ${CurrencyFormatter.format(price.per_kg_price ?: 0.0)}",
-                            style = MaterialTheme.typography.bodyMedium
+                            text = "Per Kg: ${CurrencyFormatter.format(productPrice.discounted_per_kg_price ?: 0.0)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
                         )
                         Text(
-                            text = "Per Piece: ${CurrencyFormatter.format(price.per_piece_price ?: 0.0)}",
-                            style = MaterialTheme.typography.bodyMedium
+                            text = "Per Piece: ${CurrencyFormatter.format(productPrice.discounted_per_piece_price ?: 0.0)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
                         )
                     }
                 }
@@ -882,6 +970,24 @@ private fun EditOrderItemDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Price Type Selection
+                if (productPrice?.let { price ->
+                    (isPerKg && price.discounted_per_kg_price != null) ||
+                    (!isPerKg && price.discounted_per_piece_price != null)
+                } == true) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Use Discounted Price")
+                        Switch(
+                            checked = useDiscountedPrice,
+                            onCheckedChange = { useDiscountedPrice = it }
+                        )
+                    }
+                }
+
                 // Per kg/piece switch
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -897,9 +1003,9 @@ private fun EditOrderItemDialog(
 
                 // Show current price based on selection
                 val currentUnitPrice = if (isPerKg) {
-                    productPrice?.per_kg_price
+                    if (useDiscountedPrice) productPrice?.discounted_per_kg_price else productPrice?.per_kg_price
                 } else {
-                    productPrice?.per_piece_price
+                    if (useDiscountedPrice) productPrice?.discounted_per_piece_price else productPrice?.per_piece_price
                 } ?: 0.0
 
                 quantity.toDoubleOrNull()?.let { qty ->
@@ -910,7 +1016,8 @@ private fun EditOrderItemDialog(
                     ) {
                         Text(
                             text = "Unit Price: ${CurrencyFormatter.format(currentUnitPrice)}",
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (useDiscountedPrice) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = "Total: ${CurrencyFormatter.format(total)}",
@@ -926,9 +1033,9 @@ private fun EditOrderItemDialog(
                 onClick = {
                     quantity.toDoubleOrNull()?.let { newQuantity ->
                         val newUnitPrice = if (isPerKg) {
-                            productPrice?.per_kg_price
+                            if (useDiscountedPrice) productPrice?.discounted_per_kg_price else productPrice?.per_kg_price
                         } else {
-                            productPrice?.per_piece_price
+                            if (useDiscountedPrice) productPrice?.discounted_per_piece_price else productPrice?.per_piece_price
                         } ?: 0.0
                         
                         onSave(item.copy(
@@ -962,6 +1069,7 @@ private fun ProductSelectionDialog(
     var selectedProduct by remember { mutableStateOf<Product?>(null) }
     var quantity by remember { mutableStateOf("") }
     var isPerKg by remember { mutableStateOf(true) }
+    var useDiscountedPrice by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     
     val products by viewModel.products.collectAsState()
@@ -987,7 +1095,7 @@ private fun ProductSelectionDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (selectedProduct == null) {
                     // Search bar
@@ -997,212 +1105,154 @@ private fun ProductSelectionDialog(
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Search Products") },
                         leadingIcon = { Icon(Icons.Default.Search, "Search") },
-                        trailingIcon = {
-                            if (searchQuery.isNotEmpty()) {
+                        trailingIcon = if (searchQuery.isNotEmpty()) {
+                            {
                                 IconButton(onClick = { searchQuery = "" }) {
                                     Icon(Icons.Default.Clear, "Clear search")
                                 }
                             }
-                        },
-                        singleLine = true
+                        } else null
                     )
 
-                    // Product selection list
+                    // Product list
                     LazyColumn(
-                        modifier = Modifier.height(400.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
                     ) {
                         items(filteredProducts) { product ->
-                            Card(
+                            val productPrice = viewModel.getLatestProductPrice(product.product_id)
+                            ListItem(
+                                headlineContent = { Text(product.product_name) },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { selectedProduct = product }
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp)
-                                ) {
-                                    Text(
-                                        text = product.product_name,
-                                        style = MaterialTheme.typography.titleMedium
-                                    )
-                                    Text(
-                                        text = product.product_description,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-
-                        if (filteredProducts.isEmpty() && searchQuery.isNotEmpty()) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(32.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "No products found",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
+                            )
                         }
                     }
                 } else {
                     // Product details and quantity input
-                    Card(
-                        modifier = Modifier.fillMaxWidth()
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                        ) {
+                        selectedProduct?.let { product ->
                             Text(
-                                text = selectedProduct!!.product_name,
+                                text = product.product_name,
                                 style = MaterialTheme.typography.titleMedium
                             )
+
+                            val productPrice = viewModel.getLatestProductPrice(product.product_id)
+
+                            // Regular Prices Section
                             Text(
-                                text = selectedProduct!!.product_description,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = "Regular Prices",
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
                             )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Unit type selection
-                    val productPrice = viewModel.getLatestProductPrice(selectedProduct!!.product_id)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedCard(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { isPerKg = true },
-                            border = BorderStroke(
-                                width = 2.dp,
-                                color = if (isPerKg) MaterialTheme.colorScheme.primary 
-                                       else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "Per Kilogram",
-                                    style = MaterialTheme.typography.labelMedium
+                                    text = "Per Kg: ${CurrencyFormatter.format(productPrice?.per_kg_price ?: 0.0)}",
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
-                                    text = productPrice?.per_kg_price?.let { 
-                                        CurrencyFormatter.format(it)
-                                    } ?: "N/A",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = if (isPerKg) MaterialTheme.colorScheme.primary 
-                                           else MaterialTheme.colorScheme.onSurface
+                                    text = "Per Piece: ${CurrencyFormatter.format(productPrice?.per_piece_price ?: 0.0)}",
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
                             }
-                        }
 
-                        OutlinedCard(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { isPerKg = false },
-                            border = BorderStroke(
-                                width = 2.dp,
-                                color = if (!isPerKg) MaterialTheme.colorScheme.primary 
-                                       else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp)
-                            ) {
+                            // Discounted Prices Section
+                            if (productPrice?.discounted_per_kg_price != null || productPrice?.discounted_per_piece_price != null) {
                                 Text(
-                                    text = "Per Piece",
-                                    style = MaterialTheme.typography.labelMedium
+                                    text = "Discounted Prices",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
                                 )
-                                Text(
-                                    text = productPrice?.per_piece_price?.let { 
-                                        CurrencyFormatter.format(it)
-                                    } ?: "N/A",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = if (!isPerKg) MaterialTheme.colorScheme.primary 
-                                           else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Quantity input
-                    OutlinedTextField(
-                        value = quantity,
-                        onValueChange = { quantity = it },
-                        label = { Text("Quantity") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    // Show total
-                    val currentUnitPrice = if (isPerKg) {
-                        productPrice?.per_kg_price
-                    } else {
-                        productPrice?.per_piece_price
-                    } ?: 0.0
-
-                    quantity.toDoubleOrNull()?.let { qty ->
-                        val total = qty * currentUnitPrice
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp)
-                            ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        text = "Unit Price:",
+                                        text = "Per Kg: ${CurrencyFormatter.format(productPrice?.discounted_per_kg_price ?: 0.0)}",
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        color = MaterialTheme.colorScheme.error
                                     )
                                     Text(
-                                        text = CurrencyFormatter.format(currentUnitPrice),
+                                        text = "Per Piece: ${CurrencyFormatter.format(productPrice?.discounted_per_piece_price ?: 0.0)}",
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        color = MaterialTheme.colorScheme.error
                                     )
                                 }
+                            }
+
+                            OutlinedTextField(
+                                value = quantity,
+                                onValueChange = { 
+                                    if (it.isEmpty() || it.toDoubleOrNull() != null) {
+                                        quantity = it
+                                    }
+                                },
+                                label = { Text("Quantity") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            // Price Type Selection
+                            if (productPrice?.let { price ->
+                                (isPerKg && price.discounted_per_kg_price != null) ||
+                                (!isPerKg && price.discounted_per_piece_price != null)
+                            } == true) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Use Discounted Price")
+                                    Switch(
+                                        checked = useDiscountedPrice,
+                                        onCheckedChange = { useDiscountedPrice = it }
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(if (isPerKg) "Per Kilogram" else "Per Piece")
+                                Switch(
+                                    checked = isPerKg,
+                                    onCheckedChange = { isPerKg = it }
+                                )
+                            }
+
+                            // Show total based on current selection
+                            quantity.toDoubleOrNull()?.let { qty ->
+                                val currentUnitPrice = if (isPerKg) {
+                                    if (useDiscountedPrice) productPrice?.discounted_per_kg_price else productPrice?.per_kg_price
+                                } else {
+                                    if (useDiscountedPrice) productPrice?.discounted_per_piece_price else productPrice?.per_piece_price
+                                } ?: 0.0
+
+                                val total = qty * currentUnitPrice
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.End
                                 ) {
                                     Text(
-                                        text = "Total:",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        text = "Unit Price: ${CurrencyFormatter.format(currentUnitPrice)}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (useDiscountedPrice) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = CurrencyFormatter.format(total),
+                                        text = "Total: ${CurrencyFormatter.format(total)}",
                                         style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        color = MaterialTheme.colorScheme.primary
                                     )
                                 }
                             }
@@ -1216,15 +1266,20 @@ private fun ProductSelectionDialog(
                 onClick = {
                     selectedProduct?.let { product ->
                         quantity.toDoubleOrNull()?.let { qty ->
+                            val productPrice = viewModel.getLatestProductPrice(product.product_id)
+                            val currentUnitPrice = if (isPerKg) {
+                                if (useDiscountedPrice) productPrice?.discounted_per_kg_price else productPrice?.per_kg_price
+                            } else {
+                                if (useDiscountedPrice) productPrice?.discounted_per_piece_price else productPrice?.per_piece_price
+                            } ?: 0.0
+
                             onProductSelected(product, qty, isPerKg)
                         }
                     }
                 },
-                enabled = selectedProduct != null && 
-                         quantity.isNotEmpty() && 
-                         quantity.toDoubleOrNull() != null
+                enabled = selectedProduct != null && quantity.isNotEmpty() && quantity.toDoubleOrNull() != null
             ) {
-                Text(if (selectedProduct == null) "Select" else "Add")
+                Text("Add")
             }
         },
         dismissButton = {

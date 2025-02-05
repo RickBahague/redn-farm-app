@@ -22,5 +22,7 @@ data class ProductPriceEntity(
     val product_id: String,
     val per_kg_price: Double?,
     val per_piece_price: Double?,
+    val discounted_per_kg_price: Double? = null,
+    val discounted_per_piece_price: Double? = null,
     val date_created: LocalDateTime = LocalDateTime.now()
 ) 
