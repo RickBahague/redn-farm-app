@@ -541,16 +541,8 @@ private fun DatePickerDialog(
             .toEpochMilli()
     )
 
-    AlertDialog(
+    DatePickerDialog(
         onDismissRequest = onDismissRequest,
-        title = { Text("Select Date") },
-        text = {
-            DatePicker(
-                state = datePickerState,
-                showModeToggle = false,
-                modifier = Modifier.padding(16.dp)
-            )
-        },
         confirmButton = {
             TextButton(
                 onClick = {
@@ -570,7 +562,12 @@ private fun DatePickerDialog(
                 Text("Cancel")
             }
         }
-    )
+    ) {
+        DatePicker(
+            state = datePickerState,
+            showModeToggle = false
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
