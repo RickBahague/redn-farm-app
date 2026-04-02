@@ -193,6 +193,12 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
         return orderRepository.getOrderItems(orderId)
     }
 
+    suspend fun getOrderSnapshotForPrint(orderId: Int): Pair<Order?, List<OrderItem>> {
+        val order = orderRepository.getOrderById(orderId).first()
+        val items = orderRepository.getOrderItems(orderId).first()
+        return order to items
+    }
+
     suspend fun updateOrder(order: Order, items: List<OrderItem>) {
         if (!Rbac.canWriteOrders(sessionManager.getRole())) return
         orderRepository.updateOrder(order, items)

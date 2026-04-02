@@ -8,8 +8,12 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.redn.farm.utils.PrinterUtils
+import com.redn.farm.utils.buildFarmOperationLog
+import kotlinx.coroutines.launch
 import com.redn.farm.data.model.FarmOperation
 import com.redn.farm.ui.screens.farmops.FarmOperationCard
 import com.redn.farm.ui.screens.farmops.FarmOperationDialog
@@ -29,11 +33,15 @@ fun FarmOperationHistoryScreen(
 
     val operations by viewModel.operations.collectAsState()
     val products by viewModel.products.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedType by viewModel.selectedType.collectAsState()
     val dateRange by viewModel.dateRange.collectAsState()
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Operation History") },
@@ -79,7 +87,19 @@ fun FarmOperationHistoryScreen(
                     FarmOperationCard(
                         operation = operation,
                         onEditClick = { showEditDialog = operation },
-                        onDeleteClick = { showDeleteDialog = operation }
+                        onDeleteClick = { showDeleteDialog = operation },
+                        onPrintClick = {
+                            scope.launch {
+                                val ok = PrinterUtils.printMessage(
+                                    context,
+                                    buildFarmOperationLog(operation),
+                                    alignment = 0,
+                                )
+                                snackbarHostState.showSnackbar(
+                                    if (ok) "Sent to printer" else "Print failed"
+                                )
+                            }
+                        },
                     )
                 }
             }

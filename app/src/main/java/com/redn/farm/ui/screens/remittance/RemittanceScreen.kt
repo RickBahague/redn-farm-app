@@ -12,6 +12,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.redn.farm.utils.PrinterUtils
+import com.redn.farm.utils.buildRemittanceSlip
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -55,6 +58,8 @@ fun RemittanceScreen(
     val totalRemittances = filteredRemittances.sumOf { it.amount }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         viewModel.userMessage.collectLatest { snackbarHostState.showSnackbar(it) }
     }
@@ -156,6 +161,26 @@ fun RemittanceScreen(
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Row {
+                                    IconButton(
+                                        onClick = {
+                                            scope.launch {
+                                                val ok = PrinterUtils.printMessage(
+                                                    context,
+                                                    buildRemittanceSlip(remittance),
+                                                    alignment = 0,
+                                                )
+                                                snackbarHostState.showSnackbar(
+                                                    if (ok) "Sent to printer" else "Print failed"
+                                                )
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Print,
+                                            contentDescription = "Print",
+                                            tint = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
                                     // Edit button
                                     IconButton(
                                         onClick = {

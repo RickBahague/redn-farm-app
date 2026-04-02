@@ -16,7 +16,8 @@ import com.redn.farm.data.model.FarmOperation
 fun FarmOperationCard(
     operation: FarmOperation,
     onEditClick: () -> Unit,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    onPrintClick: () -> Unit = {},
 ) {
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm")
 
@@ -75,6 +76,13 @@ fun FarmOperationCard(
                 }
 
                 Row {
+                    IconButton(onClick = onPrintClick) {
+                        Icon(
+                            imageVector = Icons.Default.Print,
+                            contentDescription = "Print",
+                            tint = MaterialTheme.colorScheme.secondary
+                        )
+                    }
                     IconButton(onClick = onEditClick) {
                         Icon(
                             imageVector = Icons.Default.Edit,

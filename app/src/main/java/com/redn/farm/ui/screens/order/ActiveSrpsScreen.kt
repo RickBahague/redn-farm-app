@@ -7,16 +7,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.redn.farm.utils.buildSrpPriceList
 import com.redn.farm.utils.CurrencyFormatter
+import com.redn.farm.utils.PrinterUtils
+import com.redn.farm.utils.ThermalSrpPrintRow
+import kotlinx.coroutines.launch
 import com.redn.farm.data.pricing.SalesChannel
 import java.time.Instant
 import java.time.LocalDateTime
@@ -48,7 +54,12 @@ fun ActiveSrpsScreen(
         "Preset: $name · Activated $activatedText"
     } ?: ""
 
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Active SRPs") },
@@ -56,7 +67,63 @@ fun ActiveSrpsScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
                     }
-                }
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                if (rows.isEmpty()) {
+                                    snackbarHostState.showSnackbar("No active preset — SRPs not computed")
+                                    return@launch
+                                }
+                                val thermalRows = rows.map { row ->
+                                    val acq = row.acquisition!!
+                                    val (perKg, per500g, _, perPiece) = when (selectedChannel) {
+                                        SalesChannel.ONLINE -> listOf(
+                                            acq.srp_online_per_kg,
+                                            acq.srp_online_500g,
+                                            acq.srp_online_250g,
+                                            acq.srp_online_per_piece,
+                                        )
+                                        SalesChannel.RESELLER -> listOf(
+                                            acq.srp_reseller_per_kg,
+                                            acq.srp_reseller_500g,
+                                            acq.srp_reseller_250g,
+                                            acq.srp_reseller_per_piece,
+                                        )
+                                        else -> listOf(
+                                            acq.srp_offline_per_kg,
+                                            acq.srp_offline_500g,
+                                            acq.srp_offline_250g,
+                                            acq.srp_offline_per_piece,
+                                        )
+                                    }
+                                    ThermalSrpPrintRow(
+                                        name = row.product.product_name,
+                                        perKg = perKg,
+                                        per500g = per500g,
+                                        perPiece = perPiece,
+                                    )
+                                }
+                                val content = buildSrpPriceList(
+                                    channelLabel = selectedChannelLabel,
+                                    presetName = activePresetName,
+                                    asOfMillis = activePresetActivatedAt ?: System.currentTimeMillis(),
+                                    rows = thermalRows,
+                                )
+                                val ok = PrinterUtils.printMessage(context, content, alignment = 0)
+                                snackbarHostState.showSnackbar(
+                                    if (ok) "Sent to printer" else "Print failed"
+                                )
+                            }
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Print,
+                            contentDescription = "Print price list",
+                        )
+                    }
+                },
             )
         }
     ) { padding ->

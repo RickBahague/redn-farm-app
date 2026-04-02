@@ -11,13 +11,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.redn.farm.data.model.EmployeePayment
 import com.redn.farm.data.model.lifetimeOutstandingAdvance
 import com.redn.farm.data.model.periodTotals
+import com.redn.farm.utils.buildEmployeePayrollSummary
 import com.redn.farm.utils.CurrencyFormatter
+import com.redn.farm.utils.PrinterUtils
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,7 +64,12 @@ fun EmployeePaymentScreen(
 
     val periodTotals = remember(filteredPayments) { filteredPayments.periodTotals() }
 
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Employee Payments - $employeeName") },
@@ -79,48 +91,72 @@ fun EmployeePaymentScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Date Filter
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(16.dp)
             ) {
-                Text(
-                    text = "Filter by:",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                ExposedDropdownMenuBox(
-                    expanded = isDropdownExpanded,
-                    onExpandedChange = { isDropdownExpanded = it },
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(
-                        onClick = { isDropdownExpanded = true },
-                        modifier = Modifier.menuAnchor()
-                    ) {
-                        Text(selectedPeriod.label)
-                        Icon(
-                            Icons.Default.ArrowDropDown,
-                            "Select period",
-                            Modifier.padding(start = 8.dp)
-                        )
-                    }
-
-                    ExposedDropdownMenu(
+                    Text(
+                        text = "Filter by:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    ExposedDropdownMenuBox(
                         expanded = isDropdownExpanded,
-                        onDismissRequest = { isDropdownExpanded = false },
+                        onExpandedChange = { isDropdownExpanded = it },
                     ) {
-                        DateFilterPeriod.values().forEach { period ->
-                            DropdownMenuItem(
-                                text = { Text(period.label) },
-                                onClick = {
-                                    selectedPeriod = period
-                                    isDropdownExpanded = false
-                                }
+                        OutlinedButton(
+                            onClick = { isDropdownExpanded = true },
+                            modifier = Modifier.menuAnchor()
+                        ) {
+                            Text(selectedPeriod.label)
+                            Icon(
+                                Icons.Default.ArrowDropDown,
+                                "Select period",
+                                Modifier.padding(start = 8.dp)
                             )
                         }
+
+                        ExposedDropdownMenu(
+                            expanded = isDropdownExpanded,
+                            onDismissRequest = { isDropdownExpanded = false },
+                        ) {
+                            DateFilterPeriod.values().forEach { period ->
+                                DropdownMenuItem(
+                                    text = { Text(period.label) },
+                                    onClick = {
+                                        selectedPeriod = period
+                                        isDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
                     }
+                }
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            val content = buildEmployeePayrollSummary(
+                                employeeName = employeeName,
+                                periodLabel = selectedPeriod.toPayrollSummaryLabel(),
+                                filteredPayments = filteredPayments,
+                                allEmployeePayments = employeePayments,
+                            )
+                            val ok = PrinterUtils.printMessage(context, content, alignment = 0)
+                            snackbarHostState.showSnackbar(
+                                if (ok) "Sent to printer" else "Print failed"
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                ) {
+                    Text("Print Summary")
                 }
             }
 
@@ -185,6 +221,14 @@ enum class DateFilterPeriod(val label: String) {
     TODAY("Today"),
     THIS_WEEK("This Week"),
     THIS_MONTH("This Month")
+}
+
+private fun DateFilterPeriod.toPayrollSummaryLabel(): String = when (this) {
+    DateFilterPeriod.ALL -> "All Time"
+    DateFilterPeriod.TODAY -> "Today"
+    DateFilterPeriod.THIS_WEEK -> "This Week"
+    DateFilterPeriod.THIS_MONTH ->
+        SimpleDateFormat("MMM yyyy", Locale.getDefault()).format(Date())
 }
 
 private fun startOfFilterPeriodMillis(period: DateFilterPeriod): Long {

@@ -48,6 +48,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -56,7 +57,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.redn.farm.data.model.EmployeePayment
+import com.redn.farm.utils.buildEmployeePaymentVoucher
 import com.redn.farm.utils.CurrencyFormatter
+import com.redn.farm.utils.PrinterUtils
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -138,6 +141,7 @@ fun PaymentFormScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -153,12 +157,16 @@ fun PaymentFormScreen(
         },
         bottomBar = {
             Surface(tonalElevation = 2.dp) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
                         .imePadding()
                         .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     OutlinedButton(
@@ -213,6 +221,36 @@ fun PaymentFormScreen(
                     ) {
                         Text("Save")
                     }
+                }
+                OutlinedButton(
+                    onClick = {
+                        if (!grossValid || signature.isBlank()) {
+                            snackbarScope.launch {
+                                snackbarHostState.showSnackbar("Enter gross wage and signature to print.")
+                            }
+                            return@OutlinedButton
+                        }
+                        snackbarScope.launch {
+                            val content = buildEmployeePaymentVoucher(
+                                employeeName = employeeName,
+                                datePaidMillis = datePaid,
+                                receivedMillis = dateReceived,
+                                gross = grossValue,
+                                cashAdvance = advanceValue,
+                                liquidated = liquidatedValue,
+                                netPay = netPay,
+                            )
+                            val ok = PrinterUtils.printMessage(context, content, alignment = 0)
+                            snackbarHostState.showSnackbar(
+                                if (ok) "Sent to printer" else "Print failed — check printer"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = grossValid && signature.isNotBlank(),
+                ) {
+                    Text("Print Voucher")
+                }
                 }
             }
         }

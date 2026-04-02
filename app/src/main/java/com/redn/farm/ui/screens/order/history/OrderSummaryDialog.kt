@@ -180,7 +180,7 @@ fun OrderSummaryDialog(
                             isPrinting = true
                             scope.launch {
                                 try {
-                                    PrinterUtils.printMessage(context, formatSummaryForPrint())
+                                    PrinterUtils.printMessage(context, formatSummaryForPrint(), alignment = 0)
                                 } finally {
                                     isPrinting = false
                                 }

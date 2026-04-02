@@ -14,8 +14,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.FarmOperation
+import com.redn.farm.utils.PrinterUtils
+import com.redn.farm.utils.buildFarmOperationLog
 import java.time.LocalDateTime
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,6 +38,8 @@ fun FarmOperationsScreen(
     val dateRange by viewModel.dateRange.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         viewModel.userMessage.collectLatest { snackbarHostState.showSnackbar(it) }
     }
@@ -126,7 +131,19 @@ fun FarmOperationsScreen(
                         FarmOperationCard(
                             operation = operation,
                             onEditClick = { showEditDialog = operation },
-                            onDeleteClick = { showDeleteDialog = operation }
+                            onDeleteClick = { showDeleteDialog = operation },
+                            onPrintClick = {
+                                scope.launch {
+                                    val ok = PrinterUtils.printMessage(
+                                        context,
+                                        buildFarmOperationLog(operation),
+                                        alignment = 0,
+                                    )
+                                    snackbarHostState.showSnackbar(
+                                        if (ok) "Sent to printer" else "Print failed"
+                                    )
+                                }
+                            },
                         )
                     }
                 }

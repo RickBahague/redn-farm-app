@@ -19,6 +19,7 @@ import com.redn.farm.data.model.Order
 import com.redn.farm.data.model.OrderItem
 import com.redn.farm.data.model.isOrderFinalized
 import com.redn.farm.data.pricing.SalesChannel
+import com.redn.farm.utils.buildOrderReceiptText
 import com.redn.farm.utils.CurrencyFormatter
 import com.redn.farm.utils.PrinterUtils
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +52,7 @@ fun OrderDetailScreen(
     var showPaymentConfirm by remember { mutableStateOf<Boolean?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(orderId) {
         viewModel.getOrder(orderId).collectLatest { loaded: Order? ->
@@ -74,6 +76,7 @@ fun OrderDetailScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Order #$orderId") },
@@ -87,24 +90,11 @@ fun OrderDetailScreen(
                         onClick = {
                             order?.let { currentOrder ->
                                 scope.launch {
-                                    val message = buildString {
-                                        appendLine("REDN GREENS FRESH")
-                                        appendLine("Order #${currentOrder.order_id}")
-                                        appendLine("Channel: ${SalesChannel.label(SalesChannel.normalize(currentOrder.channel))}")
-                                        appendLine("Date: ${formatDate(currentOrder.order_date)}")
-                                        appendLine("Customer: ${currentOrder.customerName}")
-                                        appendLine("Contact: ${currentOrder.customerContact}")
-                                        appendLine("--------------------------------")
-                                        orderItems.forEach { item ->
-                                            appendLine("${item.product_name} - ${CurrencyFormatter.format(item.total_price)}")
-                                            appendLine("${item.quantity}${if (item.is_per_kg) "kg" else "pc"} x ${CurrencyFormatter.format(item.price_per_unit)}")
-                                        }
-                                        appendLine("--------------------------------")
-                                        appendLine("Total: ${CurrencyFormatter.format(currentOrder.total_amount)}")
-                                        appendLine(if (currentOrder.is_paid) "PAID" else "UNPAID")
-                                        appendLine(if (currentOrder.is_delivered) "DELIVERED" else "NOT DELIVERED")
-                                    }
-                                    PrinterUtils.printMessage(context, message)
+                                    val message = buildOrderReceiptText(currentOrder, orderItems)
+                                    val ok = PrinterUtils.printMessage(context, message, alignment = 0)
+                                    snackbarHostState.showSnackbar(
+                                        if (ok) "Sent to printer" else "Print failed — check printer"
+                                    )
                                 }
                             }
                         }
@@ -215,32 +205,11 @@ fun OrderDetailScreen(
                         onClick = {
                             order?.let { currentOrder ->
                                 scope.launch {
-                                    val message = buildString {
-                                        appendLine("REDN GREENS FRESH")
-                                        appendLine("Order #${currentOrder.order_id}")
-                                        appendLine(
-                                            "Channel: ${
-                                                SalesChannel.label(
-                                                    SalesChannel.normalize(currentOrder.channel)
-                                                )
-                                            }"
-                                        )
-                                        appendLine("Date: ${formatDate(currentOrder.order_date)}")
-                                        appendLine("Customer: ${currentOrder.customerName}")
-                                        appendLine("Contact: ${currentOrder.customerContact}")
-                                        appendLine("--------------------------------")
-                                        orderItems.forEach { item ->
-                                            appendLine("${item.product_name} - ${CurrencyFormatter.format(item.total_price)}")
-                                            appendLine(
-                                                "${item.quantity}${if (item.is_per_kg) "kg" else "pcs"} x ${CurrencyFormatter.format(item.price_per_unit)}"
-                                            )
-                                        }
-                                        appendLine("--------------------------------")
-                                        appendLine("Total: ${CurrencyFormatter.format(currentOrder.total_amount)}")
-                                        appendLine(if (currentOrder.is_paid) "PAID" else "UNPAID")
-                                        appendLine(if (currentOrder.is_delivered) "DELIVERED" else "NOT DELIVERED")
-                                    }
-                                    PrinterUtils.printMessage(context, message)
+                                    val message = buildOrderReceiptText(currentOrder, orderItems)
+                                    val ok = PrinterUtils.printMessage(context, message, alignment = 0)
+                                    snackbarHostState.showSnackbar(
+                                        if (ok) "Sent to printer" else "Print failed — check printer"
+                                    )
                                 }
                             }
                         },

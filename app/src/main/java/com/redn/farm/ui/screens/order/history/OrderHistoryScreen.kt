@@ -10,12 +10,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.redn.farm.data.model.Order
 import com.redn.farm.data.pricing.SalesChannel
+import com.redn.farm.utils.buildOrderReceiptText
 import com.redn.farm.utils.CurrencyFormatter
+import com.redn.farm.utils.PrinterUtils
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.time.LocalDateTime
@@ -39,8 +43,12 @@ fun OrderHistoryScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val dateRange by viewModel.dateRange.collectAsState()
     val orderSummary by viewModel.orderSummary.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Order History") },
@@ -136,7 +144,25 @@ fun OrderHistoryScreen(
                     items(orders) { order ->
                         OrderHistoryCard(
                             order = order,
-                            onOpenDetail = { onNavigateToOrderDetail(order.order_id) }
+                            onOpenDetail = { onNavigateToOrderDetail(order.order_id) },
+                            onPrint = {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("Printing…")
+                                    val (o, items) = viewModel.getOrderSnapshotForPrint(order.order_id)
+                                    if (o == null) {
+                                        snackbarHostState.showSnackbar("Print failed")
+                                        return@launch
+                                    }
+                                    val ok = PrinterUtils.printMessage(
+                                        context,
+                                        buildOrderReceiptText(o, items),
+                                        alignment = 0,
+                                    )
+                                    snackbarHostState.showSnackbar(
+                                        if (ok) "Sent to printer" else "Print failed"
+                                    )
+                                }
+                            },
                         )
                     }
                 }
@@ -184,7 +210,8 @@ fun OrderHistoryScreen(
 @Composable
 private fun OrderHistoryCard(
     order: Order,
-    onOpenDetail: () -> Unit
+    onOpenDetail: () -> Unit,
+    onPrint: () -> Unit,
 ) {
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm")
     val orderDate = LocalDateTime.ofInstant(
@@ -196,7 +223,6 @@ private fun OrderHistoryCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clickable(onClick = onOpenDetail)
     ) {
         Column(
             modifier = Modifier
@@ -208,6 +234,12 @@ private fun OrderHistoryCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onOpenDetail),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Order #${order.order_id}",
@@ -237,11 +269,28 @@ private fun OrderHistoryCard(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = "View details",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+                }
                 Column(
                     modifier = Modifier.padding(start = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     horizontalAlignment = Alignment.End
                 ) {
+                    IconButton(
+                        onClick = onPrint,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Print,
+                            contentDescription = "Print receipt",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     // Payment status chip
                     Surface(
                         shape = MaterialTheme.shapes.small,
@@ -280,13 +329,6 @@ private fun OrderHistoryCard(
                         )
                     }
                 }
-
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = "View details",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp)
-                )
             }
         }
     }

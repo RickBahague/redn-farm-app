@@ -13,13 +13,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Acquisition
 import com.redn.farm.data.model.AcquisitionLocation
 import com.redn.farm.data.repository.AcquisitionDraftPricingPreview
 import com.redn.farm.data.model.Product
+import com.redn.farm.utils.buildAcquisitionReceivingSlip
 import com.redn.farm.utils.CurrencyFormatter
+import com.redn.farm.utils.PrinterUtils
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import androidx.compose.foundation.text.KeyboardOptions
@@ -35,6 +38,7 @@ import java.time.Instant
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import com.redn.farm.ui.components.NumericPadBottomSheet
 
 private enum class AcquisitionNumericPadTarget { QUANTITY, PRICE_PER_UNIT, TOTAL_AMOUNT }
@@ -58,6 +62,8 @@ fun AcquireProduceScreen(
     val selectedDateRange by viewModel.selectedDateRange.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         viewModel.userMessage.collectLatest { snackbarHostState.showSnackbar(it) }
     }
@@ -181,7 +187,19 @@ fun AcquireProduceScreen(
                                                 is_active = true
                                             )
                                         showAddDialog = true
-                                    }
+                                    },
+                                    onPrint = {
+                                        scope.launch {
+                                            val content = buildAcquisitionReceivingSlip(
+                                                acquisition,
+                                                presetDisplayName = null,
+                                            )
+                                            val ok = PrinterUtils.printMessage(context, content, alignment = 0)
+                                            snackbarHostState.showSnackbar(
+                                                if (ok) "Sent to printer" else "Print failed"
+                                            )
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -211,7 +229,19 @@ fun AcquireProduceScreen(
                                                 is_active = true
                                             )
                                         showAddDialog = true
-                                    }
+                                    },
+                                    onPrint = {
+                                        scope.launch {
+                                            val content = buildAcquisitionReceivingSlip(
+                                                acquisition,
+                                                presetDisplayName = null,
+                                            )
+                                            val ok = PrinterUtils.printMessage(context, content, alignment = 0)
+                                            snackbarHostState.showSnackbar(
+                                                if (ok) "Sent to printer" else "Print failed"
+                                            )
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -819,7 +849,8 @@ private fun AcquisitionDraftPreviewPanel(
 private fun AcquisitionCard(
     acquisition: Acquisition,
     onDelete: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onPrint: () -> Unit,
 ) {
     var srpExpanded by remember { mutableStateOf(false) }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm", Locale.getDefault()) }
@@ -953,6 +984,17 @@ private fun AcquisitionCard(
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    IconButton(
+                        onClick = onPrint,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Print,
+                            contentDescription = "Print slip",
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     IconButton(
                         onClick = onEdit,
                         modifier = Modifier.size(32.dp)

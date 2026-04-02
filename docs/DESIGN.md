@@ -262,9 +262,9 @@ The `DatabaseMigrationScreen` is shown if it is somehow reached; it checks for a
 
 `PrinterUtils` (in `utils/`) supports two modes:
 - **Standard Android print** (`printText`): renders content in a WebView then calls `PrintManager.print()` with A4 media size
-- **Sunmi printer** (`printMessage`): uses the Sunmi SDK (`com.sunmi:printerlibrary:1.0.23`) to print directly to a built-in Sunmi POS printer via `SunmiPrinterService`
+- **Sunmi printer** (`printMessage`): uses the Sunmi SDK (`com.sunmi:printerlibrary:1.0.23`) to print directly to a built-in Sunmi POS printer via `SunmiPrinterService`. Optional **`alignment`** argument: `0` = left (58mm slips built in **`ThermalPrintBuilders.kt`**), default `1` = centre.
 
-The Sunmi printer connection is managed as a coroutine-suspended bind (`suspendCancellableCoroutine`).
+The Sunmi printer connection is managed as a coroutine-suspended bind (`suspendCancellableCoroutine`). Slip templates and triggers are documented in **`docs/printing.md`** (PRN-01–07).
 
 ---
 
@@ -274,7 +274,8 @@ The Sunmi printer connection is managed as a coroutine-suspended bind (`suspendC
 |---|---|---|
 | `CurrencyFormatter` | `utils/` | Formats doubles as currency strings |
 | `DeviceUtils` | `utils/` | Returns `Settings.Secure.ANDROID_ID` as device identifier |
-| `PrinterUtils` | `utils/` | Android print + Sunmi thermal printer |
+| `PrinterUtils` | `utils/` | Android print + Sunmi thermal printer (`printMessage`, alignment) |
+| `ThermalPrintBuilders` | `utils/` | 32-column thermal slip strings (payroll, acquisitions, SRP list, etc.) |
 | `DatabasePopulator` | `data/util/` | Generates sample customers, products, acquisitions |
 | `SampleDataGenerator` | `data/util/` | (Additional sample data generation utilities) |
 | `DatePicker` | `ui/components/` | Custom date picker Composable |

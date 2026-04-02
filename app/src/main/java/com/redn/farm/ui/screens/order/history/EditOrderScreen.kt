@@ -147,7 +147,7 @@ fun EditOrderScreen(
                                             appendLine("Mobile: 0998.849.0469")
                                         }
 
-                                        val success = PrinterUtils.printMessage(context, message)
+                                        val success = PrinterUtils.printMessage(context, message, alignment = 0)
                                         if (success) {
                                             Toast.makeText(context, "Print job sent successfully", Toast.LENGTH_SHORT).show()
                                         }

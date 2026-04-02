@@ -64,7 +64,15 @@ object PrinterUtils {
     }
 
     // Sunmi printer specific implementation
-    suspend fun printMessage(context: Context, message: String, isLarge: Boolean = false): Boolean {
+    /**
+     * @param alignment Sunmi: 0 = left, 1 = center, 2 = right. Use 0 for 58mm slips (`ThermalPrintBuilders`).
+     */
+    suspend fun printMessage(
+        context: Context,
+        message: String,
+        isLarge: Boolean = false,
+        alignment: Int = 1,
+    ): Boolean {
         return try {
             // First ensure we have a printer connection
             val service = printerService ?: connectPrinter(context) ?: return false
@@ -73,8 +81,7 @@ object PrinterUtils {
                 // Initialize printer
                 printerInit(null)
 
-                // Set alignment to center
-                setAlignment(1, null)
+                setAlignment(alignment, null)
 
                 if (isLarge) {
                     // Set larger text size (2x default size)
