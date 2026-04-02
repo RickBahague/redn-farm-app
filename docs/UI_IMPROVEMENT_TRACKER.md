@@ -108,13 +108,13 @@ Waves can overlap **only** where dependency graph allows (e.g. Wave 1 + Wave 0 t
 | UI-11 | P1 | `[x]` | A | Destructive confirm buttons use `MaterialTheme.colorScheme.error` |
 | UI-12 | P1 | `[x]` | B | `OrderHistoryScreen` — right-edge status chips (paid/unpaid + delivered/pending) |
 | UI-13 | P1 | `[x]` | G | Primary actions at bottom of forms (AcquisitionDialog, dialogs use standard `confirmButton` bottom slot) |
-| UI-14 | P1 | `[~]` | H | `EmployeePaymentScreen` is a full-screen route ✓; but individual *add/edit payment* form (`PaymentDialog.kt`) and employee add/edit are still `AlertDialog` — not migrated to full-screen |
+| UI-14 | P1 | `[x]` QA | H | Add/edit payment is `PaymentFormScreen` + `employee_payment_form/...` route (full-screen, `imePadding`, back stack). Employee add/edit still `AlertDialog` (out of UI-14 scope per errata). |
 | UI-15 | P1 | `[x]` | G | `OrderDetailScreen` — full-width `OutlinedButton(“Print Receipt”)` in action row; top bar icon remains |
-| UI-16 | P2 | `[ ]` | H | Live net pay summary block not present in `PaymentDialog.kt` — three raw inputs, no computed total |
+| UI-16 | P2 | `[x]` QA | H | `PaymentFormScreen` — live summary; **net = gross + cash advance**; liquidated recording-only (`BUG-EMP-01` fixed) |
 | UI-17 | P2 | `[x]` | B | Empty states + CTAs: Orders history, Acquisitions, Customers, Employees, Farm Ops |
 | UI-18 | P2 | `[x]` | E | Acquisition live SRP preview: collapsible card + auto-expand on qty+price; preset name in header |
 | UI-19 | P2 | `[x]` | B | `MainScreen` tiles filtered via `Rbac.dashboardTileTitles(Rbac.normalizeRole(role))`; `security/Rbac.kt` + `navigation/RbacGate.kt` |
-| UI-20 | P2 | `[x]` | H | `SignatureCanvasField.kt` — Canvas touch tracking + Base64 PNG export; Draw/Type toggle in `PaymentDialog.kt` |
+| UI-20 | P2 | `[x]` | H | `SignatureCanvasField.kt` — Canvas touch tracking + Base64 PNG export; Draw/Type toggle in `PaymentFormScreen.kt` |
 | UI-21 | P2 | `[x]` | B | Active SRPs: channel FilterChip selector + per-row SRPs for selected channel + preset footer |
 
 ---
@@ -133,3 +133,5 @@ Waves can overlap **only** where dependency graph allows (e.g. Wave 1 + Wave 0 t
 |------|--------|
 | 2026-04-02 | Initial tracker from `UI-Improvement-Plan.md`; errata + agent waves added. |
 | 2026-04-02 | Full codebase review pass: upgraded UI-01–03, 06–13, 15, 19, 20 from `[~]`/`[ ]` to `[x]`. UI-14 upgraded to `[~]` (list screen is full-screen; add/edit dialog is not). UI-16 confirmed `[ ]` (no net pay summary in PaymentDialog). UI-05 remains `[ ]`. |
+| 2026-04-02 | UI-14 + UI-16: `PaymentFormScreen` + nav route `employee_payment_form/{employeeId}/{employeeName}/{paymentId}` (`paymentId` −1 = new); net pay summary card; removed `PaymentDialog.kt`. |
+| 2026-04-02 | Doc realignment: EMP-US-05 net pay = gross + cash advance; liquidated excluded (`BUG-EMP-01`); UI-16 description updated. |

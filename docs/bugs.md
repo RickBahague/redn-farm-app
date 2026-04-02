@@ -182,6 +182,40 @@
 
 ---
 
+## BUG-EMP-01 — Employee payment: net pay should be gross + cash advance; liquidated recording-only
+
+### Report
+- **Screens:** Add / edit employee payment (`PaymentFormScreen` / full-screen payment form route).
+- **Required behavior:**
+  - **Net pay** must be computed as **gross wage (`amount`) + cash advance (`cash_advance_amount`)** on **both** add and edit flows (same formula everywhere that net is shown for the form).
+  - **`liquidated_amount`** is **for recording only** — it must **not** be included in the net pay calculation on this screen (still stored and shown elsewhere, e.g. history aggregates / outstanding advance logic, as applicable).
+
+### Doc realignment *(2026-04-02)*
+
+Canonical product text is now **gross + cash advance** with **liquidated excluded** from net pay in:
+
+- [`USER_STORIES.md`](./USER_STORIES.md) (EMP-US-05, EMP-US-06)
+- [`EMP_EPIC_TRACKER.md`](./EMP_EPIC_TRACKER.md)
+- [`DESIGN.md`](./DESIGN.md)
+- [`figma/UI-Spec.md`](./figma/UI-Spec.md)
+- [`UI-Improvement-Plan.md`](./UI-Improvement-Plan.md) (UI-16)
+- [`UI_IMPROVEMENT_TRACKER.md`](./UI_IMPROVEMENT_TRACKER.md) (UI-16 row)
+- [`PHASE1_TRACKER.md`](./PHASE1_TRACKER.md), [`rebuild_plan.md`](./rebuild_plan.md) (verification wording)
+
+### Fix *(implemented 2026-04-02)*
+
+- **`EmployeePayment.netPayAmount()`** in `EmployeePaymentAggregates.kt` — single source for list + tests.
+- **`PaymentFormScreen`:** summary shows gross, **+** cash advance (in net), liquidated with “recorded only” note; net = gross + advance; warning when net is negative.
+- **`PaymentCard`:** per-row net via `netPayAmount()`.
+- **`EmployeePaymentNetPayTest`:** gross + advance; liquidated ignored.
+
+### Verification
+- `./gradlew :app:testDebugUnitTest --tests "*.EmployeePaymentNetPayTest"` ✅  
+- `./gradlew assembleDebug` ✅  
+- Manual: editing liquidated does not change net pay; gross + advance does.
+
+---
+
 ## Completion tracker
 
 | Bug ID | Title | Status | Notes |
@@ -193,4 +227,5 @@
 | BUG-ORD-01 | Take Order: Place order visibility / app bar | `[x]` | Top: compact “Order” + SRP + History; thin bottom total bar |
 | BUG-ORD-02 | Order: finalize only when paid + delivered | `[x]` | `isOrderFinalized`; verified on device |
 | BUG-PRC-01 | Preset history: delete inactive only | `[x]` | DAO + repo + history/detail UI; active protected |
+| BUG-EMP-01 | Employee payment net pay: gross + advance; liquidated not in net | `[x]` | `netPayAmount()`, `PaymentFormScreen`, `PaymentCard`, unit tests |
 

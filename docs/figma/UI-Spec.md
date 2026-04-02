@@ -140,7 +140,7 @@
 ### Frame: Draw mode
 **Canvas box:**
 - Bordered area with a “Sign here” style canvas (implemented with a draw area)
-- Minimum height target: **~200dp**
+- Minimum height target: **200dp** (implemented in `SignatureCanvasField`)
 - Clear button:
   - `Clear` resets the drawing and clears `signature`
 
@@ -152,21 +152,23 @@
 
 ---
 
-## Screen: Employee Payment Dialog (UI-20 + UI-04 relevance)
-**Screen name (Figma):** `Employees - Payment Add/Edit`
+## Screen: Employee Payment Add/Edit (full screen — UI-14 / UI-16 / UI-20)
+**Screen name (Figma):** `Employees - Payment Add/Edit`  
+**Implementation:** `PaymentFormScreen` — not an `AlertDialog`.
 
 ### Layout summary
-- Amount field
-- Optional Cash Advance
-- Optional Liquidated
+- **Gross wage** field (`amount`)
+- Optional **Cash advance** and **Liquidated**
+- **Live net pay summary** (read-only): **gross + cash advance** (liquidated is shown for audit but **not** included in net pay); optional warning if inputs produce an invalid/negative net *(UI-16 / EMP-US-05 / `BUG-EMP-01`)*
 - Signature field:
   - `Draw/Type` chips
   - Canvas or Text field depending on chip selection
 - Date Paid + optional Date Received pickers
+- Bottom bar: Cancel + Save *(thumb reach)*
 
 ### Save button enable rule
 - Save is enabled when:
-  - `amount` parses as a number
+  - Gross wage parses as a number
   - `signature` is not blank
 
 ---

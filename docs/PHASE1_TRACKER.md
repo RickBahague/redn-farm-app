@@ -60,16 +60,22 @@
 
 ## P1-4 — Employees + Payments (EMP-US-01–05)
 
-**Scope:** Net pay display per EMP-US-04 AC#5: `amount − cash_advance_amount + liquidated_amount`.
+**Scope:** Net pay per EMP-US-05: **`amount + cash_advance_amount`** via `EmployeePayment.netPayAmount()` (liquidated excluded). See `BUG-EMP-01` (fixed).
+
+**Detailed EMP-US-05 checklist:** [`EMP_EPIC_TRACKER.md`](./EMP_EPIC_TRACKER.md)
 
 | Step | Status | Notes |
 |------|--------|--------|
-| Net pay on payment card | `[x]` | `PaymentCard.kt` shows **Net pay** line using formula above (null advances/liquidated treated as 0) |
-| Manual smoke | `[ ]` | Create payment with cash advance + liquidated; verify UI |
+| Net pay on payment card | `[x]` | `PaymentCard.kt` → `netPayAmount()` |
+| EMP-US-05 full-screen form + validation | `[x]` | `PaymentFormScreen.kt` — summary matches canon; `BUG-EMP-01` |
+| Manual smoke | `[x]` | Net = gross + advance; liquidated does not change net |
 
 **Files changed**
 
+- `app/src/main/java/com/redn/farm/data/model/EmployeePaymentAggregates.kt` (`netPayAmount()`)
 - `app/src/main/java/com/redn/farm/ui/screens/manage/employees/payment/PaymentCard.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/manage/employees/payment/PaymentFormScreen.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/manage/employees/payment/SignatureCanvasField.kt`
 
 ---
 
@@ -89,7 +95,7 @@
 | Step | Status | Notes |
 |------|--------|--------|
 | | `[x]` | No schema changes; compile green |
-| Manual smoke | `[ ]` | Add/edit remittance |
+| Manual smoke | `[x]` | Add/edit remittance |
 
 **Files touched:** none.
 
@@ -154,7 +160,7 @@ Use fresh install or existing v4 DB after destructive migration.
 1. Login / logout  
 2. Product: create, edit, restart app, confirm row  
 3. Customer: create, edit  
-4. Employee payment: amount + cash advance + liquidated → **Net pay** looks correct  
+4. Employee payment: **net pay = gross + cash advance**; changing liquidated does not change net pay — confirm vs `USER_STORIES.md`  
 5. Farm operation: add  
 6. Remittance: add  
 7. Order: take order → history → edit → paid/delivered as applicable  

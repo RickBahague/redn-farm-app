@@ -234,7 +234,10 @@ All ViewModels use `StateFlow` exposed as `asStateFlow()`, collected in Composab
 - Discounted prices are optional fields added in DB v3
 
 ### Employee Payments
-- Payments record `amount` (gross), `cash_advance_amount` (optional deduction), `liquidated_amount` (optional), and `signature` (stored as a string — likely a name or initialism, not a bitmap)
+- Payments record `amount` (gross wage), optional `cash_advance_amount`, optional `liquidated_amount`, and `signature` (typed name **or** Base64-encoded drawn signature from `SignatureCanvasField`)
+- **Net pay (form + each history row):** `EmployeePayment.netPayAmount()` = `amount + cash_advance_amount` (null advance as `0`). **Liquidated** stored/shown for audit and outstanding balance only — EMP-US-05
+- Add/edit: full-screen `PaymentFormScreen` on route `employee_payment_form/...`; list remains `EmployeePaymentScreen` → `employee_payments/...`
+- **History (EMP-US-06):** `EmployeePaymentScreen` — list, period filter (All / Today / Week / Month), **period summary** (totals for filtered rows), **lifetime outstanding advance** (all-time, ignores filter). Extra presets (*Last month*, custom range, etc.) remain backlog in `USER_STORIES.md`.
 - `received_date` is nullable (payment may be scheduled but not yet received)
 
 ### Farm Operations

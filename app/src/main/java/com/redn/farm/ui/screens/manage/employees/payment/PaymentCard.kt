@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.redn.farm.data.model.EmployeePayment
+import com.redn.farm.data.model.netPayAmount
 import com.redn.farm.utils.CurrencyFormatter
 import java.text.SimpleDateFormat
 import java.util.*
@@ -41,30 +42,25 @@ fun PaymentCard(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = CurrencyFormatter.format(payment.amount),
+                        text = "Gross wage: ${CurrencyFormatter.format(payment.amount)}",
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    
-                    payment.cash_advance_amount?.let { cashAdvance ->
-                        Text(
-                            text = "Cash Advance: ${CurrencyFormatter.format(cashAdvance)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    
-                    payment.liquidated_amount?.let { liquidated ->
-                        Text(
-                            text = "Liquidated: ${CurrencyFormatter.format(liquidated)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.tertiary
-                        )
-                    }
 
                     val cashAdvance = payment.cash_advance_amount ?: 0.0
                     val liquidated = payment.liquidated_amount ?: 0.0
-                    val netPay = payment.amount - cashAdvance + liquidated
+                    Text(
+                        text = "Cash advance: ${CurrencyFormatter.format(cashAdvance)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Liquidated: ${CurrencyFormatter.format(liquidated)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    val netPay = payment.netPayAmount()
                     Text(
                         text = "Net pay: ${CurrencyFormatter.format(netPay)}",
                         style = MaterialTheme.typography.titleMedium,
@@ -72,7 +68,7 @@ fun PaymentCard(
                     )
 
                     Text(
-                        text = "Date: ${dateFormatter.format(Date(payment.date_paid))}",
+                        text = "Date paid: ${dateFormatter.format(Date(payment.date_paid))}",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(

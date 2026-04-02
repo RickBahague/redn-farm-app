@@ -18,6 +18,7 @@ import com.redn.farm.ui.screens.acquire.AcquireProduceScreen
 import com.redn.farm.ui.screens.remittance.RemittanceScreen
 import com.redn.farm.ui.screens.manage.employees.ManageEmployeesScreen
 import com.redn.farm.ui.screens.manage.employees.payment.EmployeePaymentScreen
+import com.redn.farm.ui.screens.manage.employees.payment.PaymentFormScreen
 import com.redn.farm.ui.screens.farmops.FarmOperationsScreen
 import com.redn.farm.ui.screens.farmops.history.FarmOperationHistoryScreen
 import com.redn.farm.ui.screens.export.ExportScreen
@@ -55,8 +56,12 @@ sealed class Screen(val route: String) {
     object Remittance : Screen("remittance")
     object Employees : Screen("employees")
     object EmployeePayments : Screen("employee_payments/{employeeId}/{employeeName}") {
-        fun createRoute(employeeId: Int, employeeName: String) = 
+        fun createRoute(employeeId: Int, employeeName: String) =
             "employee_payments/$employeeId/${employeeName.replace(" ", "_")}"
+    }
+    object EmployeePaymentForm : Screen("employee_payment_form/{employeeId}/{employeeName}/{paymentId}") {
+        fun createRoute(employeeId: Int, employeeName: String, paymentId: Int) =
+            "employee_payment_form/$employeeId/${employeeName.replace(" ", "_")}/$paymentId"
     }
     object FarmOps : Screen("farm_ops")
     object FarmOpsHistory : Screen("farm_ops_history")
@@ -276,8 +281,34 @@ fun NavGraph(
             RequireRole(navController, Rbac.ROLES_EMPLOYEES) {
                 EmployeePaymentScreen(
                     onNavigateBack = { navController.navigateUp() },
+                    onNavigateToPaymentForm = { pid ->
+                        navController.navigate(
+                            Screen.EmployeePaymentForm.createRoute(employeeId, employeeName, pid)
+                        )
+                    },
                     employeeId = employeeId,
                     employeeName = employeeName
+                )
+            }
+        }
+        composable(
+            route = Screen.EmployeePaymentForm.route,
+            arguments = listOf(
+                navArgument("employeeId") { type = NavType.IntType },
+                navArgument("employeeName") { type = NavType.StringType },
+                navArgument("paymentId") { type = NavType.IntType }
+            )
+        ) { backStackEntry ->
+            val formEmployeeId = backStackEntry.arguments?.getInt("employeeId") ?: return@composable
+            val formEmployeeName = backStackEntry.arguments?.getString("employeeName")?.replace("_", " ")
+                ?: return@composable
+            val formPaymentId = backStackEntry.arguments?.getInt("paymentId") ?: return@composable
+            RequireRole(navController, Rbac.ROLES_EMPLOYEES) {
+                PaymentFormScreen(
+                    employeeId = formEmployeeId,
+                    employeeName = formEmployeeName,
+                    paymentId = formPaymentId,
+                    onNavigateBack = { navController.navigateUp() }
                 )
             }
         }

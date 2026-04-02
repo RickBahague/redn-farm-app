@@ -270,17 +270,17 @@ Position chips on the right side of the order card so they form a scannable righ
 **Priority:** P2  
 **Screen:** Payment add/edit (after UI-14 makes it a full screen)  
 **Problem:** The cashier must mentally compute net pay from three separate number fields.  
-**Fix:** A live-computed read-only summary block below the input fields:
+**Fix:** A live-computed read-only summary block below the input fields (**canonical:** gross + cash advance; liquidated is **not** in net pay — see `USER_STORIES.md` EMP-US-05 / `BUG-EMP-01`):
 
 ```
 Gross wage:          ₱ 3,000.00
-Cash advance:      − ₱   500.00
-Liquidated:        + ₱   200.00
+Cash advance:        ₱   500.00   (included in net pay)
+Liquidated:          ₱   200.00   (recorded only; does not change net pay)
 ─────────────────────────────────
-Net pay:             ₱ 2,700.00
+Net pay:             ₱ 3,500.00
 ```
 
-Updates in real time as the user types. If net pay is negative (advance exceeds wage), highlight the net pay row in amber with a warning: "Advance exceeds wage."
+Updates in real time as the user types. Optional amber highlight if net pay is invalid or negative per product rules.
 
 ---
 

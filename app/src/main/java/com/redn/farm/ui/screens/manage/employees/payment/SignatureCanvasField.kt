@@ -91,7 +91,7 @@ fun SignatureCanvasField(
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(160.dp)
+                .height(200.dp)
                 .background(backgroundColor, RoundedCornerShape(8.dp))
                 .onSizeChanged { canvasSize = it }
                 .pointerInput(strokes, currentStroke) {

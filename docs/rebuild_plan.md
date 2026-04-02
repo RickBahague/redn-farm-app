@@ -88,7 +88,7 @@ Work table-by-table. After each group, run `./scripts/dev.sh install` and smoke-
 
 - [x] **P1-4** Employees + Payments CRUD (EMP-US-01 through 05)
   - No schema changes
-  - Verify net pay display formula: `amount − cash_advance_amount + liquidated_amount` (EMP-US-04 AC#5)
+  - Verify net pay display formula: **`amount + cash_advance_amount`** (liquidated excluded — EMP-US-05 / `docs/bugs.md` BUG-EMP-01)
 
 - [x] **P1-5** Farm Operations CRUD (FOP-US-01 through 04) — no schema changes
   - `FarmOperationsViewModel` uses `@HiltViewModel` — clean

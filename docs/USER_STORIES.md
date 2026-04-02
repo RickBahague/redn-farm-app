@@ -628,22 +628,42 @@ Pipeline (executed for each channel):
 
 | Field | Meaning |
 |-------|---------|
-| `amount` | Gross wage for the period — the base pay owed to the employee before advance accounting |
-| `cash_advance_amount` | Additional cash given as an advance against future pay in this same transaction (optional, nullable) |
-| `liquidated_amount` | Amount deducted this payment to settle a cash advance given in a **prior** transaction (optional, nullable). Reduces the employee's outstanding advance balance. |
+| `amount` | Gross wage for the period. |
+| `cash_advance_amount` | New cash advanced to the employee **in this same payment event** (optional, nullable). For **net pay** it is **added** to gross on add/edit and on each history row (same rule everywhere). |
+| `liquidated_amount` | Amount applied in **this** payment to settle part or all of a cash advance from a **prior** payment (optional, nullable). **Recording and reporting only:** it affects **outstanding advance balance** (EMP-US-06) but **must not** change the displayed **net pay** line on the form or in history. |
 | `date_paid` | Date this payment was made by the admin |
-| `received_date` | Date the employee physically received the cash (may differ from `date_paid`) |
+| `received_date` | Date the employee physically received the cash (optional, nullable; may differ from `date_paid`) |
 
-**Net pay formula:** `net_pay = amount − cash_advance + liquidated_amount`
+**Net pay (this transaction — canonical formula):**
 
-> Example: Gross wage ₱5,000 − new advance ₱1,000 + prior advance recovered ₱500 = net pay ₱4,500.
+```
+net_pay = amount + cash_advance_amount
+```
+
+Treat a null `cash_advance_amount` as `0`. **`liquidated_amount` is not part of this formula** (see field table).
+
+The app may show a warning when computed values are invalid or inconsistent (e.g. negative inputs if ever allowed).
+
+**Outstanding advance balance (lifetime, per employee — reporting only):**
+
+```
+outstanding = sum(cash_advance_amount) - sum(liquidated_amount)
+```
+
+across **all** of that employee’s payment rows (not limited to one period). See EMP-US-06 for how this appears in history.
+
+> Example: Gross wage ₱5,000 + new cash advance ₱1,000 ⇒ **net pay ₱6,000**. A **liquidated** amount of ₱500 in the same row is still shown for audit and affects **outstanding advance** only, not net pay.
+
+**History consistency:** Each row in **employee payment history** (EMP-US-06) MUST display **net pay** using this **same** formula (**gross + cash advance**, liquidated excluded) so the audit trail matches add/edit (`PaymentFormScreen`).
+
+**UX (implementation target):** Add and edit use a **full-screen** form (`PaymentFormScreen` / nav route `employee_payment_form/{employeeId}/{employeeName}/{paymentId}`, `paymentId = -1` for new) with `imePadding`, standard system back, and a live read-only **net pay** summary block — not a multi-field `AlertDialog`.
 
 **Acceptance criteria:**
-1. I can enter gross wage (`amount`), payment date, and received date. These are required.
-2. I can optionally enter a `cash_advance_amount` if I am giving the employee an advance in this same transaction.
-3. I can optionally enter a `liquidated_amount` to recover all or part of a previously given cash advance. The liquidated amount is subtracted from the employee's outstanding advance balance (tracked across all their payment records).
-4. The form displays the computed **net pay** in real time as I fill in the fields, using the formula above.
-5. I can capture the employee's **signature** as acknowledgment of receipt. The signature input supports two modes: finger-drawn on screen, or typed name. The employee can use either.
+1. I must enter gross wage (`amount`) and **date paid**. **Date received** is optional.
+2. I can optionally enter a `cash_advance_amount` for new advance in this transaction.
+3. I can optionally enter a `liquidated_amount` to record recovery of a previously given cash advance. It reduces the employee's **outstanding advance balance** (tracked across all their payment records) but **does not** change **net pay**.
+4. The form displays the computed **net pay** in real time as I fill in the fields, using the **canonical formula** above (gross + cash advance only).
+5. I can capture the employee's **signature** as acknowledgment of receipt. The signature input supports two modes: finger-drawn on screen (stored as Base64 PNG), or typed name.
 6. The payment record is linked to the specific employee.
 
 ---
@@ -652,17 +672,25 @@ Pipeline (executed for each channel):
 **As** an admin, **I want to** view all payments for a specific employee with a running balance of outstanding advances **so that** I always know how much advance the employee still owes back.
 
 **Actor:** Admin  
-**Status:** ✅
+**Status:** ✅ *(AC2b extra filter presets remain backlog; see AC2.)*
+
+**Net pay on each row:** Must match EMP-US-05 exactly:
+
+```
+net_pay = amount + cash_advance_amount
+```
+
+(null `cash_advance_amount` as `0`; **liquidated excluded** from net pay).
 
 **Acceptance criteria:**
-1. Payment history lists each record with: payment ID, gross wage (`amount`), cash advance given, liquidated amount, net pay, payment date, and received date.
-2. I can filter by time period: this month, last month, last 3 months, last 6 months, or a custom date range.
-3. A summary card for the selected period shows:
-   - **Total gross wages** paid (`sum of amount`)
-   - **Total cash advances** given (`sum of cash_advance_amount`)
-   - **Total liquidated** (`sum of liquidated_amount`)
-   - **Outstanding advance balance** = cumulative total advances given across **all time** minus cumulative total liquidated across **all time** (not scoped to the current filter period — this is a running lifetime balance)
-4. Outstanding advance balance is always shown regardless of the active filter so the admin always sees the current exposure.
+
+1. **Per-payment list (required)** — For each payment, the history shows at least: payment ID, gross wage (`amount`), cash advance (show 0 when none), liquidated (show 0 when none), **net pay** (formula above), **date paid**, **received date when set** (if unset, the UI may omit or label “Not set”), and an indication of **signature** (typed value or that an image was captured). Rows are scoped to the selected employee.
+2. **Time filter (required)** — I can limit the list by period using presets. **Implemented today:** *All Time*, *Today*, *This Week*, *This Month* (by `date_paid`). **Backlog / not yet required for ✅:** *Last month*, *Last 3 months*, *Last 6 months*, *Custom date range*.
+3. **Period summary card** — For the **currently filtered** payments, a card shows: total gross (`sum amount`), total cash advances (`sum cash_advance_amount`), total liquidated (`sum liquidated_amount`). Implemented in `EmployeePaymentScreen` (below the outstanding card).
+4. **Lifetime outstanding advance** — Always-visible card:  
+   `sum(cash_advance_amount) − sum(liquidated_amount)` over **all** that employee’s payments (ignore list filter). Implemented in `EmployeePaymentScreen`.
+
+**Implementation notes:** `PaymentCard`, period filter (AC2a), period summary (AC3), and lifetime outstanding (AC4) are in `EmployeePaymentScreen`. **Backlog (AC2b):** *Last month*, *Last 3 months*, *Last 6 months*, *Custom date range*.
 
 ---
 
