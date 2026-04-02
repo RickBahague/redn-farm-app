@@ -20,6 +20,7 @@ data class OrderEntity(
     @PrimaryKey(autoGenerate = true)
     val order_id: Int = 0,
     val customer_id: Int,
+    val channel: String = "offline",
     val total_amount: Double,
     val order_date: Long = System.currentTimeMillis(),
     val order_update_date: Long = System.currentTimeMillis(),

@@ -1,19 +1,32 @@
 package com.redn.farm.ui.screens.export
 
-import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonColors
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.io.File
 
@@ -24,7 +37,6 @@ fun ExportScreen(
     viewModel: ExportViewModel = viewModel(factory = ExportViewModel.Factory),
     onNavigateBack: () -> Unit = {}
 ) {
-    val context = LocalContext.current
     val exportState by viewModel.exportState.collectAsState()
     
     // State for confirmation dialogs
@@ -38,8 +50,10 @@ fun ExportScreen(
     // State for truncate confirmation dialogs
     var showTruncateDialog by remember { mutableStateOf<String?>(null) }
     
-    // State for export success dialog
-    var showExportSuccessDialog by remember { mutableStateOf<Pair<String, File?>?>(null) }
+    // State for export success dialog: label + one or more files
+    var showExportSuccessDialog by remember { mutableStateOf<Pair<String, List<File>>?>(null) }
+    val isAdmin by viewModel.isAdmin.collectAsState()
+    var bundleSelection by remember { mutableStateOf(ExportBundleTable.entries.toSet()) }
     
     // Confirmation Dialog for Sample Data Generation
     @Composable
@@ -151,28 +165,31 @@ fun ExportScreen(
     @Composable
     fun ExportSuccessDialog(
         dataType: String?,
-        file: File?,
+        files: List<File>?,
         onDismiss: () -> Unit
     ) {
-        if (dataType != null) {
+        if (dataType != null && !files.isNullOrEmpty()) {
+            val dir = files.first().parentFile?.absolutePath.orEmpty()
             AlertDialog(
                 onDismissRequest = onDismiss,
                 icon = { Icon(Icons.Default.CheckCircle, contentDescription = null) },
-                title = { Text("Export Successful") },
-                text = { 
+                title = { Text("Export successful") },
+                text = {
                     Column {
-                        Text("${dataType} data has been successfully exported.")
+                        Text(dataType)
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "File saved to: ${file?.absolutePath ?: "exports directory"}",
+                            "${files.size} file(s)",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            "Folder: $dir",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
                 },
                 confirmButton = {
-                    TextButton(
-                        onClick = onDismiss
-                    ) {
+                    TextButton(onClick = onDismiss) {
                         Text("OK")
                     }
                 }
@@ -226,11 +243,14 @@ fun ExportScreen(
     )
 
     // Render export success dialog
-    showExportSuccessDialog?.let { (dataType, file) ->
+    showExportSuccessDialog?.let { (dataType, files) ->
         ExportSuccessDialog(
             dataType = dataType,
-            file = file,
-            onDismiss = { showExportSuccessDialog = null }
+            files = files,
+            onDismiss = {
+                showExportSuccessDialog = null
+                viewModel.dismissMessage()
+            }
         )
     }
 
@@ -239,6 +259,7 @@ fun ExportScreen(
         dataType = showExportDialog,
         onConfirm = {
             when (showExportDialog) {
+                "Users" -> viewModel.exportUsers()
                 "Customers" -> viewModel.exportCustomers()
                 "Employees" -> viewModel.exportEmployees()
                 "Orders" -> viewModel.exportOrders()
@@ -260,7 +281,7 @@ fun ExportScreen(
                 title = { Text("Export Data") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -276,10 +297,14 @@ fun ExportScreen(
                 when (exportState) {
                     is ExportViewModel.ExportState.Success -> {
                         val state = exportState as ExportViewModel.ExportState.Success
-                        if (state.file != null) {
-                            showExportSuccessDialog = Pair(showExportDialog ?: "Data", state.file)
-                            showExportDialog = null
+                        val paths = when {
+                            !state.files.isNullOrEmpty() -> state.files
+                            else -> state.file?.let { listOf(it) }
                         }
+                        if (paths != null) {
+                            showExportSuccessDialog = Pair(state.message ?: "Export", paths)
+                        }
+                        showExportDialog = null
                     }
                     else -> Unit
                 }
@@ -406,6 +431,64 @@ fun ExportScreen(
                     }
                 }
 
+                if (isAdmin) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Selective export",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = "Pick tables and export one CSV per table with the same timestamp (EXP-US-02).",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                TextButton(onClick = { bundleSelection = ExportBundleTable.entries.toSet() }) {
+                                    Text("Select all")
+                                }
+                                TextButton(onClick = { bundleSelection = emptySet() }) {
+                                    Text("Select none")
+                                }
+                            }
+                            ExportBundleTable.entries.forEach { table ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = table in bundleSelection,
+                                        onCheckedChange = { checked ->
+                                            bundleSelection =
+                                                if (checked) bundleSelection + table else bundleSelection - table
+                                        }
+                                    )
+                                    Text(
+                                        text = table.label,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.padding(start = 4.dp)
+                                    )
+                                }
+                            }
+                            Button(
+                                onClick = { viewModel.exportSelectedBundle(bundleSelection) },
+                                enabled = bundleSelection.isNotEmpty(),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Export selected tables")
+                            }
+                        }
+                    }
+                }
+
                 // Export Section with Clear Data buttons
                 Card(
                     modifier = Modifier.fillMaxWidth()
@@ -426,6 +509,18 @@ fun ExportScreen(
                             style = MaterialTheme.typography.titleSmall,
                             modifier = Modifier.fillMaxWidth()
                         )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            ActionButton(
+                                text = "Users",
+                                icon = { Icon(Icons.Default.Person, contentDescription = null) },
+                                onClick = { showExportDialog = "Users" },
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(modifier = Modifier.width(120.dp))
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)

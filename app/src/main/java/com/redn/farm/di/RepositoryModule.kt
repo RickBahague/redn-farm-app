@@ -2,10 +2,11 @@ package com.redn.farm.di
 
 import android.content.Context
 import com.redn.farm.data.local.FarmDatabase
-import com.redn.farm.data.local.dao.*
+import com.redn.farm.data.local.dao.FarmOperationDao
+import com.redn.farm.data.local.dao.ProductDao
+import com.redn.farm.data.local.dao.ProductPriceDao
 import com.redn.farm.data.repository.FarmOperationRepository
 import com.redn.farm.data.repository.ProductRepository
-import com.redn.farm.data.repository.AcquisitionRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -36,11 +37,4 @@ object RepositoryModule {
         return ProductRepository(productDao, productPriceDao)
     }
 
-    @Provides
-    @Singleton
-    fun provideAcquisitionRepository(
-        acquisitionDao: AcquisitionDao
-    ): AcquisitionRepository {
-        return AcquisitionRepository(acquisitionDao)
-    }
 } 

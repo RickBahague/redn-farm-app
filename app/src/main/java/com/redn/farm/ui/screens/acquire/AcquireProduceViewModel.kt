@@ -6,11 +6,16 @@ import androidx.lifecycle.viewModelScope
 import com.redn.farm.data.model.Acquisition
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.AcquisitionLocation
+import com.redn.farm.data.repository.AcquisitionDraftPricingPreview
 import com.redn.farm.data.repository.AcquisitionRepository
+import com.redn.farm.data.repository.AcquisitionSaveOutcome
 import com.redn.farm.data.repository.ProductRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.combine
@@ -64,6 +69,9 @@ class AcquireProduceViewModel @Inject constructor(
     private val _products = MutableStateFlow<List<Product>>(emptyList())
     val products: StateFlow<List<Product>> = _products.asStateFlow()
 
+    private val _userMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val userMessage: SharedFlow<String> = _userMessage.asSharedFlow()
+
     init {
         viewModelScope.launch {
             acquisitionRepository.getAllAcquisitions().collect {
@@ -79,15 +87,26 @@ class AcquireProduceViewModel @Inject constructor(
 
     fun addAcquisition(acquisition: Acquisition) {
         viewModelScope.launch {
-            acquisitionRepository.addAcquisition(acquisition)
+            when (val o = acquisitionRepository.insertWithPricing(acquisition)) {
+                AcquisitionSaveOutcome.Success -> {}
+                is AcquisitionSaveOutcome.ValidationError -> _userMessage.emit(o.message)
+                is AcquisitionSaveOutcome.SavedWithoutActivePreset -> _userMessage.emit(o.message)
+            }
         }
     }
 
     fun updateAcquisition(acquisition: Acquisition) {
         viewModelScope.launch {
-            acquisitionRepository.updateAcquisition(acquisition)
+            when (val o = acquisitionRepository.updateWithPricing(acquisition)) {
+                AcquisitionSaveOutcome.Success -> {}
+                is AcquisitionSaveOutcome.ValidationError -> _userMessage.emit(o.message)
+                is AcquisitionSaveOutcome.SavedWithoutActivePreset -> _userMessage.emit(o.message)
+            }
         }
     }
+
+    suspend fun previewDraftPricing(acquisition: Acquisition): AcquisitionDraftPricingPreview =
+        acquisitionRepository.previewDraftPricing(acquisition)
 
     fun deleteAcquisition(acquisition: Acquisition) {
         viewModelScope.launch {

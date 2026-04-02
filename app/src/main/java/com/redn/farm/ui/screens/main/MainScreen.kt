@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -21,8 +22,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.redn.farm.config.AppConfig
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.ui.theme.FarmTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,9 +37,12 @@ fun MainScreen(
     onNavigateToFarmOps: () -> Unit,
     onNavigateToExport: () -> Unit,
     onNavigateToAbout: () -> Unit,
+    onNavigateToProfile: () -> Unit,
+    onNavigateToSettings: () -> Unit,
     onLogout: () -> Unit,
-    viewModel: MainViewModel = viewModel()
+    viewModel: MainViewModel = hiltViewModel()
 ) {
+    val isAdmin by viewModel.isAdmin.collectAsState()
     Scaffold(
         topBar = {
             Column {
@@ -64,6 +67,14 @@ fun MainScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = onNavigateToProfile) {
+                            Icon(Icons.Default.Person, contentDescription = "Profile")
+                        }
+                        if (isAdmin) {
+                            IconButton(onClick = onNavigateToSettings) {
+                                Icon(Icons.Default.Settings, contentDescription = "Settings")
+                            }
+                        }
                         IconButton(onClick = onNavigateToAbout) {
                             Icon(Icons.Default.Info, contentDescription = "About")
                         }
@@ -73,7 +84,7 @@ fun MainScreen(
                                 onLogout()
                             }
                         ) {
-                            Icon(Icons.Default.Logout, contentDescription = "Logout")
+                            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
                         }
                     }
                 )
@@ -382,6 +393,8 @@ fun MainScreenPreview() {
             onNavigateToFarmOps = {},
             onNavigateToExport = {},
             onNavigateToAbout = {},
+            onNavigateToProfile = {},
+            onNavigateToSettings = {},
             onLogout = {}
         )
     }

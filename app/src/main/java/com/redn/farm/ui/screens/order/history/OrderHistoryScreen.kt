@@ -1,5 +1,6 @@
 package com.redn.farm.ui.screens.order.history
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,6 +14,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.redn.farm.data.model.Order
+import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.utils.CurrencyFormatter
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -27,8 +29,7 @@ import java.time.Instant
 @Composable
 fun OrderHistoryScreen(
     onNavigateBack: () -> Unit,
-    onNavigateToEdit: (Int) -> Unit,
-    onNavigateToView: (Int) -> Unit,
+    onNavigateToOrderDetail: (Int) -> Unit,
     viewModel: OrderHistoryViewModel = viewModel(factory = OrderHistoryViewModel.Factory)
 ) {
     var showDeleteDialog by remember { mutableStateOf<Order?>(null) }
@@ -84,8 +85,7 @@ fun OrderHistoryScreen(
                 items(orders) { order ->
                     OrderHistoryCard(
                         order = order,
-                        onEditClick = { onNavigateToEdit(order.order_id) },
-                        onViewClick = { onNavigateToView(order.order_id) }
+                        onOpenDetail = { onNavigateToOrderDetail(order.order_id) }
                     )
                 }
             }
@@ -128,8 +128,7 @@ fun OrderHistoryScreen(
 @Composable
 private fun OrderHistoryCard(
     order: Order,
-    onEditClick: () -> Unit,
-    onViewClick: () -> Unit
+    onOpenDetail: () -> Unit
 ) {
     val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm")
     val orderDate = LocalDateTime.ofInstant(
@@ -141,6 +140,7 @@ private fun OrderHistoryCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
+            .clickable(onClick = onOpenDetail)
     ) {
         Column(
             modifier = Modifier
@@ -163,6 +163,11 @@ private fun OrderHistoryCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
+                        text = SalesChannel.label(SalesChannel.normalize(order.channel)),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                    Text(
                         text = order.customerName,
                         style = MaterialTheme.typography.bodyLarge
                     )
@@ -177,31 +182,11 @@ private fun OrderHistoryCard(
                     )
                 }
 
-                // Action buttons based on payment status
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (order.is_paid) {
-                        // View button for paid orders
-                        IconButton(onClick = onViewClick) {
-                            Icon(
-                                imageVector = Icons.Default.Visibility,
-                                contentDescription = "View order",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    } else {
-                        // Edit and Delete buttons for unpaid orders
-                        IconButton(onClick = onEditClick) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit order",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = "View details",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Row(

@@ -38,6 +38,9 @@ class CustomerRepository(private val customerDao: CustomerDao) {
         customerDao.truncate()
     }
 
+    suspend fun getCustomerById(id: Int): Customer? =
+        customerDao.getById(id)?.toCustomer()
+
     private fun CustomerEntity.toCustomer() = Customer(
         customer_id = customer_id,
         firstname = firstname,

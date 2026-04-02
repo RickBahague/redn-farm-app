@@ -8,13 +8,27 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.redn.farm.data.local.FarmDatabase
+import com.redn.farm.data.model.Acquisition
+import com.redn.farm.data.model.Customer
 import com.redn.farm.data.model.Order
 import com.redn.farm.data.model.OrderItem
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.ProductPrice
+import com.redn.farm.data.pricing.OrderPricingResolver
+import com.redn.farm.data.repository.AcquisitionRepository
+import com.redn.farm.data.repository.CustomerRepository
 import com.redn.farm.data.repository.OrderRepository
+import com.redn.farm.data.repository.PricingPresetRepository
 import com.redn.farm.data.repository.ProductRepository
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDateTime
@@ -22,11 +36,19 @@ import java.time.ZoneId
 
 class OrderHistoryViewModel(application: Application) : AndroidViewModel(application) {
     private val database = FarmDatabase.getDatabase(application)
+    private val customerRepository = CustomerRepository(database.customerDao())
     private val orderRepository = OrderRepository(database.orderDao())
     private val productRepository = ProductRepository(
         database.productDao(),
         database.productPriceDao()
     )
+    private val acquisitionRepository = AcquisitionRepository(
+        database.acquisitionDao(),
+        PricingPresetRepository(database.pricingPresetDao(), database.presetActivationLogDao()),
+        database.productDao()
+    )
+
+    private val _activeSrpsByProduct = MutableStateFlow<Map<String, Acquisition>>(emptyMap())
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
@@ -90,7 +112,49 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
                 _productPrices.value = prices.associateBy { it.product_id }
             }
         }
+        viewModelScope.launch {
+            acquisitionRepository.observeAllActiveSrps().collect { list ->
+                _activeSrpsByProduct.value = list.associateBy { it.product_id }
+            }
+        }
     }
+
+    suspend fun getCustomer(customerId: Int): Customer? =
+        customerRepository.getCustomerById(customerId)
+
+    fun resolveOrderLinePrice(productId: String, channel: String, isPerKg: Boolean): Double {
+        val acq = _activeSrpsByProduct.value[productId]
+        val pp = getLatestProductPrice(productId)
+        return OrderPricingResolver.resolveUnitPrice(acq, channel, isPerKg, pp)
+    }
+
+    fun repriceOrderItems(items: List<OrderItem>, channel: String): List<OrderItem> {
+        val map = _activeSrpsByProduct.value
+        return items.map { item ->
+            val pp = getLatestProductPrice(item.product_id)
+            val acq = map[item.product_id]
+            val price = OrderPricingResolver.resolveUnitPrice(acq, channel, item.is_per_kg, pp)
+            item.copy(price_per_unit = price, total_price = price * item.quantity)
+        }
+    }
+
+    fun productSupportsDualUnit(product: Product): Boolean {
+        val pp = getLatestProductPrice(product.product_id) ?: return false
+        val hasKg = (pp.per_kg_price ?: 0.0) > 0 || (pp.discounted_per_kg_price != null && pp.discounted_per_kg_price!! > 0)
+        val hasPc = (pp.per_piece_price ?: 0.0) > 0 || (pp.discounted_per_piece_price != null && pp.discounted_per_piece_price!! > 0)
+        val acq = _activeSrpsByProduct.value[product.product_id]
+        val srpKg = acq?.let {
+            listOfNotNull(it.srp_online_per_kg, it.srp_reseller_per_kg, it.srp_offline_per_kg).any { v -> v > 0 }
+        } ?: false
+        val srpPc = acq?.let {
+            listOfNotNull(it.srp_online_per_piece, it.srp_reseller_per_piece, it.srp_offline_per_piece).any { v -> v > 0 }
+        } ?: false
+        return (hasKg && hasPc) || (srpKg && srpPc) || (hasKg && srpPc) || (hasPc && srpKg)
+    }
+
+    fun defaultIsPerKgForProduct(product: Product): Boolean =
+        !product.unit_type.equals("piece", ignoreCase = true) &&
+            !product.unit_type.equals("pieces", ignoreCase = true)
 
     fun getLatestProductPrice(productId: String): ProductPrice? {
         return _productPrices.value[productId]

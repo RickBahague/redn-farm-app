@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.redn.farm.data.model.CartItem
+import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.utils.CurrencyFormatter
 import java.util.*
 
@@ -22,6 +24,7 @@ import java.util.*
 fun TakeOrderScreen(
     onNavigateBack: () -> Unit,
     onNavigateToOrderHistory: () -> Unit,
+    onNavigateToActiveSrps: () -> Unit = {},
     viewModel: TakeOrderViewModel = viewModel(factory = TakeOrderViewModel.Factory)
 ) {
     var showCustomerDialog by remember { mutableStateOf(false) }
@@ -29,6 +32,7 @@ fun TakeOrderScreen(
     var showNewOrderDialog by remember { mutableStateOf(false) }
     
     val selectedCustomer by viewModel.selectedCustomer.collectAsState()
+    val channel by viewModel.channel.collectAsState()
     val cartItems by viewModel.cartItems.collectAsState()
     val cartTotal by viewModel.cartTotal.collectAsState()
 
@@ -42,7 +46,9 @@ fun TakeOrderScreen(
                     }
                 },
                 actions = {
-                    // Add History button
+                    IconButton(onClick = onNavigateToActiveSrps) {
+                        Icon(Icons.Filled.AttachMoney, "Active SRPs")
+                    }
                     IconButton(onClick = onNavigateToOrderHistory) {
                         Icon(Icons.Default.History, "Order History")
                     }
@@ -85,6 +91,26 @@ fun TakeOrderScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            Text(
+                text = "Sales channel",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SalesChannel.ALL.forEach { key ->
+                    FilterChip(
+                        selected = channel == key,
+                        onClick = { viewModel.setChannel(key) },
+                        label = { Text(SalesChannel.label(key)) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // Add Product Button
             OutlinedButton(
                 onClick = { showProductDialog = true },
@@ -110,7 +136,9 @@ fun TakeOrderScreen(
                         },
                         onRemove = {
                             viewModel.removeFromCart(item.product.product_id)
-                        }
+                        },
+                        showUnitToggle = viewModel.productSupportsDualUnit(item.product),
+                        onToggleUnit = { viewModel.toggleCartItemUnit(item.product.product_id) }
                     )
                 }
             }
@@ -169,8 +197,8 @@ fun TakeOrderScreen(
         if (showProductDialog) {
             ProductSelectionDialog(
                 onDismiss = { showProductDialog = false },
-                onProductSelected = { product, quantity, isPerKg, useDiscountedPrice ->
-                    viewModel.addToCart(product, quantity, isPerKg, useDiscountedPrice)
+                onProductSelected = { product, quantity, isPerKg ->
+                    viewModel.addToCart(product, quantity, isPerKg)
                     showProductDialog = false
                 }
             )

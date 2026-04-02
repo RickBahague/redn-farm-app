@@ -24,6 +24,9 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE product_id = :productId")
     fun getProduct(productId: String): Flow<ProductEntity?>
 
+    @Query("SELECT * FROM products WHERE product_id = :productId LIMIT 1")
+    suspend fun getProductById(productId: String): ProductEntity?
+
     @Query("DELETE FROM products")
     suspend fun truncate()
 } 

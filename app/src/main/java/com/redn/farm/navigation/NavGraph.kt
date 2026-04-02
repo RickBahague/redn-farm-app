@@ -9,9 +9,11 @@ import androidx.navigation.navArgument
 import com.redn.farm.ui.screens.main.MainScreen
 import com.redn.farm.ui.screens.manage.products.ManageProductsScreen
 import com.redn.farm.ui.screens.manage.customers.ManageCustomersScreen
+import com.redn.farm.ui.screens.order.ActiveSrpsScreen
 import com.redn.farm.ui.screens.order.TakeOrderScreen
 import com.redn.farm.ui.screens.order.history.OrderHistoryScreen
 import com.redn.farm.ui.screens.order.history.EditOrderScreen
+import com.redn.farm.ui.screens.order.history.OrderDetailScreen
 import com.redn.farm.ui.screens.acquire.AcquireProduceScreen
 import com.redn.farm.ui.screens.remittance.RemittanceScreen
 import com.redn.farm.ui.screens.manage.employees.ManageEmployeesScreen
@@ -22,6 +24,15 @@ import com.redn.farm.ui.screens.export.ExportScreen
 import com.redn.farm.ui.screens.about.AboutScreen
 import com.redn.farm.ui.screens.database.DatabaseMigrationScreen
 import com.redn.farm.ui.screens.login.LoginScreen
+import com.redn.farm.ui.screens.pricing.PresetActivationPreviewScreen
+import com.redn.farm.ui.screens.pricing.PresetDetailScreen
+import com.redn.farm.ui.screens.pricing.PresetHistoryScreen
+import com.redn.farm.ui.screens.pricing.PricingPresetEditorScreen
+import com.redn.farm.ui.screens.pricing.PricingPresetsHomeScreen
+import com.redn.farm.ui.screens.settings.SettingsScreen
+import com.redn.farm.ui.screens.profile.ProfileScreen
+import com.redn.farm.ui.screens.profile.ChangePasswordScreen
+import com.redn.farm.ui.screens.profile.UserManagementScreen
 import androidx.compose.ui.Modifier
 
 sealed class Screen(val route: String) {
@@ -32,6 +43,10 @@ sealed class Screen(val route: String) {
     object Customers : Screen("customers")
     object Orders : Screen("orders")
     object OrderHistory : Screen("order_history")
+    object ActiveSrps : Screen("active_srps")
+    object OrderDetail : Screen("order_detail/{orderId}") {
+        fun createRoute(orderId: Int) = "order_detail/$orderId"
+    }
     object EditOrder : Screen("edit_order/{orderId}") {
         fun createRoute(orderId: Int) = "edit_order/$orderId"
     }
@@ -46,6 +61,21 @@ sealed class Screen(val route: String) {
     object FarmOpsHistory : Screen("farm_ops_history")
     object Export : Screen("export")
     object About : Screen("about")
+    object Profile : Screen("profile")
+    object ChangePassword : Screen("change_password")
+    object UserManagement : Screen("user_management")
+    object Settings : Screen("settings")
+    object PricingPresetsHome : Screen("pricing_presets")
+    object PresetHistory : Screen("preset_history")
+    object PricingPresetEditor : Screen("pricing_preset_editor/{sourcePresetId}") {
+        fun createRoute(sourcePresetId: String) = "pricing_preset_editor/$sourcePresetId"
+    }
+    object PresetDetail : Screen("preset_detail/{presetId}") {
+        fun createRoute(presetId: String) = "preset_detail/$presetId"
+    }
+    object PresetActivationPreview : Screen("preset_activation_preview/{presetId}") {
+        fun createRoute(presetId: String) = "preset_activation_preview/$presetId"
+    }
 }
 
 @Composable
@@ -106,6 +136,12 @@ fun NavGraph(
                 onNavigateToAbout = {
                     navController.navigate(Screen.About.route)
                 },
+                onNavigateToProfile = {
+                    navController.navigate(Screen.Profile.route)
+                },
+                onNavigateToSettings = {
+                    navController.navigate(Screen.Settings.route)
+                },
                 onLogout = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
@@ -136,7 +172,15 @@ fun NavGraph(
                 },
                 onNavigateToOrderHistory = {
                     navController.navigate(Screen.OrderHistory.route)
+                },
+                onNavigateToActiveSrps = {
+                    navController.navigate(Screen.ActiveSrps.route)
                 }
+            )
+        }
+        composable(Screen.ActiveSrps.route) {
+            ActiveSrpsScreen(
+                onNavigateBack = { navController.popBackStack() }
             )
         }
         composable(Screen.OrderHistory.route) {
@@ -148,10 +192,22 @@ fun NavGraph(
                         }
                     }
                 },
-                onNavigateToEdit = { orderId ->
-                    navController.navigate(Screen.EditOrder.createRoute(orderId))
-                },
-                onNavigateToView = { orderId ->
+                onNavigateToOrderDetail = { orderId ->
+                    navController.navigate(Screen.OrderDetail.createRoute(orderId))
+                }
+            )
+        }
+        composable(
+            route = Screen.OrderDetail.route,
+            arguments = listOf(
+                navArgument("orderId") { type = NavType.IntType }
+            )
+        ) { backStackEntry ->
+            val orderId = backStackEntry.arguments?.getInt("orderId") ?: return@composable
+            OrderDetailScreen(
+                orderId = orderId,
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToEdit = {
                     navController.navigate(Screen.EditOrder.createRoute(orderId))
                 }
             )
@@ -220,6 +276,94 @@ fun NavGraph(
         composable(Screen.About.route) {
             AboutScreen(
                 onNavigateBack = { navController.navigateUp() }
+            )
+        }
+        composable(Screen.Profile.route) {
+            ProfileScreen(
+                onNavigateBack = { navController.navigateUp() },
+                onNavigateToChangePassword = {
+                    navController.navigate(Screen.ChangePassword.route)
+                },
+                onNavigateToUserManagement = {
+                    navController.navigate(Screen.UserManagement.route)
+                }
+            )
+        }
+        composable(Screen.ChangePassword.route) {
+            ChangePasswordScreen(
+                onNavigateBack = { navController.navigateUp() }
+            )
+        }
+        composable(Screen.UserManagement.route) {
+            UserManagementScreen(
+                onNavigateBack = { navController.navigateUp() }
+            )
+        }
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                onNavigateBack = { navController.navigateUp() },
+                onNavigateToPricingPresets = {
+                    navController.navigate(Screen.PricingPresetsHome.route)
+                }
+            )
+        }
+        composable(Screen.PricingPresetsHome.route) {
+            PricingPresetsHomeScreen(
+                onNavigateBack = { navController.navigateUp() },
+                onNewPreset = {
+                    navController.navigate(Screen.PricingPresetEditor.createRoute("new"))
+                },
+                onPresetHistory = { navController.navigate(Screen.PresetHistory.route) }
+            )
+        }
+        composable(Screen.PresetHistory.route) {
+            PresetHistoryScreen(
+                onNavigateBack = { navController.navigateUp() },
+                onPresetClick = { id ->
+                    navController.navigate(Screen.PresetDetail.createRoute(id))
+                }
+            )
+        }
+        composable(
+            route = Screen.PricingPresetEditor.route,
+            arguments = listOf(
+                navArgument("sourcePresetId") { type = NavType.StringType }
+            )
+        ) {
+            PricingPresetEditorScreen(
+                onNavigateBack = { navController.navigateUp() }
+            )
+        }
+        composable(
+            route = Screen.PresetDetail.route,
+            arguments = listOf(
+                navArgument("presetId") { type = NavType.StringType }
+            )
+        ) {
+            PresetDetailScreen(
+                onNavigateBack = { navController.navigateUp() },
+                onRestoreToEditor = { pid ->
+                    navController.navigate(Screen.PricingPresetEditor.createRoute(pid))
+                },
+                onActivatePreview = { pid ->
+                    navController.navigate(Screen.PresetActivationPreview.createRoute(pid))
+                }
+            )
+        }
+        composable(
+            route = Screen.PresetActivationPreview.route,
+            arguments = listOf(
+                navArgument("presetId") { type = NavType.StringType }
+            )
+        ) {
+            PresetActivationPreviewScreen(
+                onNavigateBack = { navController.navigateUp() },
+                onActivationComplete = {
+                    navController.popBackStack(
+                        Screen.PricingPresetsHome.route,
+                        inclusive = false
+                    )
+                }
             )
         }
     }

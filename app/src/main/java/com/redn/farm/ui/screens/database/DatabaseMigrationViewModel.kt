@@ -100,7 +100,9 @@ class DatabaseMigrationViewModel(application: Application) : AndroidViewModel(ap
                         product_name = entity.product_name,
                         product_description = entity.product_description,
                         unit_type = entity.unit_type,
-                        is_active = entity.is_active
+                        is_active = entity.is_active,
+                        category = entity.category,
+                        defaultPieceCount = entity.default_piece_count
                     )
                 },
                 productPrices = db.productPriceDao().getAllProductPrices().first().map { entity ->
@@ -109,6 +111,8 @@ class DatabaseMigrationViewModel(application: Application) : AndroidViewModel(ap
                         product_id = entity.product_id,
                         per_kg_price = entity.per_kg_price,
                         per_piece_price = entity.per_piece_price,
+                        discounted_per_kg_price = entity.discounted_per_kg_price,
+                        discounted_per_piece_price = entity.discounted_per_piece_price,
                         date_created = entity.date_created
                     )
                 },
@@ -131,6 +135,7 @@ class DatabaseMigrationViewModel(application: Application) : AndroidViewModel(ap
                     Order(
                         order_id = orderWithDetails.order.order_id,
                         customer_id = orderWithDetails.order.customer_id,
+                        channel = orderWithDetails.order.channel,
                         customerName = orderWithDetails.customerName,
                         customerContact = orderWithDetails.customerContact,
                         total_amount = orderWithDetails.order.total_amount,
@@ -208,8 +213,31 @@ class DatabaseMigrationViewModel(application: Application) : AndroidViewModel(ap
                         price_per_unit = entity.price_per_unit,
                         total_amount = entity.total_amount,
                         is_per_kg = entity.is_per_kg,
+                        piece_count = entity.piece_count,
                         date_acquired = entity.date_acquired,
-                        location = entity.location
+                        created_at = entity.created_at,
+                        location = entity.location,
+                        preset_ref = entity.preset_ref,
+                        spoilage_rate = entity.spoilage_rate,
+                        additional_cost_per_kg = entity.additional_cost_per_kg,
+                        hauling_weight_kg = entity.hauling_weight_kg,
+                        hauling_fees_json = entity.hauling_fees_json,
+                        channels_snapshot_json = entity.channels_snapshot_json,
+                        srp_online_per_kg = entity.srp_online_per_kg,
+                        srp_reseller_per_kg = entity.srp_reseller_per_kg,
+                        srp_offline_per_kg = entity.srp_offline_per_kg,
+                        srp_online_500g = entity.srp_online_500g,
+                        srp_online_250g = entity.srp_online_250g,
+                        srp_online_100g = entity.srp_online_100g,
+                        srp_reseller_500g = entity.srp_reseller_500g,
+                        srp_reseller_250g = entity.srp_reseller_250g,
+                        srp_reseller_100g = entity.srp_reseller_100g,
+                        srp_offline_500g = entity.srp_offline_500g,
+                        srp_offline_250g = entity.srp_offline_250g,
+                        srp_offline_100g = entity.srp_offline_100g,
+                        srp_online_per_piece = entity.srp_online_per_piece,
+                        srp_reseller_per_piece = entity.srp_reseller_per_piece,
+                        srp_offline_per_piece = entity.srp_offline_per_piece
                     )
                 },
                 remittances = db.remittanceDao().getAllRemittances().first().map { entity ->

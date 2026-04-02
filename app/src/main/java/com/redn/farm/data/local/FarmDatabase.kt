@@ -29,9 +29,11 @@ import kotlinx.coroutines.launch
         FarmOperationEntity::class,
         AcquisitionEntity::class,
         RemittanceEntity::class,
-        UserEntity::class
+        UserEntity::class,
+        PricingPresetEntity::class,
+        PresetActivationLogEntity::class
     ],
-    version = 3
+    version = 4
 )
 @TypeConverters(DateTimeConverter::class, EnumConverters::class)
 abstract class FarmDatabase : RoomDatabase() {
@@ -45,6 +47,8 @@ abstract class FarmDatabase : RoomDatabase() {
     abstract fun acquisitionDao(): AcquisitionDao
     abstract fun remittanceDao(): RemittanceDao
     abstract fun userDao(): UserDao
+    abstract fun pricingPresetDao(): PricingPresetDao
+    abstract fun presetActivationLogDao(): PresetActivationLogDao
 
     companion object {
         const val DATABASE_NAME = "farm_database"
@@ -139,6 +143,7 @@ abstract class FarmDatabase : RoomDatabase() {
                     }
                 })
                 .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .fallbackToDestructiveMigration()
                 .build()
                 
                 Log.d("FarmDatabase", "Database instance built")

@@ -62,6 +62,15 @@ fun PaymentCard(
                         )
                     }
 
+                    val cashAdvance = payment.cash_advance_amount ?: 0.0
+                    val liquidated = payment.liquidated_amount ?: 0.0
+                    val netPay = payment.amount - cashAdvance + liquidated
+                    Text(
+                        text = "Net pay: ${CurrencyFormatter.format(netPay)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+
                     Text(
                         text = "Date: ${dateFormatter.format(Date(payment.date_paid))}",
                         style = MaterialTheme.typography.bodyMedium

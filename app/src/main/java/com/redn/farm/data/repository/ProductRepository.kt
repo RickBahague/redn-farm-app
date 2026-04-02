@@ -58,15 +58,7 @@ class ProductRepository @Inject constructor(
 
     fun getFilteredProducts(filters: ProductFilters): Flow<List<Product>> {
         return productDao.getAllProducts().map { products ->
-            var filteredProducts = products.map { product ->
-                Product(
-                    product_id = product.product_id,
-                    product_name = product.product_name,
-                    product_description = product.product_description,
-                    unit_type = product.unit_type,
-                    is_active = product.is_active
-                )
-            }
+            var filteredProducts = products.map { it.toProduct() }
 
             // Apply search filter
             if (filters.searchQuery.isNotEmpty()) {
@@ -104,6 +96,8 @@ class ProductRepository @Inject constructor(
                 product_name = product.product_name,
                 product_description = product.product_description,
                 unit_type = product.unit_type,
+                category = product.category,
+                default_piece_count = product.defaultPieceCount,
                 is_active = product.is_active
             )
         )
@@ -130,6 +124,8 @@ class ProductRepository @Inject constructor(
                 product_name = product.product_name,
                 product_description = product.product_description,
                 unit_type = product.unit_type,
+                category = product.category,
+                default_piece_count = product.defaultPieceCount,
                 is_active = product.is_active
             )
         )
@@ -169,6 +165,8 @@ class ProductRepository @Inject constructor(
         product_name = product_name,
         product_description = product_description,
         unit_type = unit_type,
-        is_active = is_active
+        is_active = is_active,
+        category = category,
+        defaultPieceCount = default_piece_count
     )
 }

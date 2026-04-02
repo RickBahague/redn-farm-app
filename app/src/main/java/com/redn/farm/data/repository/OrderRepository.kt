@@ -17,6 +17,7 @@ class OrderRepository(private val orderDao: OrderDao) {
                 Order(
                     order_id = orderWithDetails.order.order_id,
                     customer_id = orderWithDetails.order.customer_id,
+                    channel = orderWithDetails.order.channel,
                     total_amount = orderWithDetails.order.total_amount,
                     order_date = orderWithDetails.order.order_date,
                     order_update_date = orderWithDetails.order.order_update_date,
@@ -32,6 +33,7 @@ class OrderRepository(private val orderDao: OrderDao) {
     suspend fun createOrder(order: Order, items: List<OrderItem>): Long {
         val orderEntity = OrderEntity(
             customer_id = order.customer_id,
+            channel = order.channel,
             total_amount = order.total_amount,
             is_delivered = order.is_delivered
         )
@@ -69,6 +71,7 @@ class OrderRepository(private val orderDao: OrderDao) {
                 Order(
                     order_id = it.order.order_id,
                     customer_id = it.order.customer_id,
+                    channel = it.order.channel,
                     total_amount = it.order.total_amount,
                     order_date = it.order.order_date,
                     order_update_date = it.order.order_update_date,
@@ -102,6 +105,7 @@ class OrderRepository(private val orderDao: OrderDao) {
         val orderEntity = OrderEntity(
             order_id = order.order_id,
             customer_id = order.customer_id,
+            channel = order.channel,
             total_amount = order.total_amount,
             order_date = order.order_date,
             order_update_date = System.currentTimeMillis(),

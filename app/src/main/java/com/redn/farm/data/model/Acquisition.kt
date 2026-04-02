@@ -1,7 +1,5 @@
 package com.redn.farm.data.model
 
-import java.time.LocalDateTime
-
 data class Acquisition(
     val acquisition_id: Int = 0,
     val product_id: String,
@@ -10,10 +8,32 @@ data class Acquisition(
     val price_per_unit: Double,
     val total_amount: Double,
     val is_per_kg: Boolean,
+    val piece_count: Int? = null,
     val date_acquired: Long,
-    val date_created: Long = System.currentTimeMillis(),
-    val date_updated: Long = System.currentTimeMillis(),
-    val location: AcquisitionLocation
+    /** DB insert time; preserved on update. Use `0` for new rows (repository assigns [System.currentTimeMillis]). */
+    val created_at: Long = 0L,
+    val location: AcquisitionLocation,
+    val preset_ref: String? = null,
+    val spoilage_rate: Double? = null,
+    val additional_cost_per_kg: Double? = null,
+    val hauling_weight_kg: Double? = null,
+    val hauling_fees_json: String? = null,
+    val channels_snapshot_json: String? = null,
+    val srp_online_per_kg: Double? = null,
+    val srp_reseller_per_kg: Double? = null,
+    val srp_offline_per_kg: Double? = null,
+    val srp_online_500g: Double? = null,
+    val srp_online_250g: Double? = null,
+    val srp_online_100g: Double? = null,
+    val srp_reseller_500g: Double? = null,
+    val srp_reseller_250g: Double? = null,
+    val srp_reseller_100g: Double? = null,
+    val srp_offline_500g: Double? = null,
+    val srp_offline_250g: Double? = null,
+    val srp_offline_100g: Double? = null,
+    val srp_online_per_piece: Double? = null,
+    val srp_reseller_per_piece: Double? = null,
+    val srp_offline_per_piece: Double? = null
 )
 
 enum class AcquisitionLocation {
@@ -30,4 +50,4 @@ enum class AcquisitionLocation {
             OTHER -> "Other"
         }
     }
-} 
+}

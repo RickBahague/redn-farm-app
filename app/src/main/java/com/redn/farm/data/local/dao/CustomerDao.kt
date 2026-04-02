@@ -32,4 +32,7 @@ interface CustomerDao {
 
     @Query("DELETE FROM customers")
     suspend fun truncate()
+
+    @Query("SELECT * FROM customers WHERE customer_id = :id LIMIT 1")
+    suspend fun getById(id: Int): CustomerEntity?
 } 

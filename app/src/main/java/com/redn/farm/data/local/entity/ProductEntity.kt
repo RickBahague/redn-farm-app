@@ -10,5 +10,7 @@ data class ProductEntity(
     val product_name: String,
     val product_description: String,
     val unit_type: String,
+    val category: String? = null,
+    val default_piece_count: Int? = null,
     val is_active: Boolean = true
 ) 

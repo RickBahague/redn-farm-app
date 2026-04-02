@@ -73,7 +73,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (isPasswordValid) {
                     Log.d("LoginViewModel", "Login successful")
-                    sessionManager.createSession(username)
+                    sessionManager.createSession(username, user.role)
                     _loginState.value = LoginState.Success
                 } else {
                     Log.d("LoginViewModel", "Password verification failed")

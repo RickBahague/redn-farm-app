@@ -5,6 +5,7 @@ import java.time.LocalDateTime
 data class Order(
     val order_id: Int = 0,
     val customer_id: Int,
+    val channel: String = "offline",
     val customerName: String = "",
     val customerContact: String = "",
     val total_amount: Double,

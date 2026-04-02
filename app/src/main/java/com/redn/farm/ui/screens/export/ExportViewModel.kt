@@ -8,10 +8,14 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.redn.farm.data.export.CsvExportService
 import com.redn.farm.data.local.FarmDatabase
+import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.repository.*
 import com.redn.farm.data.util.DatabasePopulator
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
@@ -26,18 +30,132 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     private val farmOperationRepository = FarmOperationRepository(application, database, database.farmOperationDao())
     private val productRepository = ProductRepository(database.productDao(), database.productPriceDao())
     private val remittanceRepository = RemittanceRepository(database.remittanceDao())
-    private val acquisitionRepository = AcquisitionRepository(database.acquisitionDao())
-    
+    private val pricingPresetRepository = PricingPresetRepository(
+        database.pricingPresetDao(),
+        database.presetActivationLogDao()
+    )
+    private val acquisitionRepository = AcquisitionRepository(
+        database.acquisitionDao(),
+        pricingPresetRepository,
+        database.productDao()
+    )
+    private val userDao = database.userDao()
+    private val sessionManager = SessionManager(application)
+
+    private val _isAdmin = MutableStateFlow(false)
+    val isAdmin: StateFlow<Boolean> = _isAdmin.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            _isAdmin.value = resolveAdmin()
+        }
+    }
+
+    private suspend fun resolveAdmin(): Boolean {
+        if (sessionManager.isAdmin()) return true
+        val username = sessionManager.getUsername() ?: return false
+        return userDao.getUserByUsername(username)?.role.equals("ADMIN", ignoreCase = true)
+    }
+
+    private fun sharedExportTimestamp(): String =
+        LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+
     private val _exportState = MutableStateFlow<ExportState>(ExportState.Idle)
     val exportState = _exportState.asStateFlow()
-    
+
+    fun exportUsers() {
+        viewModelScope.launch {
+            try {
+                _exportState.value = ExportState.Loading
+                val users = userDao.getAllUsers().first()
+                val file = csvExportService.exportUsers(users)
+                _exportState.value = ExportState.Success(file = file, message = "Users")
+            } catch (e: Exception) {
+                _exportState.value = ExportState.Error(e.message ?: "Failed to export users")
+            }
+        }
+    }
+
+    /**
+     * EXP-US-02: one CSV per selected table, same timestamp suffix on all files in the batch.
+     */
+    fun exportSelectedBundle(selected: Set<ExportBundleTable>) {
+        viewModelScope.launch {
+            if (selected.isEmpty()) {
+                _exportState.value = ExportState.Error("Select at least one table")
+                return@launch
+            }
+            try {
+                _exportState.value = ExportState.Loading
+                val ts = sharedExportTimestamp()
+                val files = mutableListOf<File>()
+                if (ExportBundleTable.USERS in selected) {
+                    files.add(csvExportService.exportUsers(userDao.getAllUsers().first(), ts))
+                }
+                if (ExportBundleTable.PRODUCTS in selected) {
+                    files.add(csvExportService.exportProducts(productRepository.getAllProducts().first(), ts))
+                }
+                if (ExportBundleTable.CUSTOMERS in selected) {
+                    files.add(csvExportService.exportCustomers(customerRepository.getAllCustomers().first(), ts))
+                }
+                if (ExportBundleTable.ORDERS in selected) {
+                    files.add(csvExportService.exportOrders(orderRepository.getAllOrders().first(), ts))
+                }
+                if (ExportBundleTable.ORDER_ITEMS in selected) {
+                    files.add(csvExportService.exportOrderItems(orderRepository.getAllOrderItems().first(), ts))
+                }
+                if (ExportBundleTable.EMPLOYEES in selected) {
+                    files.add(csvExportService.exportEmployees(employeeRepository.getAllEmployees().first(), ts))
+                }
+                if (ExportBundleTable.EMPLOYEE_PAYMENTS in selected) {
+                    files.add(
+                        csvExportService.exportEmployeePayments(
+                            employeePaymentRepository.getAllPayments().first(),
+                            ts
+                        )
+                    )
+                }
+                if (ExportBundleTable.ACQUISITIONS in selected) {
+                    files.add(
+                        csvExportService.exportAcquisitions(
+                            acquisitionRepository.getAllAcquisitions().first(),
+                            ts
+                        )
+                    )
+                }
+                if (ExportBundleTable.FARM_OPERATIONS in selected) {
+                    files.add(
+                        csvExportService.exportFarmOperations(
+                            farmOperationRepository.getAllOperations().first(),
+                            ts
+                        )
+                    )
+                }
+                if (ExportBundleTable.REMITTANCES in selected) {
+                    files.add(
+                        csvExportService.exportRemittances(
+                            remittanceRepository.getAllRemittances().first(),
+                            ts
+                        )
+                    )
+                }
+                _exportState.value = ExportState.Success(
+                    files = files,
+                    message = "Exported ${files.size} CSV file(s) (timestamp $ts)"
+                )
+            } catch (e: Exception) {
+                _exportState.value = ExportState.Error(e.message ?: "Batch export failed")
+            }
+        }
+    }
+
     fun exportCustomers() {
         viewModelScope.launch {
             try {
                 _exportState.value = ExportState.Loading
                 val customers = customerRepository.getAllCustomers().first()
                 val file = csvExportService.exportCustomers(customers)
-                _exportState.value = ExportState.Success(file = file)
+                _exportState.value = ExportState.Success(file = file, message = "Customers")
             } catch (e: Exception) {
                 _exportState.value = ExportState.Error(e.message ?: "Failed to export customers")
             }
@@ -50,7 +168,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
                 _exportState.value = ExportState.Loading
                 val orders = orderRepository.getAllOrders().first()
                 val file = csvExportService.exportOrders(orders)
-                _exportState.value = ExportState.Success(file = file)
+                _exportState.value = ExportState.Success(file = file, message = "Orders")
             } catch (e: Exception) {
                 _exportState.value = ExportState.Error(e.message ?: "Failed to export orders")
             }
@@ -64,8 +182,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
                 
                 val orderItems = orderRepository.getAllOrderItems().first()
                 val file = csvExportService.exportOrderItems(orderItems)
-                
-                _exportState.value = ExportState.Success(file)
+                _exportState.value = ExportState.Success(file = file, message = "Order items")
             } catch (e: Exception) {
                 _exportState.value = ExportState.Error(e.message ?: "Failed to export order items")
             }
@@ -79,8 +196,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
                 
                 val payments = employeePaymentRepository.getAllPayments().first()
                 val file = csvExportService.exportEmployeePayments(payments)
-                
-                _exportState.value = ExportState.Success(file)
+                _exportState.value = ExportState.Success(file = file, message = "Employee payments")
             } catch (e: Exception) {
                 _exportState.value = ExportState.Error(e.message ?: "Failed to export employee payments")
             }
@@ -93,7 +209,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
                 _exportState.value = ExportState.Loading
                 val employees = employeeRepository.getAllEmployees().first()
                 val file = csvExportService.exportEmployees(employees)
-                _exportState.value = ExportState.Success(file = file)
+                _exportState.value = ExportState.Success(file = file, message = "Employees")
             } catch (e: Exception) {
                 _exportState.value = ExportState.Error(e.message ?: "Failed to export employees")
             }
@@ -107,8 +223,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
                 
                 val operations = farmOperationRepository.getAllOperations().first()
                 val file = csvExportService.exportFarmOperations(operations)
-                
-                _exportState.value = ExportState.Success(file)
+                _exportState.value = ExportState.Success(file = file, message = "Farm operations")
             } catch (e: Exception) {
                 _exportState.value = ExportState.Error(e.message ?: "Failed to export farm operations")
             }
@@ -122,8 +237,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
                 
                 val prices = productRepository.getAllProductPrices().first()
                 val file = csvExportService.exportProductPrices(prices)
-                
-                _exportState.value = ExportState.Success(file)
+                _exportState.value = ExportState.Success(file = file, message = "Product prices")
             } catch (e: Exception) {
                 _exportState.value = ExportState.Error(e.message ?: "Failed to export product prices")
             }
@@ -137,8 +251,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
                 
                 val products = productRepository.getAllProducts().first()
                 val file = csvExportService.exportProducts(products)
-                
-                _exportState.value = ExportState.Success(file)
+                _exportState.value = ExportState.Success(file = file, message = "Products")
             } catch (e: Exception) {
                 _exportState.value = ExportState.Error(e.message ?: "Failed to export products")
             }
@@ -152,8 +265,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
                 
                 val remittances = remittanceRepository.getAllRemittances().first()
                 val file = csvExportService.exportRemittances(remittances)
-                
-                _exportState.value = ExportState.Success(file)
+                _exportState.value = ExportState.Success(file = file, message = "Remittances")
             } catch (e: Exception) {
                 _exportState.value = ExportState.Error(e.message ?: "Failed to export remittances")
             }
@@ -167,8 +279,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
                 
                 val acquisitions = acquisitionRepository.getAllAcquisitions().first()
                 val file = csvExportService.exportAcquisitions(acquisitions)
-                
-                _exportState.value = ExportState.Success(file)
+                _exportState.value = ExportState.Success(file = file, message = "Acquisitions")
             } catch (e: Exception) {
                 _exportState.value = ExportState.Error(e.message ?: "Failed to export acquisitions")
             }
@@ -204,7 +315,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 _exportState.value = ExportState.Loading
                 DatabasePopulator.populateAcquisitions(
-                    acquisitionRepository = AcquisitionRepository(database.acquisitionDao()),
+                    acquisitionRepository = acquisitionRepository,
                     productRepository = productRepository,
                     count = 30
                 )
@@ -332,7 +443,11 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     sealed class ExportState {
         object Idle : ExportState()
         object Loading : ExportState()
-        data class Success(val file: File? = null, val message: String? = null) : ExportState()
+        data class Success(
+            val file: File? = null,
+            val files: List<File>? = null,
+            val message: String? = null
+        ) : ExportState()
         data class Error(val message: String) : ExportState()
     }
     

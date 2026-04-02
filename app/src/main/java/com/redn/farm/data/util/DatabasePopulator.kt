@@ -57,7 +57,7 @@ object DatabasePopulator {
         
         val sampleAcquisitions = SampleDataGenerator.generateSampleAcquisitions(products, count)
         sampleAcquisitions.forEach { acquisition ->
-            acquisitionRepository.addAcquisition(acquisition)
+            acquisitionRepository.insertPlain(acquisition)
         }
     }
 } 

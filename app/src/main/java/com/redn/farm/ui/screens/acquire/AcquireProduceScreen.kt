@@ -2,6 +2,8 @@ package com.redn.farm.ui.screens.acquire
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
@@ -15,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Acquisition
 import com.redn.farm.data.model.AcquisitionLocation
+import com.redn.farm.data.repository.AcquisitionDraftPricingPreview
 import com.redn.farm.data.model.Product
 import com.redn.farm.utils.CurrencyFormatter
 import java.time.LocalDateTime
@@ -27,6 +30,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import java.time.ZoneId
 import java.time.Instant
 import java.util.Locale
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,6 +51,11 @@ fun AcquireProduceScreen(
     val selectedLocation by viewModel.selectedLocation.collectAsState()
     val selectedDateRange by viewModel.selectedDateRange.collectAsState()
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) {
+        viewModel.userMessage.collectLatest { snackbarHostState.showSnackbar(it) }
+    }
+
     // Determine screen width for responsive layout
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
@@ -64,6 +74,7 @@ fun AcquireProduceScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Acquire Produce") },
@@ -113,21 +124,24 @@ fun AcquireProduceScreen(
                         items = acquisitions,
                         key = { it.acquisition_id }
                     ) { acquisition ->
-                        AcquisitionCard(
-                            acquisition = acquisition,
-                            onDelete = { viewModel.deleteAcquisition(acquisition) },
-                            onEdit = {
-                                acquisitionToEdit = acquisition
-                                selectedProduct = Product(
-                                    product_id = acquisition.product_id,
-                                    product_name = acquisition.product_name,
-                                    product_description = "",
-                                    unit_type = if (acquisition.is_per_kg) "kg" else "piece",
-                                    is_active = true
-                                )
-                                showAddDialog = true
-                            }
-                        )
+                        key(acquisition.acquisition_id) {
+                            AcquisitionCard(
+                                acquisition = acquisition,
+                                onDelete = { viewModel.deleteAcquisition(acquisition) },
+                                onEdit = {
+                                    acquisitionToEdit = acquisition
+                                    selectedProduct = products.find { it.product_id == acquisition.product_id }
+                                        ?: Product(
+                                            product_id = acquisition.product_id,
+                                            product_name = acquisition.product_name,
+                                            product_description = "",
+                                            unit_type = if (acquisition.is_per_kg) "kg" else "piece",
+                                            is_active = true
+                                        )
+                                    showAddDialog = true
+                                }
+                            )
+                        }
                     }
                 }
             } else {
@@ -140,21 +154,24 @@ fun AcquireProduceScreen(
                         items = acquisitions,
                         key = { it.acquisition_id }
                     ) { acquisition ->
-                        AcquisitionCard(
-                            acquisition = acquisition,
-                            onDelete = { viewModel.deleteAcquisition(acquisition) },
-                            onEdit = {
-                                acquisitionToEdit = acquisition
-                                selectedProduct = Product(
-                                    product_id = acquisition.product_id,
-                                    product_name = acquisition.product_name,
-                                    product_description = "",
-                                    unit_type = if (acquisition.is_per_kg) "kg" else "piece",
-                                    is_active = true
-                                )
-                                showAddDialog = true
-                            }
-                        )
+                        key(acquisition.acquisition_id) {
+                            AcquisitionCard(
+                                acquisition = acquisition,
+                                onDelete = { viewModel.deleteAcquisition(acquisition) },
+                                onEdit = {
+                                    acquisitionToEdit = acquisition
+                                    selectedProduct = products.find { it.product_id == acquisition.product_id }
+                                        ?: Product(
+                                            product_id = acquisition.product_id,
+                                            product_name = acquisition.product_name,
+                                            product_description = "",
+                                            unit_type = if (acquisition.is_per_kg) "kg" else "piece",
+                                            is_active = true
+                                        )
+                                    showAddDialog = true
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -165,6 +182,7 @@ fun AcquireProduceScreen(
                 selectedProduct = selectedProduct,
                 acquisitionToEdit = acquisitionToEdit,
                 onSelectProduct = { showProductSelection = true },
+                previewDraft = { viewModel.previewDraftPricing(it) },
                 onDismiss = { 
                     showAddDialog = false 
                     selectedProduct = null
@@ -191,39 +209,98 @@ private fun AcquisitionDialog(
     selectedProduct: Product?,
     acquisitionToEdit: Acquisition? = null,
     onSelectProduct: () -> Unit,
+    previewDraft: suspend (Acquisition) -> AcquisitionDraftPricingPreview,
     onDismiss: () -> Unit,
     onSave: (Acquisition) -> Unit
 ) {
-    var quantity by remember { mutableStateOf(acquisitionToEdit?.quantity?.toString() ?: "") }
-    var pricePerUnit by remember { mutableStateOf(acquisitionToEdit?.price_per_unit?.toString() ?: "") }
-    var isPerKg by remember { mutableStateOf(acquisitionToEdit?.is_per_kg ?: true) }
-    var totalAmount by remember { mutableStateOf(acquisitionToEdit?.total_amount?.toString() ?: "") }
-    var location by remember { mutableStateOf(acquisitionToEdit?.location ?: AcquisitionLocation.FARM) }
-    var expanded by remember { mutableStateOf(false) }
-    
-    var selectedDate by remember { 
-        mutableStateOf(
-            if (acquisitionToEdit != null) {
-                LocalDateTime.ofInstant(
-                    Instant.ofEpochMilli(acquisitionToEdit.date_acquired),
-                    ZoneId.systemDefault()
-                )
-            } else {
-                LocalDateTime.now()
-            }
-        )
-    }
-    
-    var showDatePicker by remember { mutableStateOf(false) }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("MMM dd, yyyy", Locale.getDefault()) }
 
-    AlertDialog(
+    key(acquisitionToEdit?.acquisition_id ?: -1, selectedProduct?.product_id.orEmpty()) {
+        var quantity by remember { mutableStateOf(acquisitionToEdit?.quantity?.toString() ?: "") }
+        var pricePerUnit by remember { mutableStateOf(acquisitionToEdit?.price_per_unit?.toString() ?: "") }
+        var isPerKg by remember { mutableStateOf(acquisitionToEdit?.is_per_kg ?: true) }
+        var totalAmount by remember { mutableStateOf(acquisitionToEdit?.total_amount?.toString() ?: "") }
+        var pieceCountStr by remember {
+            mutableStateOf(
+                acquisitionToEdit?.piece_count?.toString()
+                    ?: selectedProduct?.defaultPieceCount?.toString().orEmpty()
+            )
+        }
+        var location by remember { mutableStateOf(acquisitionToEdit?.location ?: AcquisitionLocation.FARM) }
+        var expanded by remember { mutableStateOf(false) }
+
+        var selectedDate by remember {
+            mutableStateOf(
+                if (acquisitionToEdit != null) {
+                    LocalDateTime.ofInstant(
+                        Instant.ofEpochMilli(acquisitionToEdit.date_acquired),
+                        ZoneId.systemDefault()
+                    )
+                } else {
+                    LocalDateTime.now()
+                }
+            )
+        }
+
+        var showDatePicker by remember { mutableStateOf(false) }
+
+        var pricingPreview by remember { mutableStateOf<AcquisitionDraftPricingPreview?>(null) }
+        var previewLoading by remember { mutableStateOf(false) }
+
+        val previewDateMillis = selectedDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        LaunchedEffect(
+            quantity,
+            pricePerUnit,
+            totalAmount,
+            isPerKg,
+            pieceCountStr,
+            selectedProduct?.product_id,
+            previewDateMillis,
+            location,
+            acquisitionToEdit?.acquisition_id
+        ) {
+            previewLoading = true
+            delay(280)
+            val product = selectedProduct
+            val q = quantity.toDoubleOrNull()
+            val ppu = pricePerUnit.toDoubleOrNull()
+            val total = totalAmount.toDoubleOrNull()
+            if (product == null || q == null || ppu == null || total == null || q <= 0 || total <= 0) {
+                pricingPreview = null
+                previewLoading = false
+                return@LaunchedEffect
+            }
+            val pc = if (isPerKg) null else pieceCountStr.toIntOrNull()
+            if (!isPerKg && pc == null) {
+                pricingPreview = null
+                previewLoading = false
+                return@LaunchedEffect
+            }
+            val draft = Acquisition(
+                acquisition_id = acquisitionToEdit?.acquisition_id ?: 0,
+                product_id = product.product_id,
+                product_name = product.product_name,
+                quantity = q,
+                price_per_unit = ppu,
+                total_amount = total,
+                is_per_kg = isPerKg,
+                piece_count = pc,
+                date_acquired = previewDateMillis,
+                location = location
+            )
+            pricingPreview = previewDraft(draft)
+            previewLoading = false
+        }
+
+        AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (acquisitionToEdit == null) "Add Acquisition" else "Edit Acquisition") },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState())
                     .padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -360,6 +437,10 @@ private fun AcquisitionDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                AcquisitionDraftPreviewPanel(
+                    loading = previewLoading,
+                    preview = pricingPreview
+                )
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -375,69 +456,169 @@ private fun AcquisitionDialog(
                         modifier = Modifier.height(32.dp)
                     )
                 }
+                AnimatedVisibility(visible = !isPerKg) {
+                    OutlinedTextField(
+                        value = pieceCountStr,
+                        onValueChange = { s ->
+                            if (s.isEmpty() || s.all { it.isDigit() }) {
+                                pieceCountStr = s
+                            }
+                        },
+                        label = { Text("Pieces per kg") },
+                        supportingText = {
+                            Text("Used to convert total piece count into kg for pricing")
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    selectedProduct?.let { product ->
-                        onSave(
-                            Acquisition(
-                                acquisition_id = acquisitionToEdit?.acquisition_id ?: 0,
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        selectedProduct?.let { product ->
+                            val dateMillis =
+                                selectedDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                            val pieceCount = if (isPerKg) null else pieceCountStr.toIntOrNull()
+                            val saved = acquisitionToEdit?.copy(
                                 product_id = product.product_id,
                                 product_name = product.product_name,
                                 quantity = quantity.toDoubleOrNull() ?: 0.0,
                                 price_per_unit = pricePerUnit.toDoubleOrNull() ?: 0.0,
                                 total_amount = totalAmount.toDoubleOrNull() ?: 0.0,
                                 is_per_kg = isPerKg,
-                                date_acquired = selectedDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                                piece_count = pieceCount,
+                                date_acquired = dateMillis,
+                                location = location
+                            ) ?: Acquisition(
+                                product_id = product.product_id,
+                                product_name = product.product_name,
+                                quantity = quantity.toDoubleOrNull() ?: 0.0,
+                                price_per_unit = pricePerUnit.toDoubleOrNull() ?: 0.0,
+                                total_amount = totalAmount.toDoubleOrNull() ?: 0.0,
+                                is_per_kg = isPerKg,
+                                piece_count = pieceCount,
+                                date_acquired = dateMillis,
                                 location = location
                             )
-                        )
-                    }
-                },
-                enabled = selectedProduct != null && 
-                         quantity.isNotEmpty() && 
-                         pricePerUnit.isNotEmpty() &&
-                         totalAmount.isNotEmpty()
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-
-    if (showDatePicker) {
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDatePicker = false
-                    }
+                            onSave(saved)
+                        }
+                    },
+                    enabled = selectedProduct != null &&
+                        quantity.isNotEmpty() &&
+                        pricePerUnit.isNotEmpty() &&
+                        totalAmount.isNotEmpty() &&
+                        (isPerKg || pieceCountStr.isNotEmpty())
                 ) {
-                    Text("OK")
+                    Text("Save")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
+                TextButton(onClick = onDismiss) {
                     Text("Cancel")
                 }
             }
+        )
+
+        if (showDatePicker) {
+            DatePickerDialog(
+                onDismissRequest = { showDatePicker = false },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDatePicker = false
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDatePicker = false }) {
+                        Text("Cancel")
+                    }
+                }
+            ) {
+                DatePicker(
+                    state = rememberDatePickerState(
+                        initialSelectedDateMillis = selectedDate
+                            .atZone(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
+                    ),
+                    showModeToggle = false
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AcquisitionDraftPreviewPanel(
+    loading: Boolean,
+    preview: AcquisitionDraftPricingPreview?
+) {
+    fun fmt(v: Double) = CurrencyFormatter.format(v)
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            DatePicker(
-                state = rememberDatePickerState(
-                    initialSelectedDateMillis = selectedDate
-                        .atZone(ZoneId.systemDefault())
-                        .toInstant()
-                        .toEpochMilli()
-                ),
-                showModeToggle = false
+            Text(
+                text = "SRP preview (active preset)",
+                style = MaterialTheme.typography.labelMedium
             )
+            when {
+                loading -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                preview == null -> Text(
+                    text = "Enter quantity, price, and total to preview.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                preview is AcquisitionDraftPricingPreview.NoActivePreset -> Text(
+                    text = "No active pricing preset — save will store cost without computed SRPs.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                preview is AcquisitionDraftPricingPreview.Invalid -> Text(
+                    text = preview.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+                preview is AcquisitionDraftPricingPreview.Ok -> {
+                    val o = preview.output
+                    Text(
+                        text = "Sellable ${"%.2f".format(o.sellableQuantityKg)} kg · cost/kg " + fmt(o.costPerSellableKg),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text = "Per kg — Online ${fmt(o.srpOnlinePerKg)} · Reseller ${fmt(o.srpResellerPerKg)} · Store ${fmt(o.srpOfflinePerKg)}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text = "Online packs — 500g ${fmt(o.srpOnline500g)} · 250g ${fmt(o.srpOnline250g)} · 100g ${fmt(o.srpOnline100g)}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text = "Reseller packs — 500g ${fmt(o.srpReseller500g)} · 250g ${fmt(o.srpReseller250g)} · 100g ${fmt(o.srpReseller100g)}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text = "Store packs — 500g ${fmt(o.srpOffline500g)} · 250g ${fmt(o.srpOffline250g)} · 100g ${fmt(o.srpOffline100g)}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    val op = o.srpOnlinePerPiece
+                    val rp = o.srpResellerPerPiece
+                    val fp = o.srpOfflinePerPiece
+                    if (op != null && rp != null && fp != null) {
+                        Text(
+                            text = "Per piece — Online ${fmt(op)} · Reseller ${fmt(rp)} · Store ${fmt(fp)}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -448,6 +629,7 @@ private fun AcquisitionCard(
     onDelete: () -> Unit,
     onEdit: () -> Unit
 ) {
+    var srpExpanded by remember { mutableStateOf(false) }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm", Locale.getDefault()) }
     val formattedDate = remember(acquisition.date_acquired) {
         val instant = Instant.ofEpochMilli(acquisition.date_acquired)
@@ -486,6 +668,81 @@ private fun AcquisitionCard(
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
+                        val srpLine = when {
+                            !acquisition.is_per_kg && acquisition.srp_online_per_piece != null ->
+                                "SRP online: ${CurrencyFormatter.format(acquisition.srp_online_per_piece)}/pc"
+                            acquisition.srp_online_per_kg != null ->
+                                "SRP online: ${CurrencyFormatter.format(acquisition.srp_online_per_kg)}/kg"
+                            else -> null
+                        }
+                        if (srpLine != null) {
+                            Text(
+                                text = srpLine,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        if (acquisition.hasSrpDetail()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { srpExpanded = !srpExpanded }
+                                    .padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "All channel SRPs",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                                Icon(
+                                    imageVector = if (srpExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                    contentDescription = if (srpExpanded) "Collapse" else "Expand",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            AnimatedVisibility(visible = srpExpanded) {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    acquisition.srp_online_per_kg?.let {
+                                        Text("Online ${CurrencyFormatter.format(it)}/kg", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    acquisition.srp_reseller_per_kg?.let {
+                                        Text("Reseller ${CurrencyFormatter.format(it)}/kg", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    acquisition.srp_offline_per_kg?.let {
+                                        Text("Store ${CurrencyFormatter.format(it)}/kg", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Text(
+                                        "Online packs: 500g ${acquisition.srp_online_500g?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
+                                            "250g ${acquisition.srp_online_250g?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
+                                            "100g ${acquisition.srp_online_100g?.let { CurrencyFormatter.format(it) } ?: "—"}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    Text(
+                                        "Reseller packs: 500g ${acquisition.srp_reseller_500g?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
+                                            "250g ${acquisition.srp_reseller_250g?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
+                                            "100g ${acquisition.srp_reseller_100g?.let { CurrencyFormatter.format(it) } ?: "—"}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    Text(
+                                        "Store packs: 500g ${acquisition.srp_offline_500g?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
+                                            "250g ${acquisition.srp_offline_250g?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
+                                            "100g ${acquisition.srp_offline_100g?.let { CurrencyFormatter.format(it) } ?: "—"}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    val op = acquisition.srp_online_per_piece
+                                    val rp = acquisition.srp_reseller_per_piece
+                                    val fp = acquisition.srp_offline_per_piece
+                                    if (op != null || rp != null || fp != null) {
+                                        Text(
+                                            "Per piece — online ${op?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
+                                                "reseller ${rp?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
+                                                "store ${fp?.let { CurrencyFormatter.format(it) } ?: "—"}",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -531,6 +788,13 @@ private fun AcquisitionCard(
         }
     }
 }
+
+private fun Acquisition.hasSrpDetail(): Boolean =
+    srp_online_per_kg != null || srp_reseller_per_kg != null || srp_offline_per_kg != null ||
+        srp_online_500g != null || srp_online_250g != null || srp_online_100g != null ||
+        srp_reseller_500g != null || srp_reseller_250g != null || srp_reseller_100g != null ||
+        srp_offline_500g != null || srp_offline_250g != null || srp_offline_100g != null ||
+        srp_online_per_piece != null
 
 @Composable
 private fun ProductSelectionDialog(

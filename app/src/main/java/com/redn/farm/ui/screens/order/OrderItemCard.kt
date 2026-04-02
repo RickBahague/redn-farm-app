@@ -19,7 +19,9 @@ import com.redn.farm.data.model.CartItem
 fun OrderItemCard(
     orderItem: CartItem,
     onQuantityChange: (Double) -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    showUnitToggle: Boolean = false,
+    onToggleUnit: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -52,6 +54,22 @@ fun OrderItemCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            if (showUnitToggle) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (orderItem.isPerKg) "Sold by kg" else "Sold by piece",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    TextButton(onClick = onToggleUnit) {
+                        Text("Switch unit")
+                    }
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -77,7 +95,7 @@ fun OrderItemCard(
                 // Price and Total
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "Price: ${CurrencyFormatter.format(orderItem.price)}",
+                        text = "SRP / unit: ${CurrencyFormatter.format(orderItem.price)}",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
