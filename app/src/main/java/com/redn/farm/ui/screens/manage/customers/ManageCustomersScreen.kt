@@ -115,6 +115,7 @@ fun ManageCustomersScreen(
                     .fillMaxSize()
                     .padding(padding)
                     .padding(horizontal = 16.dp)
+                    .imePadding()
             ) {
                 // Search field with compact padding
                 OutlinedTextField(
@@ -128,34 +129,72 @@ fun ManageCustomersScreen(
                     singleLine = true
                 )
 
-                // Customer grid/list based on screen width
-                if (isWideScreen) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 300.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(vertical = 8.dp)
+                val isFiltering = searchQuery.isNotBlank()
+                if (customers.isEmpty() && uiState !is ManageCustomersViewModel.UiState.Loading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 24.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        items(customers) { customer ->
-                            CustomerCard(
-                                customer = customer,
-                                onEdit = { customerToEdit = customer },
-                                onDelete = { showDeleteConfirmation = customer }
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.People,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(48.dp)
                             )
+                            Text(
+                                text = if (isFiltering) "No matching customers" else "No customers yet",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = if (isFiltering) "Try adjusting your search." else "Add your first customer to start recording orders.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(
+                                onClick = { showAddDialog = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (isFiltering) "Add customer" else "Add customer")
+                            }
                         }
                     }
                 } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(1),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(vertical = 8.dp)
-                    ) {
-                        items(customers) { customer ->
-                            CustomerCard(
-                                customer = customer,
-                                onEdit = { customerToEdit = customer },
-                                onDelete = { showDeleteConfirmation = customer }
-                            )
+                    // Customer grid/list based on screen width
+                    if (isWideScreen) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 300.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp)
+                        ) {
+                            items(customers) { customer ->
+                                CustomerCard(
+                                    customer = customer,
+                                    onEdit = { customerToEdit = customer },
+                                    onDelete = { showDeleteConfirmation = customer }
+                                )
+                            }
+                        }
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(1),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp)
+                        ) {
+                            items(customers) { customer ->
+                                CustomerCard(
+                                    customer = customer,
+                                    onEdit = { customerToEdit = customer },
+                                    onDelete = { showDeleteConfirmation = customer }
+                                )
+                            }
                         }
                     }
                 }
@@ -201,6 +240,10 @@ fun ManageCustomersScreen(
                             viewModel.deleteCustomer(customer)
                             showDeleteConfirmation = null
                         }
+                        ,
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
                     ) {
                         Text("Delete")
                     }

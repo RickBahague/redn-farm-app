@@ -77,16 +77,68 @@ fun OrderHistoryScreen(
                 )
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(orders) { order ->
-                    OrderHistoryCard(
-                        order = order,
-                        onOpenDetail = { onNavigateToOrderDetail(order.order_id) }
-                    )
+            val isFiltering = searchQuery.isNotBlank() ||
+                dateRange.first != null ||
+                dateRange.second != null
+
+            if (orders.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ShoppingCart,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Text(
+                            text = if (isFiltering) "No matching orders" else "No orders yet",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = if (isFiltering) {
+                                "Try adjusting your filters."
+                            } else {
+                                "Start by taking the first customer order."
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Button(
+                            onClick = {
+                                if (isFiltering) {
+                                    viewModel.updateSearchQuery("")
+                                    viewModel.updateDateRange(null to null)
+                                    showFilters = false
+                                } else {
+                                    onNavigateBack()
+                                }
+                            }
+                        ) {
+                            Text(if (isFiltering) "Clear filters" else "Take first order")
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(orders) { order ->
+                        OrderHistoryCard(
+                            order = order,
+                            onOpenDetail = { onNavigateToOrderDetail(order.order_id) }
+                        )
+                    }
                 }
             }
         }
@@ -103,6 +155,10 @@ fun OrderHistoryScreen(
                             viewModel.deleteOrder(order.order_id)
                             showDeleteDialog = null
                         }
+                        ,
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
                     ) {
                         Text("Delete")
                     }
@@ -181,53 +237,56 @@ private fun OrderHistoryCard(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+                Column(
+                    modifier = Modifier.padding(start = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    // Payment status chip
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = if (order.is_paid)
+                            MaterialTheme.colorScheme.primaryContainer
+                        else
+                            MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Text(
+                            text = if (order.is_paid) "Paid" else "Unpaid",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (order.is_paid)
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            else
+                                MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+
+                    // Delivery status chip
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = if (order.is_delivered)
+                            MaterialTheme.colorScheme.secondaryContainer
+                        else
+                            MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Text(
+                            text = if (order.is_delivered) "Delivered" else "Pending",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (order.is_delivered)
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = "View details",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp)
                 )
-            }
-
-            Row(
-                modifier = Modifier.padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Payment status chip
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = if (order.is_paid) 
-                        MaterialTheme.colorScheme.primaryContainer 
-                    else 
-                        MaterialTheme.colorScheme.errorContainer
-                ) {
-                    Text(
-                        text = if (order.is_paid) "Paid" else "Unpaid",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        color = if (order.is_paid) 
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        else 
-                            MaterialTheme.colorScheme.onErrorContainer
-                    )
-                }
-
-                // Delivery status chip
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = if (order.is_delivered) 
-                        MaterialTheme.colorScheme.secondaryContainer 
-                    else 
-                        MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Text(
-                        text = if (order.is_delivered) "Delivered" else "Pending",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        color = if (order.is_delivered) 
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        else 
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
         }
     }

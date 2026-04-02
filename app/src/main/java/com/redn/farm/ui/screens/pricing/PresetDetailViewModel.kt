@@ -28,4 +28,15 @@ class PresetDetailViewModel @Inject constructor(
             _preset.value = repository.getPresetById(presetId)
         }
     }
+
+    fun deleteInactivePreset(
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            runCatching { repository.deleteInactivePreset(presetId) }
+                .onSuccess { onSuccess() }
+                .onFailure { e -> onError(e.message ?: "Could not delete preset.") }
+        }
+    }
 }

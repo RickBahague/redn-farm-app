@@ -12,12 +12,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.redn.farm.data.model.CartItem
 import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.utils.CurrencyFormatter
 import java.util.*
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,7 +40,18 @@ fun TakeOrderScreen(
     val cartItems by viewModel.cartItems.collectAsState()
     val cartTotal by viewModel.cartTotal.collectAsState()
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) {
+        launch {
+            viewModel.userMessage.collectLatest { snackbarHostState.showSnackbar(it) }
+        }
+        launch {
+            viewModel.orderPlaced.collectLatest { showNewOrderDialog = true }
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Take Order") },
@@ -46,6 +61,21 @@ fun TakeOrderScreen(
                     }
                 },
                 actions = {
+                    FilledTonalButton(
+                        onClick = {
+                            viewModel.placeOrder()
+                        },
+                        enabled = selectedCustomer != null && cartItems.isNotEmpty(),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .semantics { contentDescription = "Place order" }
+                    ) {
+                        Text(
+                            text = "Order",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
                     IconButton(onClick = onNavigateToActiveSrps) {
                         Icon(Icons.Filled.AttachMoney, "Active SRPs")
                     }
@@ -54,6 +84,29 @@ fun TakeOrderScreen(
                     }
                 }
             )
+        },
+        bottomBar = {
+            if (cartItems.isNotEmpty()) {
+                Surface(tonalElevation = 2.dp) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Total",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        Text(
+                            text = CurrencyFormatter.format(cartTotal),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
         }
     ) { padding ->
         Column(
@@ -104,7 +157,8 @@ fun TakeOrderScreen(
                     FilterChip(
                         selected = channel == key,
                         onClick = { viewModel.setChannel(key) },
-                        label = { Text(SalesChannel.label(key)) }
+                        label = { Text(SalesChannel.label(key)) },
+                        modifier = Modifier.height(48.dp)
                     )
                 }
             }
@@ -148,40 +202,6 @@ fun TakeOrderScreen(
                 items = cartItems,
                 total = cartTotal
             )
-
-            // Total and Place Order
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Total")
-                        Text(
-                            CurrencyFormatter.format(cartTotal),
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = {
-                            viewModel.placeOrder()
-                            showNewOrderDialog = true
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = selectedCustomer != null && cartItems.isNotEmpty()
-                    ) {
-                        Text("Place Order")
-                    }
-                }
-            }
         }
 
         if (showCustomerDialog) {

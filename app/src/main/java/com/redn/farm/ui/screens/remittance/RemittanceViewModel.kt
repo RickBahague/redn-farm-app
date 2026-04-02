@@ -5,14 +5,24 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.redn.farm.data.local.FarmDatabase
+import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.model.Remittance
 import com.redn.farm.data.repository.RemittanceRepository
-import kotlinx.coroutines.flow.*
+import com.redn.farm.security.Rbac
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class RemittanceViewModel(
-    private val repository: RemittanceRepository
+    private val repository: RemittanceRepository,
+    private val sessionManager: SessionManager
 ) : ViewModel() {
+
+    private val _userMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val userMessage: SharedFlow<String> = _userMessage.asSharedFlow()
 
     val remittances = repository.getAllRemittances()
         .stateIn(
@@ -23,6 +33,10 @@ class RemittanceViewModel(
 
     fun addRemittance(amount: Double, remarks: String, date: Long) {
         viewModelScope.launch {
+            if (!Rbac.canWriteRemittances(sessionManager.getRole())) {
+                _userMessage.emit("You don't have permission to add remittances.")
+                return@launch
+            }
             repository.addRemittance(
                 Remittance(
                     amount = amount,
@@ -35,12 +49,20 @@ class RemittanceViewModel(
 
     fun deleteRemittance(remittance: Remittance) {
         viewModelScope.launch {
+            if (!Rbac.canWriteRemittances(sessionManager.getRole())) {
+                _userMessage.emit("You don't have permission to delete remittances.")
+                return@launch
+            }
             repository.deleteRemittance(remittance)
         }
     }
 
     fun updateRemittance(remittance: Remittance) {
         viewModelScope.launch {
+            if (!Rbac.canWriteRemittances(sessionManager.getRole())) {
+                _userMessage.emit("You don't have permission to update remittances.")
+                return@launch
+            }
             repository.updateRemittance(remittance)
         }
     }
@@ -51,7 +73,8 @@ class RemittanceViewModel(
             if (modelClass.isAssignableFrom(RemittanceViewModel::class.java)) {
                 val database = FarmDatabase.getDatabase(application)
                 return RemittanceViewModel(
-                    RemittanceRepository(database.remittanceDao())
+                    RemittanceRepository(database.remittanceDao()),
+                    SessionManager(application)
                 ) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")

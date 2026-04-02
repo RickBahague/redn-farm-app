@@ -8,13 +8,26 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class PresetHistoryViewModel @Inject constructor(
-    repository: PricingPresetRepository
+    private val repository: PricingPresetRepository
 ) : ViewModel() {
 
     val presets: StateFlow<List<PricingPresetEntity>> = repository.getAllPresets()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun deleteInactivePreset(
+        presetId: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            runCatching { repository.deleteInactivePreset(presetId) }
+                .onSuccess { onSuccess() }
+                .onFailure { e -> onError(e.message ?: "Could not delete preset.") }
+        }
+    }
 }

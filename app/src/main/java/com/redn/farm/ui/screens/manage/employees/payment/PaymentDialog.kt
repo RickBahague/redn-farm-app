@@ -15,6 +15,13 @@ import com.redn.farm.data.model.EmployeePayment
 import java.text.SimpleDateFormat
 import java.util.*
 
+private enum class SignatureMode { DRAW, TYPE }
+
+private fun isBase64ish(value: String): Boolean {
+    // Base64 PNG strings tend to include '+', '/', '='.
+    return value.contains("/") || value.contains("+") || value.contains("=")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PaymentDialog(
@@ -32,8 +39,12 @@ fun PaymentDialog(
         Log.d("PaymentDialog", "Liquidated: ${payment?.liquidated_amount}")
     }
 
+    val initialSignature = payment?.signature ?: ""
     var amount by remember { mutableStateOf(payment?.amount?.toString() ?: "") }
-    var signature by remember { mutableStateOf(payment?.signature ?: "") }
+    var signature by remember { mutableStateOf(initialSignature) }
+    var signatureMode by remember {
+        mutableStateOf(if (isBase64ish(initialSignature)) SignatureMode.DRAW else SignatureMode.TYPE)
+    }
     var datePaid by remember { mutableStateOf(payment?.date_paid ?: System.currentTimeMillis()) }
     var dateReceived by remember { mutableStateOf(payment?.received_date) }
     var cashAdvanceAmount by remember(payment) { 
@@ -96,13 +107,42 @@ fun PaymentDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 
-                OutlinedTextField(
-                    value = signature,
-                    onValueChange = { signature = it },
-                    label = { Text("Signature") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = signatureMode == SignatureMode.DRAW,
+                        onClick = {
+                            signatureMode = SignatureMode.DRAW
+                            signature = ""
+                        },
+                        label = { Text("Draw") }
+                    )
+                    FilterChip(
+                        selected = signatureMode == SignatureMode.TYPE,
+                        onClick = {
+                            signatureMode = SignatureMode.TYPE
+                            signature = ""
+                        },
+                        label = { Text("Type") }
+                    )
+                }
+
+                if (signatureMode == SignatureMode.DRAW) {
+                    SignatureCanvasField(
+                        modifier = Modifier.fillMaxWidth(),
+                        onSignatureBase64Change = { signature = it }
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = signature,
+                        onValueChange = { signature = it },
+                        label = { Text("Signature") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
 
                 // Date Paid Selection
                 OutlinedCard(

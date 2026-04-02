@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.redn.farm.data.export.CsvExportService
 import com.redn.farm.data.local.FarmDatabase
 import com.redn.farm.data.local.session.SessionManager
+import com.redn.farm.security.Rbac
 import com.redn.farm.data.repository.*
 import com.redn.farm.data.util.DatabasePopulator
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,9 +53,15 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private suspend fun resolveAdmin(): Boolean {
-        if (sessionManager.isAdmin()) return true
+        if (Rbac.canExport(sessionManager.getRole())) return true
         val username = sessionManager.getUsername() ?: return false
-        return userDao.getUserByUsername(username)?.role.equals("ADMIN", ignoreCase = true)
+        return Rbac.canExport(userDao.getUserByUsername(username)?.role)
+    }
+
+    private fun guardExport(): Boolean {
+        if (Rbac.canExport(sessionManager.getRole())) return true
+        _exportState.value = ExportState.Error("You don't have permission to export or modify data here.")
+        return false
     }
 
     private fun sharedExportTimestamp(): String =
@@ -65,6 +72,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
 
     fun exportUsers() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 val users = userDao.getAllUsers().first()
@@ -81,6 +89,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun exportSelectedBundle(selected: Set<ExportBundleTable>) {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             if (selected.isEmpty()) {
                 _exportState.value = ExportState.Error("Select at least one table")
                 return@launch
@@ -151,6 +160,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
 
     fun exportCustomers() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 val customers = customerRepository.getAllCustomers().first()
@@ -164,6 +174,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun exportOrders() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 val orders = orderRepository.getAllOrders().first()
@@ -177,6 +188,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun exportOrderItems() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 
@@ -191,6 +203,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun exportEmployeePayments() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 
@@ -205,6 +218,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun exportEmployees() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 val employees = employeeRepository.getAllEmployees().first()
@@ -218,6 +232,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun exportFarmOperations() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 
@@ -232,6 +247,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun exportProductPrices() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 
@@ -246,6 +262,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun exportProducts() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 
@@ -260,6 +277,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun exportRemittances() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 
@@ -274,6 +292,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun exportAcquisitions() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 
@@ -288,6 +307,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun generateSampleData() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 DatabasePopulator.populateCustomers(customerRepository, count = 20)
@@ -300,6 +320,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun generateSampleProducts() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 DatabasePopulator.populateProducts(productRepository, count = 20)
@@ -312,6 +333,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun generateSampleAcquisitions() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 _exportState.value = ExportState.Loading
                 DatabasePopulator.populateAcquisitions(
@@ -332,6 +354,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     
     fun truncateCustomers() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 customerRepository.truncate()
                 _exportState.value = ExportState.Success(message = "Customers data cleared successfully")
@@ -343,6 +366,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
 
     fun truncateEmployees() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 employeeRepository.truncate()
                 _exportState.value = ExportState.Success(message = "Employees data cleared successfully")
@@ -354,6 +378,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
 
     fun truncateOrders() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 orderRepository.truncate()
                 _exportState.value = ExportState.Success(message = "Orders data cleared successfully")
@@ -365,6 +390,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
 
     fun truncateOrderItems() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 orderRepository.truncate()
                 _exportState.value = ExportState.Success(message = "Order items data cleared successfully")
@@ -376,6 +402,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
 
     fun truncateFarmOperations() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 farmOperationRepository.truncate()
                 _exportState.value = ExportState.Success(message = "Farm operations data cleared successfully")
@@ -387,6 +414,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
 
     fun truncateProducts() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 productRepository.truncate()
                 _exportState.value = ExportState.Success(message = "Products data cleared successfully")
@@ -398,6 +426,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
 
     fun truncateProductPrices() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 productRepository.truncate()
                 _exportState.value = ExportState.Success(message = "Product prices data cleared successfully")
@@ -409,6 +438,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
 
     fun truncateEmployeePayments() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 employeePaymentRepository.truncate()
                 _exportState.value = ExportState.Success(message = "Employee payments data cleared successfully")
@@ -420,6 +450,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
 
     fun truncateRemittances() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 remittanceRepository.truncate()
                 _exportState.value = ExportState.Success(message = "Remittances data cleared successfully")
@@ -431,6 +462,7 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
 
     fun truncateAcquisitions() {
         viewModelScope.launch {
+            if (!guardExport()) return@launch
             try {
                 acquisitionRepository.truncate()
                 _exportState.value = ExportState.Success(message = "Acquisitions data cleared successfully")

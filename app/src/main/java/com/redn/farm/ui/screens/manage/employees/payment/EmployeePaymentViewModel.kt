@@ -8,12 +8,15 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.redn.farm.data.local.FarmDatabase
+import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.model.EmployeePayment
 import com.redn.farm.data.repository.EmployeePaymentRepository
+import com.redn.farm.security.Rbac
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class EmployeePaymentViewModel(application: Application) : AndroidViewModel(application) {
+    private val sessionManager = SessionManager(application)
     private val repository = EmployeePaymentRepository(
         FarmDatabase.getDatabase(application).employeePaymentDao()
     )
@@ -22,18 +25,21 @@ class EmployeePaymentViewModel(application: Application) : AndroidViewModel(appl
 
     fun addPayment(payment: EmployeePayment) {
         viewModelScope.launch {
+            if (!Rbac.canWriteEmployees(sessionManager.getRole())) return@launch
             repository.addPayment(payment)
         }
     }
 
     fun updatePayment(payment: EmployeePayment) {
         viewModelScope.launch {
+            if (!Rbac.canWriteEmployees(sessionManager.getRole())) return@launch
             repository.updatePayment(payment)
         }
     }
 
     fun deletePayment(payment: EmployeePayment) {
         viewModelScope.launch {
+            if (!Rbac.canWriteEmployees(sessionManager.getRole())) return@launch
             repository.deletePayment(payment)
         }
     }

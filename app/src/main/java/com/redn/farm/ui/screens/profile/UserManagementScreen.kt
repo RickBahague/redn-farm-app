@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.local.entity.UserEntity
+import com.redn.farm.security.Rbac
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -167,7 +168,7 @@ private fun UserAdminCard(
                     Text(user.username, style = MaterialTheme.typography.titleMedium)
                     Text(user.full_name, style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        if (user.role.equals("ADMIN", ignoreCase = true)) "Administrator" else "User",
+                        Rbac.displayName(user.role),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -202,7 +203,14 @@ private fun CreateUserDialog(
     var username by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var roleAdmin by remember { mutableStateOf(false) }
+    var selectedRole by remember { mutableStateOf(Rbac.USER) }
+    val roleOptions = listOf(
+        Rbac.ADMIN to "Administrator",
+        Rbac.STORE_ASSISTANT to "Store assistant",
+        Rbac.PURCHASING to "Purchasing assistant",
+        Rbac.FARMER to "Farmer",
+        Rbac.USER to "User"
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -232,20 +240,16 @@ private fun CreateUserDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FilterChip(
-                        selected = !roleAdmin,
-                        onClick = { roleAdmin = false },
-                        label = { Text("User") }
-                    )
-                    FilterChip(
-                        selected = roleAdmin,
-                        onClick = { roleAdmin = true },
-                        label = { Text("Admin") }
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Role", style = MaterialTheme.typography.labelLarge)
+                    roleOptions.forEach { (value, label) ->
+                        FilterChip(
+                            selected = selectedRole == value,
+                            onClick = { selectedRole = value },
+                            label = { Text(label) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
         },
@@ -255,7 +259,7 @@ private fun CreateUserDialog(
                     onCreate(
                         username,
                         fullName,
-                        if (roleAdmin) "ADMIN" else "USER",
+                        selectedRole,
                         password
                     )
                 }

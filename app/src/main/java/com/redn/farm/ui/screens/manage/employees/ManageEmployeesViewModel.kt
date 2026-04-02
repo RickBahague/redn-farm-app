@@ -5,13 +5,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.redn.farm.data.local.FarmDatabase
+import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.model.Employee
 import com.redn.farm.data.repository.EmployeeRepository
+import com.redn.farm.security.Rbac
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class ManageEmployeesViewModel(
-    private val repository: EmployeeRepository
+    private val repository: EmployeeRepository,
+    private val sessionManager: SessionManager
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -41,6 +44,7 @@ class ManageEmployeesViewModel(
 
     fun addEmployee(firstname: String, lastname: String, contact: String) {
         viewModelScope.launch {
+            if (!Rbac.canWriteEmployees(sessionManager.getRole())) return@launch
             repository.addEmployee(
                 Employee(
                     firstname = firstname,
@@ -53,6 +57,7 @@ class ManageEmployeesViewModel(
 
     fun updateEmployee(employee: Employee) {
         viewModelScope.launch {
+            if (!Rbac.canWriteEmployees(sessionManager.getRole())) return@launch
             repository.updateEmployee(
                 employee.copy(
                     date_updated = System.currentTimeMillis()
@@ -63,6 +68,7 @@ class ManageEmployeesViewModel(
 
     fun deleteEmployee(employee: Employee) {
         viewModelScope.launch {
+            if (!Rbac.canWriteEmployees(sessionManager.getRole())) return@launch
             repository.deleteEmployee(employee)
         }
     }
@@ -73,7 +79,8 @@ class ManageEmployeesViewModel(
             if (modelClass.isAssignableFrom(ManageEmployeesViewModel::class.java)) {
                 val database = FarmDatabase.getDatabase(application)
                 return ManageEmployeesViewModel(
-                    EmployeeRepository(database.employeeDao())
+                    EmployeeRepository(database.employeeDao()),
+                    SessionManager(application)
                 ) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")

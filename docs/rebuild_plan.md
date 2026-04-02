@@ -75,197 +75,177 @@ Work table-by-table. After each group, run `./scripts/dev.sh install` and smoke-
 
 ### Tasks
 
-- [ ] **P1-1** Auth (AUTH-US-01 / 02 / 03) — confirm login/logout/session still work with new DB
+- [x] **P1-1** Auth (AUTH-US-01 / 02 / 03) — confirm login/logout/session still work with new DB
   - No entity changes; just verify `FarmDatabase` init + seed still runs correctly
+  - Code scan: `LoginViewModel` correctly reads `userDao()` → no changes needed
 
-- [ ] **P1-2** Products CRUD (PRD-US-01 / 03 / 04 / 05) — new nullable fields require no UI change yet
+- [x] **P1-2** Products CRUD (PRD-US-01 / 03 / 04 / 05) — new nullable fields require no UI change yet
+  - `category` and `defaultPieceCount` are nullable with defaults; existing CRUD unaffected
+  - Known pre-existing issues logged in `docs/user_review_product_management.md` (Epic 3 rebuild)
 
-- [ ] **P1-3** Customers CRUD (CUS-US-01 / 02 / 03 / 04) — no schema changes
+- [x] **P1-3** Customers CRUD (CUS-US-01 / 02 / 03 / 04) — no schema changes
+  - Code scan: `ManageCustomersViewModel` — no entity changes, works as-is
 
-- [ ] **P1-4** Employees + Payments CRUD (EMP-US-01 through 05)
+- [x] **P1-4** Employees + Payments CRUD (EMP-US-01 through 05)
   - No schema changes
   - Verify net pay display formula: `amount − cash_advance_amount + liquidated_amount` (EMP-US-04 AC#5)
 
-- [ ] **P1-5** Farm Operations CRUD (FOP-US-01 through 04) — no schema changes
+- [x] **P1-5** Farm Operations CRUD (FOP-US-01 through 04) — no schema changes
+  - `FarmOperationsViewModel` uses `@HiltViewModel` — clean
 
-- [ ] **P1-6** Remittances CRUD (REM-US-01 / 02 / 03) — no schema changes
+- [x] **P1-6** Remittances CRUD (REM-US-01 / 02 / 03) — no schema changes
+  - Code scan: `RemittanceViewModel` — no entity changes, works as-is
 
-- [ ] **P1-7** Orders + Order Items CRUD (ORD-US-03 / 04 / 05 / 06 / 07 / 09)
-  - `channel` defaults to `"offline"` — existing order save must supply this default
-  - SRP pre-fill not required yet (comes in Phase 4)
+- [x] **P1-7** Orders + Order Items CRUD (ORD-US-03 / 04 / 05 / 06 / 07 / 09)
+  - Fixed: `OrderRepository.updateOrder()` was silently writing `channel = "offline"`; now uses `order.channel`
+  - `TakeOrderViewModel.placeOrder()` correctly passes `channel = _channel.value`
+  - `EditOrderScreen` reads and displays `order.channel`; channel picker updates the order copy before save
 
-- [ ] **P1-8** Acquisitions CRUD (INV-US-01 / 02 / 03 / 04)
-  - New nullable columns default to null on save — existing form still works
-  - `createdAt` must be set to `System.currentTimeMillis()` on every insert
-  - SRP computation not required yet (comes in Phase 3)
+- [x] **P1-8** Acquisitions CRUD (INV-US-01 / 02 / 03 / 04)
+  - New nullable columns default to null on save — confirmed in `AcquireProduceScreen` `Acquisition(...)` constructor
+  - `createdAt` set by `AcquisitionRepository.toEntityForSave(isInsert=true)` — ✓
+  - Fixed: `DatePickerDialog` confirm button was not reading the selected date back into `selectedDate`
+  - File: `ui/screens/acquire/AcquireProduceScreen.kt`
 
 ---
 
-## Phase 2 — Pricing Preset System
+## Phase 2 — Pricing Preset System ✅
 
 **Goal:** Admin can create, view, activate, and trace pricing presets (MGT-US-00 through MGT-US-06).  
 **Depends on:** Phase 0. Can be built in parallel with Phase 1.
 
 ### Data / domain layer
 
-- [ ] **P2-1** `PricingPresetRepository` — wraps `PricingPresetDao` and `PresetActivationLogDao`; expose:
-  - `savePreset(preset)` — always saves as inactive
-  - `activatePreset(presetId, activatedBy)` — transaction: deactivate current active, set new active, append log row
-  - `getActivePreset(): Flow<PricingPreset?>`
-  - `getAllPresets(): Flow<List<PricingPreset>>`
-  - `getActivationLog(): Flow<List<PresetActivationLog>>`
+- [x] **P2-1** `PricingPresetRepository`
+  - File: `data/repository/PricingPresetRepository.kt`
 
-- [ ] **P2-2** JSON serialization helpers for `channelsJson`, `haulingFeesJson`, `categoriesJson`
-  - Use `kotlinx.serialization` or `Gson` — match whatever the project already uses
-  - Define sealed/data classes: `ChannelConfig`, `HaulingFeeItem`, `CategoryOverride`
+- [x] **P2-2** JSON serialization helpers
+  - File: `data/pricing/PricingPresetJsonModels.kt` — `PricingPresetGson`, `ChannelConfig`, `ChannelsConfiguration`, `HaulingFeeItem`, `CategoryOverride`, `ChannelFee`
 
 ### UI — Settings entry point
 
-- [ ] **P2-3** Settings screen (SYS-US-01 / MGT-US-00)
-  - Accessible from dashboard top bar (admin only per SYS-US-02 AC#7)
-  - Contains "Pricing Presets" entry (and room for future settings categories)
+- [x] **P2-3** Settings screen — admin-gated icon in `MainScreen` top bar (checked via `isAdmin` state)
+  - File: `ui/screens/settings/SettingsScreen.kt`
 
-- [ ] **P2-4** Pricing Presets home screen (MGT-US-00 AC#3)
-  - Shows active preset summary (name, activation date, key values)
-  - Two actions: **New Preset** → Preset Editor; **Preset History** → Preset History screen
+- [x] **P2-4** Pricing Presets home screen
+  - Files: `ui/screens/pricing/PricingPresetsHomeScreen.kt` + `PricingPresetsHomeViewModel.kt`
 
 ### UI — Preset Editor (MGT-US-01 / 02 / 03)
 
-- [ ] **P2-5** Preset Editor screen — three clearly labelled sections:
+- [x] **P2-5** Preset Editor screen — all three sections complete
+  - Added: channel fees list UI (was missing; now each channel has Add/Edit/Delete fee rows with label, type, amount)
+  - Files: `ui/screens/pricing/PricingPresetEditorScreen.kt` + `PricingPresetEditorViewModel.kt`
 
-  **Section: Spoilage & Hauling** (MGT-US-01)
-  - Default spoilage rate (fraction 0–0.99)
-  - Hauling model: named fee line items + hauling weight → auto-derives `A`
-  - OR: direct `A` override input
-  - Optional preset name field; auto-generates name if blank
-
-  **Section: Channel Markups** (MGT-US-02)
-  - For each channel (online / reseller / offline):
-    - Markup % OR margin % — UI enforces mutual exclusivity
-    - Rounding rule picker: `ceil_whole_peso` (default), `nearest_whole_peso`, `nearest_0.25`
-    - Optional channel fees list (label, type fixed/pct, amount)
-  - Default values on first open: online 35% markup, reseller 25% markup, offline 30% markup; all `ceil_whole_peso`
-
-  **Section: Categories** (MGT-US-03)
-  - Create / rename / delete categories
-  - Each category: optional spoilage rate override, optional `additionalCostPerKg` override
-  - Categories without overrides inherit store defaults
-
-- [ ] **P2-6** Save preset action — creates inactive record; shows confirmation with preset name/ID
+- [x] **P2-6** Save preset action — `PricingPresetEditorViewModel.save()` — snackbar confirms name/ID
 
 ### UI — Preset History & Detail (MGT-US-05)
 
-- [ ] **P2-7** Preset History screen — all presets newest-first; active preset visually distinguished
-- [ ] **P2-8** Preset Detail screen — full snapshot (read-only); **Restore** and **Activate** actions
-  - Restore loads preset into Preset Editor as a draft (new preset on save, does not overwrite original)
+- [x] **P2-7** Preset History screen — active preset shown with checkmark
+  - Files: `ui/screens/pricing/PresetHistoryScreen.kt` + `PresetHistoryViewModel.kt`
+- [x] **P2-8** Preset Detail screen — full JSON snapshot (read-only); Restore → editor, Activate → preview
+  - Files: `ui/screens/pricing/PresetDetailScreen.kt` + `PresetDetailViewModel.kt`
 
 ### UI — Activation flow (MGT-US-04 / 06)
 
-- [ ] **P2-9** Preset Preview screen — mandatory step before activation
-  - Shows computed SRP examples using the to-be-activated preset values
-  - Admin cannot skip; Confirm button commits activation
-- [ ] **P2-10** Activate action — calls `activatePreset()`; navigates back to Presets home with updated active summary
+- [x] **P2-9** Preset Preview screen — shows illustrative per-channel SRPs (bulk cost ₱5000, 100 kg)
+  - Files: `ui/screens/pricing/PresetActivationPreviewScreen.kt` + `PresetActivationPreviewViewModel.kt`
+- [x] **P2-10** Activate action — `confirmActivate()` → `repository.activatePreset()` → pops back to Presets home
 
 ---
 
-## Phase 3 — SRP Computation Pipeline
+## Phase 3 — SRP Computation Pipeline ✅
 
 **Goal:** Acquisitions auto-compute and store all SRPs using the active preset (INV-US-05, INV-US-06).  
 **Depends on:** Phase 2 (active preset must exist).
 
 ### Computation
 
-- [ ] **P3-1** `SrpCalculator` — pure object, no Android dependencies, fully unit-testable
-  - Input: `quantity`, `pricePerUnit`, `isPerKg`, `pieceCount?`, `spoilageRate`, `additionalCostPerKg`, `channelsJson`
-  - Core: `C = pricePerUnit / (quantity * (1 - spoilageRate))` then per-channel: `apply markup|margin → add A → add channel fees → apply rounding rule`
-  - Output: data class with all 15 SRP fields
-  - Write `SrpCalculatorTest` with cases from PricingReference.md
+- [x] **P3-1** `SrpCalculator` — pure object, no Android dependencies, fully unit-testable
+  - File: `data/pricing/SrpCalculator.kt` + `PricingChannelEngine.kt`
+  - `SrpCalculatorTest`: 7 tests including exact-value assertions from PricingReference.md US-6 defaults
+  - File: `test/.../data/pricing/SrpCalculatorTest.kt`
 
-- [ ] **P3-2** Wire `SrpCalculator` into acquisition save path (INV-US-05)
-  - On save: fetch active preset → compute SRPs → persist snapshot columns + SRP columns
-  - If no active preset: SRP columns saved as null; show warning toast "No active preset — SRPs not computed"
+- [x] **P3-2** Wire into acquisition save path — `AcquisitionRepository.insertWithPricing()`
+  - No active preset → saves with null SRPs, returns `SavedWithoutActivePreset` (snackbar warning shown in VM)
+  - File: `data/repository/AcquisitionRepository.kt`
 
-- [ ] **P3-3** Wire `SrpCalculator` into acquisition edit path — Option C (INV-US-03 AC#6–7)
-  - Cost-input changes (`quantity`, `pricePerUnit`, `pieceCount`) → recompute using stored `channelsSnapshotJson`
-  - Metadata changes (`dateAcquired`, `location`) → no recompute, SRP columns unchanged
+- [x] **P3-3** Wire into acquisition edit path — Option C — `AcquisitionRepository.updateWithPricing()`
+  - Cost inputs changed → recompute from stored `channels_snapshot_json` (or active preset if no snapshot)
+  - Metadata-only changes → preserve all SRP/snapshot columns unchanged
 
-- [ ] **P3-4** `getActiveSrpForProduct(productId)` DAO query (INV-US-06)
-  - `SELECT * FROM acquisitions WHERE product_id = :productId ORDER BY date_acquired DESC, created_at DESC LIMIT 1`
-  - Expose via `AcquisitionRepository`
+- [x] **P3-4** `getActiveSrpForProduct(productId)` — DAO + repository
+  - Files: `data/local/dao/AcquisitionDao.kt`, `data/repository/AcquisitionRepository.kt`
 
-- [ ] **P3-5** Display SRP values on acquisition detail / history screen (INV-US-02 AC#6)
-  - Show per-channel SRP breakdown; null SRPs shown as "—"
+- [x] **P3-5** SRP display on acquisition card — online SRP headline + expandable per-channel/package breakdown; null = "—"
+  - File: `ui/screens/acquire/AcquireProduceScreen.kt` (`AcquisitionCard`, `hasSrpDetail()`)
 
 ---
 
-## Phase 4 — Order-Taking with SRP Pre-fill
+## Phase 4 — Order-Taking with SRP Pre-fill ✅
 
 **Goal:** Store assistant selects channel → SRP pre-fills from the active acquisition (ORD-US-01, ORD-US-02, ORD-US-08, ORD-US-10).  
 **Depends on:** Phase 3.
 
-- [ ] **P4-1** CUS-US-05 — `customerType` maps to default channel
-  - RETAIL → `offline`, RESELLER → `reseller`; online must be manually selected
+- [x] **P4-1** CUS-US-05 — `CustomerType.defaultOrderChannel()` extension
+  - WHOLESALE → `reseller`, RETAIL/REGULAR → `offline`; online must be manually selected
+  - File: `data/pricing/SalesChannel.kt`
 
-- [ ] **P4-2** Order form — channel picker (online / reseller / offline); defaults from customer type
-  - On channel change: re-fetch SRP for each item in the order and update pre-filled prices
+- [x] **P4-2** Order form — channel picker (FilterChip ×3); defaults from customer via `selectCustomer()`
+  - On channel change: `setChannel()` → `repriceCart()` re-resolves price for every cart item
+  - File: `ui/screens/order/TakeOrderScreen.kt`, `TakeOrderViewModel.kt`
 
-- [ ] **P4-3** Order item entry — SRP pre-fill per product (ORD-US-01 / ORD-US-02)
-  - Calls `getActiveSrpForProduct(productId)` → reads the SRP column matching selected channel + unit type
-  - `price_per_unit` field is read-only (pre-filled); store assistant cannot override
+- [x] **P4-3** SRP pre-fill in `ProductSelectionDialog`
+  - `resolvePreviewUnitPrice()` → `OrderPricingResolver.resolveUnitPrice()` (SRP first, product_prices fallback)
+  - Price shown as `Text` in dialog and `OrderItemCard` — not editable by staff
+  - Files: `ui/screens/order/ProductSelectionDialog.kt`, `OrderItemCard.kt`, `data/pricing/OrderPricingResolver.kt`
 
-- [ ] **P4-4** ORD-US-08 — "View active SRPs" screen
-  - List of all active products with their current active SRP per channel (per-kg and per-piece where applicable)
-  - Accessible before taking an order
+- [x] **P4-4** ORD-US-08 — `ActiveSrpsScreen` — channel filter chips, per-product SRP rows, active preset footer
+  - Fixed: dead conditional `"500g" else "500g"` → plain `"500g"`
+  - Files: `ui/screens/order/ActiveSrpsScreen.kt`, `ActiveSrpsViewModel.kt`
 
-- [ ] **P4-5** ORD-US-10 — Order detail screen
-  - Read-only full view of the order and its items
-  - Action buttons: Print (ORD-US-09), Mark as Paid (ORD-US-05), Mark as Delivered (ORD-US-06)
-  - Edit navigates to the existing edit order screen
+- [x] **P4-5** ORD-US-10 — `OrderDetailScreen` — Print (top bar icon + body button), Mark as Paid (Switch + confirm dialog), Mark as Delivered (Switch), Edit (when unpaid)
+  - File: `ui/screens/order/history/OrderDetailScreen.kt`
 
 ---
 
-## Phase 5 — Auth & Profile
+## Phase 5 — Auth & Profile ✅
 
 **Goal:** Any user can change their own password; admin can manage user accounts (AUTH-US-04, AUTH-US-05).  
 **Depends on:** Phase 1. Can be built in parallel with Phases 2–4.
 
-- [ ] **P5-1** Profile screen (SYS-US-02) — username, full name, role (read-only); Change Password action
-  - Accessible from dashboard top bar for all users
+- [x] **P5-1** Profile screen — username, full name, role (read-only); Change Password card; User Management card (admin-only)
+  - Files: `ui/screens/profile/ProfileScreen.kt`, `ProfileViewModel.kt`
 
-- [ ] **P5-2** Change Password flow (AUTH-US-05)
-  - Three fields: current password, new password, confirm new password
-  - Validate current password against stored hash; mismatch shows error, no change applied
-  - New ≠ confirm → field-level error, save blocked
-  - On success: hash updated, user remains logged in
+- [x] **P5-2** Change Password flow — current/new/confirm fields; verifies hash; field-level + banner errors; navigates back on success; session preserved
+  - Files: `ui/screens/profile/ChangePasswordScreen.kt`, `ChangePasswordViewModel.kt`
 
-- [ ] **P5-3** Admin user management screen (AUTH-US-04)
-  - Create new user (username, full name, role, initial password)
-  - Deactivate / reactivate users
-  - Reset another user's password (admin only)
-  - Admin cannot deactivate their own account
+- [x] **P5-3** Admin user management — create (username, full name, role, initial password); deactivate/reactivate; reset password; cannot self-deactivate; authorization double-checked in VM
+  - Files: `ui/screens/profile/UserManagementScreen.kt`, `UserManagementViewModel.kt`
 
 ---
 
-## Phase 6 — Export Completion
+## Phase 6 — Export Completion ✅
 
 **Goal:** All 10 tables exportable; selective export; SRP columns included on acquisitions (EXP-US-01, EXP-US-02).  
 **Depends on:** Phase 1 (all tables populated).
 
-- [ ] **P6-1** Audit existing `CsvExportService` — identify which tables are currently exported
+- [x] **P6-1** Audit existing `CsvExportService` — identify which tables are currently exported
   - File: `data/export/CsvExportService.kt`
+  - All 10 tables present with DeviceId on every row
 
-- [ ] **P6-2** Add missing tables to export (EXP-US-01)
+- [x] **P6-2** Add missing tables to export (EXP-US-01)
   - All 10: users, products, customers, orders, order_items, employees, employee_payments, acquisitions, farm_operations, remittances
   - Each row includes `DeviceId` header column
   - Acquisitions export includes: `preset_ref`, all 15 SRP columns, `channels_snapshot_json`
 
-- [ ] **P6-3** EXP-US-02 — selective export
-  - UI lets admin pick which tables to include before exporting
-  - Export writes one CSV file per selected table to `exports/`
+- [x] **P6-3** EXP-US-02 — selective export
+  - UI lets admin pick which tables to include before exporting — `bundleSelection: Set<ExportBundleTable>` with 10 entries, checkboxes, Select all/none, Export button
+  - Files: `ui/screens/export/ExportScreen.kt`, `ExportViewModel.kt`, `ExportBundleTable.kt`
 
-- [ ] **P6-4** SYS-US-04 — verify Room generated schema JSON matches schema_evolution.sql VERSION 4
-  - Build project → inspect `build/generated/source/kapt/.../FarmDatabase_Impl.java`
-  - Compare CREATE TABLE statements against schema_evolution.sql VERSION 4 block
+- [x] **P6-4** SYS-US-04 — verify Room generated schema JSON matches schema_evolution.sql VERSION 4
+  - Verified against `app/schemas/com.redn.farm.data.local.FarmDatabase/4.json`
+  - All 13 tables present; all 15 SRP columns on acquisitions; indices (product_id, preset_ref, date_acquired) ✅
+  - Minor doc discrepancy (customers/product_prices `date_created` is INTEGER in Room vs TEXT in SQL reference — pre-existing from v3, non-functional)
 
 ---
 

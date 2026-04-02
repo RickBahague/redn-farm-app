@@ -17,6 +17,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.redn.farm.data.model.Customer
 import com.redn.farm.data.model.Order
 import com.redn.farm.data.model.OrderItem
+import com.redn.farm.data.model.isOrderFinalized
 import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.utils.CurrencyFormatter
 import com.redn.farm.utils.PrinterUtils
@@ -110,7 +111,7 @@ fun OrderDetailScreen(
                     ) {
                         Icon(Icons.Default.Print, "Print")
                     }
-                    if (order?.is_paid == false) {
+                    if (order?.isOrderFinalized != true) {
                         IconButton(onClick = onNavigateToEdit) {
                             Icon(Icons.Default.Edit, "Edit order")
                         }
@@ -173,8 +174,7 @@ fun OrderDetailScreen(
                             checked = o.is_delivered,
                             onCheckedChange = { newDel ->
                                 viewModel.updateOrderDeliveryStatus(orderId, newDel)
-                            },
-                            enabled = !o.is_paid
+                            }
                         )
                     }
                     HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -208,8 +208,49 @@ fun OrderDetailScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
-                    if (!o.is_paid) {
-                        Spacer(Modifier.height(16.dp))
+
+                    Spacer(Modifier.height(12.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            order?.let { currentOrder ->
+                                scope.launch {
+                                    val message = buildString {
+                                        appendLine("REDN GREENS FRESH")
+                                        appendLine("Order #${currentOrder.order_id}")
+                                        appendLine(
+                                            "Channel: ${
+                                                SalesChannel.label(
+                                                    SalesChannel.normalize(currentOrder.channel)
+                                                )
+                                            }"
+                                        )
+                                        appendLine("Date: ${formatDate(currentOrder.order_date)}")
+                                        appendLine("Customer: ${currentOrder.customerName}")
+                                        appendLine("Contact: ${currentOrder.customerContact}")
+                                        appendLine("--------------------------------")
+                                        orderItems.forEach { item ->
+                                            appendLine("${item.product_name} - ${CurrencyFormatter.format(item.total_price)}")
+                                            appendLine(
+                                                "${item.quantity}${if (item.is_per_kg) "kg" else "pcs"} x ${CurrencyFormatter.format(item.price_per_unit)}"
+                                            )
+                                        }
+                                        appendLine("--------------------------------")
+                                        appendLine("Total: ${CurrencyFormatter.format(currentOrder.total_amount)}")
+                                        appendLine(if (currentOrder.is_paid) "PAID" else "UNPAID")
+                                        appendLine(if (currentOrder.is_delivered) "DELIVERED" else "NOT DELIVERED")
+                                    }
+                                    PrinterUtils.printMessage(context, message)
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Print Receipt")
+                    }
+
+                    if (!o.isOrderFinalized) {
+                        Spacer(Modifier.height(12.dp))
                         Button(
                             onClick = onNavigateToEdit,
                             modifier = Modifier.fillMaxWidth()

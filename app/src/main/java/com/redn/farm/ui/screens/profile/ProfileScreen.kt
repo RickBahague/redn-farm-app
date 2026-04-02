@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.redn.farm.security.Rbac
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,10 +68,7 @@ fun ProfileScreen(
                     Text(user.full_name, style = MaterialTheme.typography.bodyLarge)
                     Text("Role", style = MaterialTheme.typography.labelMedium)
                     Text(
-                        when (user.role.uppercase()) {
-                            "ADMIN" -> "Administrator"
-                            else -> "User"
-                        },
+                        Rbac.displayName(user.role),
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }

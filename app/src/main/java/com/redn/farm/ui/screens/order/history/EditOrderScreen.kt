@@ -1,5 +1,7 @@
 package com.redn.farm.ui.screens.order.history
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.redn.farm.data.model.Order
 import com.redn.farm.data.model.OrderItem
+import com.redn.farm.data.model.isOrderFinalized
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.ProductPrice
 import java.text.NumberFormat
@@ -25,6 +28,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.utils.CurrencyFormatter
+import com.redn.farm.ui.components.NumericPadBottomSheet
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -35,6 +39,7 @@ import java.time.LocalDate
 import com.redn.farm.utils.PrinterUtils
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -97,7 +102,7 @@ fun EditOrderScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("${if (order?.is_paid == true) "View" else "Edit"} Order #$orderId") },
+                title = { Text("${if (order?.isOrderFinalized == true) "View" else "Edit"} Order #$orderId") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
@@ -160,7 +165,7 @@ fun EditOrderScreen(
                     ) {
                         Icon(Icons.Default.Print, "Print Order")
                     }
-                    if (hasChanges && order?.is_paid == false) {
+                    if (hasChanges && order?.isOrderFinalized != true) {
                         TextButton(
                             onClick = {
                                 order?.let { currentOrder ->
@@ -222,7 +227,7 @@ fun EditOrderScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                if (!currentOrder.is_paid) {
+                                if (!currentOrder.isOrderFinalized) {
                                     IconButton(
                                         onClick = { showDatePicker = true }
                                     ) {
@@ -233,60 +238,57 @@ fun EditOrderScreen(
                         }
                     }
 
-                    // Payment Status Card - 40% width
-                    if (!currentOrder.is_paid) {
-                        Card(
-                            modifier = Modifier.weight(0.4f)
+                    // Payment / delivery — editable until both paid and delivered
+                    Card(
+                        modifier = Modifier.weight(0.4f)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            Text(
+                                text = "Payment & delivery",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Payment Status",
-                                    style = MaterialTheme.typography.titleSmall
+                                    text = if (currentOrder.is_paid) "Paid" else "Unpaid",
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = if (currentOrder.is_paid) "Paid" else "Unpaid",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Switch(
-                                        checked = currentOrder.is_paid,
-                                        onCheckedChange = { newStatus -> 
-                                            showPaymentConfirmDialog = newStatus
-                                        }
-                                    )
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Delivered",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Switch(
-                                        checked = currentOrder.is_delivered,
-                                        onCheckedChange = { newDeliveryStatus ->
-                                            val updatedOrder = currentOrder.copy(
-                                                is_delivered = newDeliveryStatus,
-                                                order_update_date = System.currentTimeMillis()
-                                            )
-                                            order = updatedOrder
-                                            hasChanges = true
-                                            viewModel.updateOrderDeliveryStatus(orderId, newDeliveryStatus)
-                                        },
-                                        enabled = !currentOrder.is_paid
-                                    )
-                                }
+                                Switch(
+                                    checked = currentOrder.is_paid,
+                                    onCheckedChange = { newStatus ->
+                                        showPaymentConfirmDialog = newStatus
+                                    }
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Delivered",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Switch(
+                                    checked = currentOrder.is_delivered,
+                                    onCheckedChange = { newDeliveryStatus ->
+                                        val updatedOrder = currentOrder.copy(
+                                            is_delivered = newDeliveryStatus,
+                                            order_update_date = System.currentTimeMillis()
+                                        )
+                                        order = updatedOrder
+                                        hasChanges = true
+                                        viewModel.updateOrderDeliveryStatus(orderId, newDeliveryStatus)
+                                    }
+                                )
                             }
                         }
                     }
@@ -297,7 +299,7 @@ fun EditOrderScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (!currentOrder.is_paid) {
+                if (!currentOrder.isOrderFinalized) {
                     Text(
                         text = "Change channel to re-apply active SRPs to all lines",
                         style = MaterialTheme.typography.labelSmall
@@ -344,7 +346,7 @@ fun EditOrderScreen(
                                 text = "Order Items",
                                 style = MaterialTheme.typography.titleMedium
                             )
-                            if (!currentOrder.is_paid) {
+                            if (!currentOrder.isOrderFinalized) {
                                 IconButton(onClick = { showAddProductDialog = true }) {
                                     Icon(Icons.Default.Add, "Add Product")
                                 }
@@ -358,13 +360,13 @@ fun EditOrderScreen(
                             items(orderItems) { item ->
                                 OrderItemRow(
                                     item = item,
-                                    onEditItem = { if (!currentOrder.is_paid) showEditItemDialog = it },
-                                    onRemoveItem = { itemToRemove -> 
-                                        if (!currentOrder.is_paid) {
+                                    onEditItem = { if (!currentOrder.isOrderFinalized) showEditItemDialog = it },
+                                    onRemoveItem = { itemToRemove ->
+                                        if (!currentOrder.isOrderFinalized) {
                                             showDeleteItemDialog = itemToRemove
                                         }
                                     },
-                                    isEditable = !currentOrder.is_paid
+                                    isEditable = !currentOrder.isOrderFinalized
                                 )
                             }
                         }
@@ -392,7 +394,7 @@ fun EditOrderScreen(
 
         // Dialogs remain unchanged
         order?.let { currentOrder ->
-            if (!currentOrder.is_paid) {
+            if (!currentOrder.isOrderFinalized) {
                 showEditItemDialog?.let { item ->
                     EditOrderItemDialog(
                         item = item,
@@ -452,7 +454,7 @@ fun EditOrderScreen(
                     text = { 
                         Text(
                             "Are you sure you want to mark this order as ${if (newStatus) "paid" else "unpaid"}? " +
-                            if (newStatus) "This action cannot be undone." else ""
+                                "You can still update delivery until the order is both paid and delivered."
                         )
                     },
                     confirmButton = {
@@ -647,46 +649,32 @@ private fun CustomerInfoCard(
                     text = "Order Date: ${orderDate.format(dateFormatter)}",
                     style = MaterialTheme.typography.bodyMedium
                 )
-                if (!order.is_paid) {
+                if (!order.isOrderFinalized) {
                     IconButton(onClick = { showDatePicker = true }) {
                         Icon(Icons.Default.Edit, "Edit Date")
                     }
                 }
             }
 
-            // Delivery Status Switch
-            if (!order.is_paid) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Delivered")
-                    Switch(
-                        checked = isDelivered,
-                        onCheckedChange = { newDeliveryStatus ->
-                            isDelivered = newDeliveryStatus
-                            val updatedOrder = order.copy(
-                                is_delivered = newDeliveryStatus,
-                                order_update_date = System.currentTimeMillis()
-                            )
-                            viewModel.updateOrderDeliveryStatus(order.order_id, newDeliveryStatus)
-                            onOrderUpdated(updatedOrder)
-                        }
-                    )
-                }
-            } else {
-                // Show delivery status as text for paid orders
-                Text(
-                    text = if (isDelivered) "Delivered" else "Pending Delivery",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (isDelivered) 
-                        MaterialTheme.colorScheme.primary
-                    else 
-                        MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Delivered")
+                Switch(
+                    checked = isDelivered,
+                    onCheckedChange = { newDeliveryStatus ->
+                        isDelivered = newDeliveryStatus
+                        val updatedOrder = order.copy(
+                            is_delivered = newDeliveryStatus,
+                            order_update_date = System.currentTimeMillis()
+                        )
+                        viewModel.updateOrderDeliveryStatus(order.order_id, newDeliveryStatus)
+                        onOrderUpdated(updatedOrder)
+                    }
                 )
             }
         }
@@ -925,9 +913,19 @@ private fun EditOrderItemDialog(
     viewModel: OrderHistoryViewModel
 ) {
     var quantity by remember { mutableStateOf(item.quantity.toString()) }
+    var numericPadVisible by remember { mutableStateOf(false) }
     var isPerKg by remember { mutableStateOf(item.is_per_kg) }
     val products by viewModel.products.collectAsState()
     val product = products.find { it.product_id == item.product_id }
+    val focusManager = LocalFocusManager.current
+    val qtyInteraction = remember { MutableInteractionSource() }
+    val qtyPressed by qtyInteraction.collectIsPressedAsState()
+    LaunchedEffect(qtyPressed) {
+        if (qtyPressed) {
+            numericPadVisible = true
+            focusManager.clearFocus()
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -936,6 +934,7 @@ private fun EditOrderItemDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .imePadding()
                     .padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -951,13 +950,19 @@ private fun EditOrderItemDialog(
 
                 OutlinedTextField(
                     value = quantity,
-                    onValueChange = {
-                        if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                            quantity = it
+                    onValueChange = {},
+                    label = { Text("Quantity") },
+                    readOnly = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    interactionSource = qtyInteraction,
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            numericPadVisible = true
+                            focusManager.clearFocus()
+                        }) {
+                            Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
                         }
                     },
-                    label = { Text("Quantity") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1019,6 +1024,16 @@ private fun EditOrderItemDialog(
             }
         }
     )
+
+    NumericPadBottomSheet(
+        visible = numericPadVisible,
+        title = "Quantity",
+        value = quantity,
+        onValueChange = { quantity = it },
+        decimalEnabled = true,
+        maxDecimalPlaces = 3,
+        onDismiss = { numericPadVisible = false }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1031,10 +1046,12 @@ private fun ProductSelectionDialog(
 ) {
     var selectedProduct by remember { mutableStateOf<Product?>(null) }
     var quantity by remember { mutableStateOf("") }
+    var numericPadVisible by remember { mutableStateOf(false) }
     var isPerKg by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
 
     val products by viewModel.products.collectAsState()
+    val focusManager = LocalFocusManager.current
 
     val filteredProducts = remember(products, searchQuery) {
         if (searchQuery.isBlank()) {
@@ -1054,6 +1071,7 @@ private fun ProductSelectionDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .imePadding()
                     .padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -1092,6 +1110,14 @@ private fun ProductSelectionDialog(
                         }
                     }
                 } else {
+                    val qtyInteraction = remember { MutableInteractionSource() }
+                    val qtyPressed by qtyInteraction.collectIsPressedAsState()
+                    LaunchedEffect(qtyPressed) {
+                        if (qtyPressed) {
+                            numericPadVisible = true
+                            focusManager.clearFocus()
+                        }
+                    }
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1115,13 +1141,19 @@ private fun ProductSelectionDialog(
 
                             OutlinedTextField(
                                 value = quantity,
-                                onValueChange = {
-                                    if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                        quantity = it
+                                onValueChange = {},
+                                label = { Text("Quantity") },
+                                readOnly = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                interactionSource = qtyInteraction,
+                                trailingIcon = {
+                                    IconButton(onClick = {
+                                        numericPadVisible = true
+                                        focusManager.clearFocus()
+                                    }) {
+                                        Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
                                     }
                                 },
-                                label = { Text("Quantity") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -1182,5 +1214,15 @@ private fun ProductSelectionDialog(
                 Text(if (selectedProduct == null) "Cancel" else "Back")
             }
         }
+    )
+
+    NumericPadBottomSheet(
+        visible = numericPadVisible,
+        title = "Quantity",
+        value = quantity,
+        onValueChange = { quantity = it },
+        decimalEnabled = true,
+        maxDecimalPlaces = 3,
+        onDismiss = { numericPadVisible = false }
     )
 } 

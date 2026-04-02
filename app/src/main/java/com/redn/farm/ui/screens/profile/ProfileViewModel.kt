@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.redn.farm.data.local.dao.UserDao
 import com.redn.farm.data.local.entity.UserEntity
 import com.redn.farm.data.local.session.SessionManager
+import com.redn.farm.security.Rbac
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,8 +41,10 @@ class ProfileViewModel @Inject constructor(
             }
             val user = userDao.getUserByUsername(username)
             _profileUser.value = user
-            _isAdmin.value =
-                sessionManager.isAdmin() || user?.role.equals("ADMIN", ignoreCase = true)
+            _isAdmin.value = user?.role?.let { r ->
+                Rbac.ROLES_USER_MANAGEMENT.contains(Rbac.normalizeRole(r))
+            } == true ||
+                Rbac.ROLES_USER_MANAGEMENT.contains(Rbac.normalizeRole(sessionManager.getRole()))
         }
     }
 }

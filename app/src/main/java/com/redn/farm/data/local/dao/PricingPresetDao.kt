@@ -58,6 +58,9 @@ interface PricingPresetDao {
         )
     }
 
+    @Query("DELETE FROM pricing_presets WHERE preset_id = :presetId")
+    suspend fun deleteById(presetId: String)
+
     @Query("DELETE FROM pricing_presets")
     suspend fun truncate()
 }

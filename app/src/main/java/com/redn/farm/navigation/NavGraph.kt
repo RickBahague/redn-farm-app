@@ -34,6 +34,7 @@ import com.redn.farm.ui.screens.profile.ProfileScreen
 import com.redn.farm.ui.screens.profile.ChangePasswordScreen
 import com.redn.farm.ui.screens.profile.UserManagementScreen
 import androidx.compose.ui.Modifier
+import com.redn.farm.security.Rbac
 
 sealed class Screen(val route: String) {
     object Login : Screen("login")
@@ -150,52 +151,62 @@ fun NavGraph(
             )
         }
         composable(Screen.Products.route) {
-            ManageProductsScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
+            RequireRole(navController, Rbac.ROLES_PRODUCTS) {
+                ManageProductsScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
         }
         composable(Screen.Customers.route) {
-            ManageCustomersScreen(
-                onNavigateBack = { navController.popBackStack() }
-            )
+            RequireRole(navController, Rbac.ROLES_CUSTOMERS) {
+                ManageCustomersScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
         }
         composable(Screen.Orders.route) {
-            TakeOrderScreen(
-                onNavigateBack = { 
-                    navController.navigate(Screen.Main.route) {
-                        popUpTo(Screen.Main.route) {
-                            inclusive = false
+            RequireRole(navController, Rbac.ROLES_ORDERS_FLOW) {
+                TakeOrderScreen(
+                    onNavigateBack = {
+                        navController.navigate(Screen.Main.route) {
+                            popUpTo(Screen.Main.route) {
+                                inclusive = false
+                            }
                         }
+                    },
+                    onNavigateToOrderHistory = {
+                        navController.navigate(Screen.OrderHistory.route)
+                    },
+                    onNavigateToActiveSrps = {
+                        navController.navigate(Screen.ActiveSrps.route)
                     }
-                },
-                onNavigateToOrderHistory = {
-                    navController.navigate(Screen.OrderHistory.route)
-                },
-                onNavigateToActiveSrps = {
-                    navController.navigate(Screen.ActiveSrps.route)
-                }
-            )
+                )
+            }
         }
         composable(Screen.ActiveSrps.route) {
-            ActiveSrpsScreen(
-                onNavigateBack = { navController.popBackStack() }
-            )
+            RequireRole(navController, Rbac.ROLES_ACTIVE_SRPS) {
+                ActiveSrpsScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
         }
         composable(Screen.OrderHistory.route) {
-            OrderHistoryScreen(
-                onNavigateBack = { 
-                    navController.navigate(Screen.Orders.route) {
-                        popUpTo(Screen.Orders.route) {
-                            inclusive = false
+            RequireRole(navController, Rbac.ROLES_ORDERS_FLOW) {
+                OrderHistoryScreen(
+                    onNavigateBack = {
+                        navController.navigate(Screen.Orders.route) {
+                            popUpTo(Screen.Orders.route) {
+                                inclusive = false
+                            }
                         }
+                    },
+                    onNavigateToOrderDetail = { orderId ->
+                        navController.navigate(Screen.OrderDetail.createRoute(orderId))
                     }
-                },
-                onNavigateToOrderDetail = { orderId ->
-                    navController.navigate(Screen.OrderDetail.createRoute(orderId))
-                }
-            )
+                )
+            }
         }
         composable(
             route = Screen.OrderDetail.route,
@@ -204,13 +215,15 @@ fun NavGraph(
             )
         ) { backStackEntry ->
             val orderId = backStackEntry.arguments?.getInt("orderId") ?: return@composable
-            OrderDetailScreen(
-                orderId = orderId,
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToEdit = {
-                    navController.navigate(Screen.EditOrder.createRoute(orderId))
-                }
-            )
+            RequireRole(navController, Rbac.ROLES_ORDERS_FLOW) {
+                OrderDetailScreen(
+                    orderId = orderId,
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToEdit = {
+                        navController.navigate(Screen.EditOrder.createRoute(orderId))
+                    }
+                )
+            }
         }
         composable(
             route = Screen.EditOrder.route,
@@ -219,28 +232,36 @@ fun NavGraph(
             )
         ) { backStackEntry ->
             val orderId = backStackEntry.arguments?.getInt("orderId") ?: return@composable
-            EditOrderScreen(
-                orderId = orderId,
-                onNavigateBack = { navController.popBackStack() }
-            )
+            RequireRole(navController, Rbac.ROLES_ORDERS_FLOW) {
+                EditOrderScreen(
+                    orderId = orderId,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
         }
         composable(Screen.Acquire.route) {
-            AcquireProduceScreen(
-                onNavigateBack = { navController.navigateUp() }
-            )
+            RequireRole(navController, Rbac.ROLES_ACQUIRE) {
+                AcquireProduceScreen(
+                    onNavigateBack = { navController.navigateUp() }
+                )
+            }
         }
         composable(Screen.Remittance.route) {
-            RemittanceScreen(
-                onNavigateBack = { navController.navigateUp() }
-            )
+            RequireRole(navController, Rbac.ROLES_REMITTANCE) {
+                RemittanceScreen(
+                    onNavigateBack = { navController.navigateUp() }
+                )
+            }
         }
         composable(Screen.Employees.route) {
-            ManageEmployeesScreen(
-                onNavigateBack = { navController.navigateUp() },
-                onNavigateToPayments = { employeeId, employeeName ->
-                    navController.navigate(Screen.EmployeePayments.createRoute(employeeId, employeeName))
-                }
-            )
+            RequireRole(navController, Rbac.ROLES_EMPLOYEES) {
+                ManageEmployeesScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onNavigateToPayments = { employeeId, employeeName ->
+                        navController.navigate(Screen.EmployeePayments.createRoute(employeeId, employeeName))
+                    }
+                )
+            }
         }
         composable(
             route = Screen.EmployeePayments.route,
@@ -251,27 +272,35 @@ fun NavGraph(
         ) { backStackEntry ->
             val employeeId = backStackEntry.arguments?.getInt("employeeId") ?: return@composable
             val employeeName = backStackEntry.arguments?.getString("employeeName")?.replace("_", " ") ?: return@composable
-            
-            EmployeePaymentScreen(
-                onNavigateBack = { navController.navigateUp() },
-                employeeId = employeeId,
-                employeeName = employeeName
-            )
+
+            RequireRole(navController, Rbac.ROLES_EMPLOYEES) {
+                EmployeePaymentScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    employeeId = employeeId,
+                    employeeName = employeeName
+                )
+            }
         }
         composable(Screen.FarmOps.route) {
-            FarmOperationsScreen(
-                onNavigateBack = { navController.navigateUp() }
-            )
+            RequireRole(navController, Rbac.ROLES_FARM_OPS) {
+                FarmOperationsScreen(
+                    onNavigateBack = { navController.navigateUp() }
+                )
+            }
         }
         composable(Screen.FarmOpsHistory.route) {
-            FarmOperationHistoryScreen(
-                onNavigateBack = { navController.navigateUp() }
-            )
+            RequireRole(navController, Rbac.ROLES_FARM_OPS) {
+                FarmOperationHistoryScreen(
+                    onNavigateBack = { navController.navigateUp() }
+                )
+            }
         }
         composable(Screen.Export.route) {
-            ExportScreen(
-                onNavigateBack = { navController.navigateUp() }
-            )
+            RequireRole(navController, Rbac.ROLES_EXPORT) {
+                ExportScreen(
+                    onNavigateBack = { navController.navigateUp() }
+                )
+            }
         }
         composable(Screen.About.route) {
             AboutScreen(
@@ -295,34 +324,42 @@ fun NavGraph(
             )
         }
         composable(Screen.UserManagement.route) {
-            UserManagementScreen(
-                onNavigateBack = { navController.navigateUp() }
-            )
+            RequireRole(navController, Rbac.ROLES_USER_MANAGEMENT) {
+                UserManagementScreen(
+                    onNavigateBack = { navController.navigateUp() }
+                )
+            }
         }
         composable(Screen.Settings.route) {
-            SettingsScreen(
-                onNavigateBack = { navController.navigateUp() },
-                onNavigateToPricingPresets = {
-                    navController.navigate(Screen.PricingPresetsHome.route)
-                }
-            )
+            RequireRole(navController, Rbac.ROLES_SETTINGS_AND_PRICING) {
+                SettingsScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onNavigateToPricingPresets = {
+                        navController.navigate(Screen.PricingPresetsHome.route)
+                    }
+                )
+            }
         }
         composable(Screen.PricingPresetsHome.route) {
-            PricingPresetsHomeScreen(
-                onNavigateBack = { navController.navigateUp() },
-                onNewPreset = {
-                    navController.navigate(Screen.PricingPresetEditor.createRoute("new"))
-                },
-                onPresetHistory = { navController.navigate(Screen.PresetHistory.route) }
-            )
+            RequireRole(navController, Rbac.ROLES_SETTINGS_AND_PRICING) {
+                PricingPresetsHomeScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onNewPreset = {
+                        navController.navigate(Screen.PricingPresetEditor.createRoute("new"))
+                    },
+                    onPresetHistory = { navController.navigate(Screen.PresetHistory.route) }
+                )
+            }
         }
         composable(Screen.PresetHistory.route) {
-            PresetHistoryScreen(
-                onNavigateBack = { navController.navigateUp() },
-                onPresetClick = { id ->
-                    navController.navigate(Screen.PresetDetail.createRoute(id))
-                }
-            )
+            RequireRole(navController, Rbac.ROLES_SETTINGS_AND_PRICING) {
+                PresetHistoryScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onPresetClick = { id ->
+                        navController.navigate(Screen.PresetDetail.createRoute(id))
+                    }
+                )
+            }
         }
         composable(
             route = Screen.PricingPresetEditor.route,
@@ -330,9 +367,11 @@ fun NavGraph(
                 navArgument("sourcePresetId") { type = NavType.StringType }
             )
         ) {
-            PricingPresetEditorScreen(
-                onNavigateBack = { navController.navigateUp() }
-            )
+            RequireRole(navController, Rbac.ROLES_SETTINGS_AND_PRICING) {
+                PricingPresetEditorScreen(
+                    onNavigateBack = { navController.navigateUp() }
+                )
+            }
         }
         composable(
             route = Screen.PresetDetail.route,
@@ -340,15 +379,17 @@ fun NavGraph(
                 navArgument("presetId") { type = NavType.StringType }
             )
         ) {
-            PresetDetailScreen(
-                onNavigateBack = { navController.navigateUp() },
-                onRestoreToEditor = { pid ->
-                    navController.navigate(Screen.PricingPresetEditor.createRoute(pid))
-                },
-                onActivatePreview = { pid ->
-                    navController.navigate(Screen.PresetActivationPreview.createRoute(pid))
-                }
-            )
+            RequireRole(navController, Rbac.ROLES_SETTINGS_AND_PRICING) {
+                PresetDetailScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onRestoreToEditor = { pid ->
+                        navController.navigate(Screen.PricingPresetEditor.createRoute(pid))
+                    },
+                    onActivatePreview = { pid ->
+                        navController.navigate(Screen.PresetActivationPreview.createRoute(pid))
+                    }
+                )
+            }
         }
         composable(
             route = Screen.PresetActivationPreview.route,
@@ -356,15 +397,17 @@ fun NavGraph(
                 navArgument("presetId") { type = NavType.StringType }
             )
         ) {
-            PresetActivationPreviewScreen(
-                onNavigateBack = { navController.navigateUp() },
-                onActivationComplete = {
-                    navController.popBackStack(
-                        Screen.PricingPresetsHome.route,
-                        inclusive = false
-                    )
-                }
-            )
+            RequireRole(navController, Rbac.ROLES_SETTINGS_AND_PRICING) {
+                PresetActivationPreviewScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onActivationComplete = {
+                        navController.popBackStack(
+                            Screen.PricingPresetsHome.route,
+                            inclusive = false
+                        )
+                    }
+                )
+            }
         }
     }
 } 

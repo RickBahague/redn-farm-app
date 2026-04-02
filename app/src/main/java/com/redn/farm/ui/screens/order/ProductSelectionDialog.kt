@@ -1,7 +1,10 @@
 package com.redn.farm.ui.screens.order
 
 import com.redn.farm.utils.CurrencyFormatter
+import com.redn.farm.ui.components.NumericPadBottomSheet
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -30,9 +34,11 @@ fun ProductSelectionDialog(
     var quantity by remember { mutableStateOf("") }
     var isPerKg by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
+    var numericPadVisible by remember { mutableStateOf(false) }
 
     val products by viewModel.products.collectAsState()
     val channel by viewModel.channel.collectAsState()
+    val focusManager = LocalFocusManager.current
 
     val filteredProducts = remember(products, searchQuery) {
         if (searchQuery.isBlank()) {
@@ -52,6 +58,7 @@ fun ProductSelectionDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .imePadding()
                     .padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -102,6 +109,14 @@ fun ProductSelectionDialog(
                         }
                     }
                 } else {
+                    val qtyInteraction = remember { MutableInteractionSource() }
+                    val qtyPressed by qtyInteraction.collectIsPressedAsState()
+                    LaunchedEffect(qtyPressed) {
+                        if (qtyPressed) {
+                            numericPadVisible = true
+                            focusManager.clearFocus()
+                        }
+                    }
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -136,13 +151,19 @@ fun ProductSelectionDialog(
 
                             OutlinedTextField(
                                 value = quantity,
-                                onValueChange = {
-                                    if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                        quantity = it
+                                onValueChange = {},
+                                label = { Text("Quantity") },
+                                readOnly = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                interactionSource = qtyInteraction,
+                                trailingIcon = {
+                                    IconButton(onClick = {
+                                        numericPadVisible = true
+                                        focusManager.clearFocus()
+                                    }) {
+                                        Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
                                     }
                                 },
-                                label = { Text("Quantity") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -203,5 +224,15 @@ fun ProductSelectionDialog(
                 Text(if (selectedProduct == null) "Cancel" else "Back")
             }
         }
+    )
+
+    NumericPadBottomSheet(
+        visible = numericPadVisible,
+        title = "Quantity",
+        value = quantity,
+        onValueChange = { quantity = it },
+        decimalEnabled = true,
+        maxDecimalPlaces = 3,
+        onDismiss = { numericPadVisible = false }
     )
 }

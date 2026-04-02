@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.redn.farm.data.local.FarmDatabase
+import com.redn.farm.data.local.session.SessionManager
+import com.redn.farm.security.Rbac
 import com.redn.farm.data.model.Customer
 import com.redn.farm.data.repository.CustomerRepository
 import com.redn.farm.data.repository.OrderRepository
@@ -15,6 +17,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class ManageCustomersViewModel(application: Application) : AndroidViewModel(application) {
+    private val sessionManager = SessionManager(application)
     private val database = FarmDatabase.getDatabase(application)
     private val repository = CustomerRepository(database.customerDao())
     private val orderRepository = OrderRepository(database.orderDao())
@@ -47,6 +50,10 @@ class ManageCustomersViewModel(application: Application) : AndroidViewModel(appl
     fun addCustomer(customer: Customer) {
         viewModelScope.launch {
             try {
+                if (!Rbac.canWriteCustomers(sessionManager.getRole())) {
+                    _uiState.value = UiState.Error("You don't have permission to add customers.")
+                    return@launch
+                }
                 _uiState.value = UiState.Loading
                 repository.addCustomer(customer)
                 _uiState.value = UiState.Success("Customer added successfully")
@@ -59,6 +66,10 @@ class ManageCustomersViewModel(application: Application) : AndroidViewModel(appl
     fun updateCustomer(customer: Customer) {
         viewModelScope.launch {
             try {
+                if (!Rbac.canWriteCustomers(sessionManager.getRole())) {
+                    _uiState.value = UiState.Error("You don't have permission to update customers.")
+                    return@launch
+                }
                 _uiState.value = UiState.Loading
                 repository.updateCustomer(customer)
                 _uiState.value = UiState.Success("Customer updated successfully")
@@ -71,8 +82,12 @@ class ManageCustomersViewModel(application: Application) : AndroidViewModel(appl
     fun deleteCustomer(customer: Customer) {
         viewModelScope.launch {
             try {
+                if (!Rbac.canWriteCustomers(sessionManager.getRole())) {
+                    _uiState.value = UiState.Error("You don't have permission to delete customers.")
+                    return@launch
+                }
                 _uiState.value = UiState.Loading
-                
+
                 // Check if customer has any orders
                 val customerOrders = orderRepository.getAllOrders().first()
                     .filter { it.customer_id == customer.customer_id }

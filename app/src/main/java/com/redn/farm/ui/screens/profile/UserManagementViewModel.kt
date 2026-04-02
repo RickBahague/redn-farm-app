@@ -7,6 +7,7 @@ import com.redn.farm.data.local.dao.UserDao
 import com.redn.farm.data.local.entity.UserEntity
 import com.redn.farm.data.local.security.PasswordManager
 import com.redn.farm.data.local.session.SessionManager
+import com.redn.farm.security.Rbac
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -44,10 +45,12 @@ class UserManagementViewModel @Inject constructor(
     }
 
     private suspend fun resolveAdmin(): Boolean {
-        if (sessionManager.isAdmin()) return true
+        if (Rbac.ROLES_USER_MANAGEMENT.contains(Rbac.normalizeRole(sessionManager.getRole()))) {
+            return true
+        }
         val username = sessionManager.getUsername() ?: return false
         val user = userDao.getUserByUsername(username) ?: return false
-        return user.role.equals("ADMIN", ignoreCase = true)
+        return Rbac.ROLES_USER_MANAGEMENT.contains(Rbac.normalizeRole(user.role))
     }
 
     fun consumeMessage() {
@@ -58,6 +61,10 @@ class UserManagementViewModel @Inject constructor(
 
     fun createUser(username: String, fullName: String, role: String, password: String) {
         viewModelScope.launch {
+            if (!Rbac.canManageUsers(sessionManager.getRole())) {
+                _message.value = "You don't have permission to create users."
+                return@launch
+            }
             val u = username.trim()
             if (u.isEmpty()) {
                 _message.value = "Username is required."
@@ -71,10 +78,7 @@ class UserManagementViewModel @Inject constructor(
                 _message.value = "Username already taken."
                 return@launch
             }
-            val normalizedRole = when (role.uppercase()) {
-                "ADMIN" -> "ADMIN"
-                else -> "USER"
-            }
+            val normalizedRole = Rbac.normalizeRoleForStorage(role)
             val hash = PasswordManager.hashPassword(password)
             val now = System.currentTimeMillis()
             userDao.insertUser(
@@ -94,6 +98,10 @@ class UserManagementViewModel @Inject constructor(
 
     fun setUserActive(user: UserEntity, active: Boolean) {
         viewModelScope.launch {
+            if (!Rbac.canManageUsers(sessionManager.getRole())) {
+                _message.value = "You don't have permission to change users."
+                return@launch
+            }
             if (!active) {
                 val self = sessionUsername()
                 if (self != null && user.username.equals(self, ignoreCase = true)) {
@@ -113,6 +121,10 @@ class UserManagementViewModel @Inject constructor(
 
     fun resetPassword(userId: Int, newPassword: String, confirmPassword: String) {
         viewModelScope.launch {
+            if (!Rbac.canManageUsers(sessionManager.getRole())) {
+                _message.value = "You don't have permission to reset passwords."
+                return@launch
+            }
             if (newPassword != confirmPassword) {
                 _message.value = "Passwords do not match."
                 return@launch

@@ -30,3 +30,9 @@ val BackgroundDark = Color(0xFF1B231C) // Very dark green-gray
 // Surface colors
 val SurfaceLight = Color(0xFFFFFFFF)
 val SurfaceDark = Color(0xFF252E26)
+
+// Destructive / Error (UI-10)
+val FarmError = Color(0xFFB71C1C) // Red 900
+val FarmErrorContainer = Color(0xFFFFDAD6) // Red 100-ish
+val FarmOnError = Color(0xFFFFFFFF)
+val FarmOnErrorContainer = Color(0xFF410002)

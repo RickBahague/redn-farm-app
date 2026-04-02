@@ -1,22 +1,40 @@
 package com.redn.farm.ui.screens.farmops
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.model.FarmOperation
 import com.redn.farm.data.model.FarmOperationType
 import com.redn.farm.data.repository.FarmOperationRepository
 import com.redn.farm.data.repository.ProductRepository
+import com.redn.farm.security.Rbac
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.*
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import javax.inject.Inject
 
 @HiltViewModel
 class FarmOperationsViewModel @Inject constructor(
+    @ApplicationContext appContext: Context,
     private val repository: FarmOperationRepository,
     private val productRepository: ProductRepository
 ) : ViewModel() {
+
+    private val sessionManager = SessionManager(appContext)
+
+    private val _userMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val userMessage: SharedFlow<String> = _userMessage.asSharedFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
@@ -68,18 +86,30 @@ class FarmOperationsViewModel @Inject constructor(
 
     fun addOperation(operation: FarmOperation) {
         viewModelScope.launch {
+            if (!Rbac.canWriteFarmOperations(sessionManager.getRole())) {
+                _userMessage.emit("You don't have permission to add farm operations.")
+                return@launch
+            }
             repository.addOperation(operation)
         }
     }
 
     fun updateOperation(operation: FarmOperation) {
         viewModelScope.launch {
+            if (!Rbac.canWriteFarmOperations(sessionManager.getRole())) {
+                _userMessage.emit("You don't have permission to update farm operations.")
+                return@launch
+            }
             repository.updateOperation(operation)
         }
     }
 
     fun deleteOperation(operation: FarmOperation) {
         viewModelScope.launch {
+            if (!Rbac.canWriteFarmOperations(sessionManager.getRole())) {
+                _userMessage.emit("You don't have permission to delete farm operations.")
+                return@launch
+            }
             repository.deleteOperation(operation)
         }
     }

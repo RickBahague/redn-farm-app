@@ -1,16 +1,19 @@
 package com.redn.farm.ui.screens.acquire
 
-import android.app.Application
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.redn.farm.data.model.Acquisition
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.AcquisitionLocation
 import com.redn.farm.data.repository.AcquisitionDraftPricingPreview
+import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.repository.AcquisitionRepository
 import com.redn.farm.data.repository.AcquisitionSaveOutcome
 import com.redn.farm.data.repository.ProductRepository
+import com.redn.farm.security.Rbac
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -28,9 +31,12 @@ import javax.inject.Inject
 
 @HiltViewModel
 class AcquireProduceViewModel @Inject constructor(
+    @ApplicationContext appContext: Context,
     private val acquisitionRepository: AcquisitionRepository,
     private val productRepository: ProductRepository
 ) : ViewModel() {
+
+    private val sessionManager = SessionManager(appContext)
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
@@ -87,6 +93,10 @@ class AcquireProduceViewModel @Inject constructor(
 
     fun addAcquisition(acquisition: Acquisition) {
         viewModelScope.launch {
+            if (!Rbac.canWriteAcquisitions(sessionManager.getRole())) {
+                _userMessage.emit("You don't have permission to add acquisitions.")
+                return@launch
+            }
             when (val o = acquisitionRepository.insertWithPricing(acquisition)) {
                 AcquisitionSaveOutcome.Success -> {}
                 is AcquisitionSaveOutcome.ValidationError -> _userMessage.emit(o.message)
@@ -97,6 +107,10 @@ class AcquireProduceViewModel @Inject constructor(
 
     fun updateAcquisition(acquisition: Acquisition) {
         viewModelScope.launch {
+            if (!Rbac.canWriteAcquisitions(sessionManager.getRole())) {
+                _userMessage.emit("You don't have permission to update acquisitions.")
+                return@launch
+            }
             when (val o = acquisitionRepository.updateWithPricing(acquisition)) {
                 AcquisitionSaveOutcome.Success -> {}
                 is AcquisitionSaveOutcome.ValidationError -> _userMessage.emit(o.message)
@@ -110,6 +124,10 @@ class AcquireProduceViewModel @Inject constructor(
 
     fun deleteAcquisition(acquisition: Acquisition) {
         viewModelScope.launch {
+            if (!Rbac.canWriteAcquisitions(sessionManager.getRole())) {
+                _userMessage.emit("You don't have permission to delete acquisitions.")
+                return@launch
+            }
             acquisitionRepository.deleteAcquisition(acquisition)
         }
     }

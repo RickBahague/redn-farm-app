@@ -3,16 +3,17 @@ package com.redn.farm.ui.screens.order
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
 import com.redn.farm.utils.CurrencyFormatter
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.CartItem
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,8 +48,15 @@ fun OrderItemCard(
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
-                IconButton(onClick = onRemove) {
-                    Icon(Icons.Default.Delete, "Remove item")
+                IconButton(
+                    onClick = onRemove,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        "Remove item",
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
@@ -75,20 +83,54 @@ fun OrderItemCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Quantity input
-                OutlinedTextField(
-                    value = orderItem.quantity.toString(),
-                    onValueChange = { 
-                        val newQty = it.toDoubleOrNull()
-                        if (newQty != null && newQty > 0) {
-                            onQuantityChange(newQty)
+                val step = if (orderItem.isPerKg) 0.25 else 1.0
+                val currentQty = orderItem.quantity
+                val minQty = if (orderItem.isPerKg) step else 1.0
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                val next = currentQty - step
+                                if (currentQty <= minQty || next <= 0.0) {
+                                    onRemove()
+                                } else {
+                                    onQuantityChange(next)
+                                }
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(Icons.Default.Remove, contentDescription = "Decrease quantity")
                         }
-                    },
-                    label = { Text("Quantity") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.width(120.dp),
-                    singleLine = true
-                )
+
+                        val qtyText = if (orderItem.isPerKg) {
+                            String.format(Locale.US, "%.2f", currentQty)
+                        } else {
+                            currentQty.toInt().toString()
+                        }
+
+                        Text(
+                            text = qtyText + " " + if (orderItem.isPerKg) "kg" else "pcs",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+
+                        IconButton(
+                            onClick = {
+                                val next = currentQty + step
+                                onQuantityChange(next)
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Increase quantity")
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.width(16.dp))
 

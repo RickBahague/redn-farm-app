@@ -2,6 +2,8 @@ package com.redn.farm.ui.screens.login
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -51,7 +53,9 @@ fun LoginScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .imePadding(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Sunflower Image Header
@@ -60,7 +64,7 @@ fun LoginScreen(
                 contentDescription = "Sunflower Header",
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp),
+                    .height(120.dp),
                 contentScale = ContentScale.Crop
             )
 

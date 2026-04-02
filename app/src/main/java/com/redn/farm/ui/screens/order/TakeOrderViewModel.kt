@@ -13,19 +13,25 @@ import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.data.pricing.defaultOrderChannel
 import com.redn.farm.data.repository.AcquisitionRepository
 import com.redn.farm.data.repository.CustomerRepository
+import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.repository.OrderRepository
 import com.redn.farm.data.repository.PricingPresetRepository
 import com.redn.farm.data.repository.ProductRepository
+import com.redn.farm.security.Rbac
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class TakeOrderViewModel(application: Application) : AndroidViewModel(application) {
+    private val sessionManager = SessionManager(application)
     private val database = FarmDatabase.getDatabase(application)
     private val customerRepository = CustomerRepository(database.customerDao())
     private val productRepository = ProductRepository(database.productDao(), database.productPriceDao())
@@ -47,6 +53,12 @@ class TakeOrderViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _cartItems = MutableStateFlow<List<CartItem>>(emptyList())
     val cartItems = _cartItems.asStateFlow()
+
+    private val _userMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val userMessage: SharedFlow<String> = _userMessage.asSharedFlow()
+
+    private val _orderPlaced = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val orderPlaced: SharedFlow<Unit> = _orderPlaced.asSharedFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
@@ -206,6 +218,10 @@ class TakeOrderViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun placeOrder() {
         viewModelScope.launch {
+            if (!Rbac.canWriteOrders(sessionManager.getRole())) {
+                _userMessage.emit("You don't have permission to place orders.")
+                return@launch
+            }
             val customer = _selectedCustomer.value ?: return@launch
             val items = _cartItems.value
             val order = Order(
@@ -229,6 +245,7 @@ class TakeOrderViewModel(application: Application) : AndroidViewModel(applicatio
             _cartItems.value = emptyList()
             _selectedCustomer.value = null
             _channel.value = SalesChannel.OFFLINE
+            _orderPlaced.emit(Unit)
         }
     }
 

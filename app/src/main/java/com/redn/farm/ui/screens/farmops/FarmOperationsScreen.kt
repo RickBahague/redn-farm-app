@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.FarmOperation
 import java.time.LocalDateTime
+import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,7 +34,13 @@ fun FarmOperationsScreen(
     val selectedType by viewModel.selectedType.collectAsState()
     val dateRange by viewModel.dateRange.collectAsState()
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) {
+        viewModel.userMessage.collectLatest { snackbarHostState.showSnackbar(it) }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Farm Operations") },
@@ -73,17 +80,55 @@ fun FarmOperationsScreen(
                 )
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(operations) { operation ->
-                    FarmOperationCard(
-                        operation = operation,
-                        onEditClick = { showEditDialog = operation },
-                        onDeleteClick = { showDeleteDialog = operation }
-                    )
+            val isFiltering = searchQuery.isNotBlank()
+            if (operations.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Agriculture,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Text(
+                            text = if (isFiltering) "No matching operations" else "No operations logged",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = if (isFiltering) "Try adjusting your filters." else "Log your first farm activity.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Button(
+                            onClick = { showAddDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Log operation")
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(operations) { operation ->
+                        FarmOperationCard(
+                            operation = operation,
+                            onEditClick = { showEditDialog = operation },
+                            onDeleteClick = { showDeleteDialog = operation }
+                        )
+                    }
                 }
             }
         }

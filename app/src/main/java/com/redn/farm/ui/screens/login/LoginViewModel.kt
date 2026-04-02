@@ -10,6 +10,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.redn.farm.data.local.FarmDatabase
 import com.redn.farm.data.local.security.PasswordManager
 import com.redn.farm.data.local.session.SessionManager
+import com.redn.farm.security.Rbac
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -73,7 +74,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (isPasswordValid) {
                     Log.d("LoginViewModel", "Login successful")
-                    sessionManager.createSession(username, user.role)
+                    sessionManager.createSession(username, Rbac.normalizeRoleForStorage(user.role))
                     _loginState.value = LoginState.Success
                 } else {
                     Log.d("LoginViewModel", "Password verification failed")

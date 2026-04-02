@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -54,6 +55,7 @@ fun ManageEmployeesScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
         ) {
             // Search TextField
             OutlinedTextField(
@@ -75,20 +77,58 @@ fun ManageEmployeesScreen(
                 singleLine = true
             )
 
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(employees) { employee ->
-                    EmployeeCard(
-                        employee = employee,
-                        dateFormatter = dateFormatter,
-                        onEditClick = { showEditDialog = employee },
-                        onDeleteClick = { showDeleteDialog = employee },
-                        onPaymentClick = { 
-                            onNavigateToPayments(employee.employee_id, employee.fullName)
+            val isFiltering = searchQuery.isNotBlank()
+            if (employees.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Text(
+                            text = if (isFiltering) "No matching employees" else "No employees yet",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = if (isFiltering) "Try adjusting your search." else "Add your first employee to start tracking payments.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Button(
+                            onClick = { showAddDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Add employee")
                         }
-                    )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(employees) { employee ->
+                        EmployeeCard(
+                            employee = employee,
+                            dateFormatter = dateFormatter,
+                            onEditClick = { showEditDialog = employee },
+                            onDeleteClick = { showDeleteDialog = employee },
+                            onPaymentClick = {
+                                onNavigateToPayments(employee.employee_id, employee.fullName)
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -132,6 +172,10 @@ fun ManageEmployeesScreen(
                         viewModel.deleteEmployee(employee)
                         showDeleteDialog = null
                     }
+                    ,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
                 ) {
                     Text("Delete")
                 }

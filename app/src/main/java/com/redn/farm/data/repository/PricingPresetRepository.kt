@@ -47,4 +47,16 @@ class PricingPresetRepository @Inject constructor(
 
     fun getActivationLog(): Flow<List<PresetActivationLogEntity>> =
         presetActivationLogDao.getAllLogs()
+
+    /**
+     * Removes a preset row. The active preset cannot be deleted; activate another first.
+     */
+    suspend fun deleteInactivePreset(presetId: String) {
+        val preset = pricingPresetDao.getById(presetId)
+            ?: throw IllegalArgumentException("Preset not found or was already removed.")
+        check(!preset.is_active) {
+            "Cannot delete the active pricing preset. Activate another preset first."
+        }
+        pricingPresetDao.deleteById(presetId)
+    }
 }

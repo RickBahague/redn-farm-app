@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.pricing.ChannelConfig
+import com.redn.farm.data.pricing.ChannelFee
 
 private val roundingOptions = listOf(
     "ceil_whole_peso" to "Ceil whole ₱",
@@ -330,6 +331,86 @@ private fun ChannelEditorBlock(
                     )
                 }
             }
+        }
+
+        if (config.fees.isNotEmpty()) {
+            Text("Channel fees", style = MaterialTheme.typography.labelMedium)
+        }
+        config.fees.forEachIndexed { i, fee ->
+            var feeTypeExpanded by remember { mutableStateOf(false) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = fee.label,
+                    onValueChange = { lbl ->
+                        val updated = config.fees.toMutableList()
+                            .also { it[i] = fee.copy(label = lbl) }
+                        onChange(config.copy(fees = updated))
+                    },
+                    label = { Text("Label") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+                ExposedDropdownMenuBox(
+                    expanded = feeTypeExpanded,
+                    onExpandedChange = { feeTypeExpanded = it },
+                    modifier = Modifier.weight(0.7f)
+                ) {
+                    OutlinedTextField(
+                        modifier = Modifier.menuAnchor(),
+                        readOnly = true,
+                        value = if (fee.type == "pct") "%" else "₱",
+                        onValueChange = {},
+                        label = { Text("Type") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = feeTypeExpanded) },
+                        singleLine = true
+                    )
+                    ExposedDropdownMenu(
+                        expanded = feeTypeExpanded,
+                        onDismissRequest = { feeTypeExpanded = false }
+                    ) {
+                        listOf("fixed" to "₱ Fixed", "pct" to "% Pct").forEach { (key, lbl) ->
+                            DropdownMenuItem(
+                                text = { Text(lbl) },
+                                onClick = {
+                                    val updated = config.fees.toMutableList()
+                                        .also { it[i] = fee.copy(type = key) }
+                                    onChange(config.copy(fees = updated))
+                                    feeTypeExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = if (fee.amount == 0.0) "" else fee.amount.toString(),
+                    onValueChange = { raw ->
+                        val updated = config.fees.toMutableList()
+                            .also { it[i] = fee.copy(amount = raw.toDoubleOrNull() ?: 0.0) }
+                        onChange(config.copy(fees = updated))
+                    },
+                    label = { Text("Amount") },
+                    modifier = Modifier.weight(0.8f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true
+                )
+                IconButton(onClick = {
+                    onChange(config.copy(fees = config.fees.filterIndexed { idx, _ -> idx != i }))
+                }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Remove fee")
+                }
+            }
+        }
+        OutlinedButton(
+            onClick = {
+                onChange(config.copy(fees = config.fees + ChannelFee("fee", "fixed", 0.0)))
+            }
+        ) {
+            Icon(Icons.Default.Add, contentDescription = null)
+            Text("Add channel fee", modifier = Modifier.padding(start = 4.dp))
         }
     }
 }

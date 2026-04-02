@@ -24,7 +24,7 @@ sealed class AcquisitionSaveOutcome {
 sealed class AcquisitionDraftPricingPreview {
     data object NoActivePreset : AcquisitionDraftPricingPreview()
     data class Invalid(val message: String) : AcquisitionDraftPricingPreview()
-    data class Ok(val output: SrpCalculator.Output) : AcquisitionDraftPricingPreview()
+    data class Ok(val presetName: String, val output: SrpCalculator.Output) : AcquisitionDraftPricingPreview()
 }
 
 @Singleton
@@ -69,7 +69,7 @@ class AcquisitionRepository @Inject constructor(
         val category = productDao.getProductById(acquisition.product_id)?.category
         return when (val run = runSrpForAcquisitionAndPreset(acquisition, preset, category)) {
             is SrpRun.Error -> AcquisitionDraftPricingPreview.Invalid(run.message)
-            is SrpRun.Ok -> AcquisitionDraftPricingPreview.Ok(run.output)
+            is SrpRun.Ok -> AcquisitionDraftPricingPreview.Ok(presetName = preset.preset_name, output = run.output)
         }
     }
 

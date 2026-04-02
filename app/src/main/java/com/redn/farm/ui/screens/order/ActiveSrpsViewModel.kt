@@ -15,6 +15,7 @@ import com.redn.farm.data.repository.PricingPresetRepository
 import com.redn.farm.data.repository.ProductRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 data class ProductActiveSrpRow(
@@ -26,9 +27,13 @@ data class ProductActiveSrpRow(
 class ActiveSrpsViewModel(application: Application) : AndroidViewModel(application) {
     private val database = FarmDatabase.getDatabase(application)
     private val productRepository = ProductRepository(database.productDao(), database.productPriceDao())
+    private val pricingPresetRepository = PricingPresetRepository(
+        database.pricingPresetDao(),
+        database.presetActivationLogDao()
+    )
     private val acquisitionRepository = AcquisitionRepository(
         database.acquisitionDao(),
-        PricingPresetRepository(database.pricingPresetDao(), database.presetActivationLogDao()),
+        pricingPresetRepository,
         database.productDao()
     )
 
@@ -53,6 +58,28 @@ class ActiveSrpsViewModel(application: Application) : AndroidViewModel(applicati
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
+    )
+
+    val activePresetName = pricingPresetRepository
+        .getActivePreset()
+        .map { it?.preset_name }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
+
+    val activePresetActivatedAt = combine(
+        pricingPresetRepository.getActivePreset(),
+        pricingPresetRepository.getActivationLog()
+    ) { preset, logs ->
+        preset?.let { p ->
+            logs.firstOrNull { it.preset_id_activated == p.preset_id }?.activated_at
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = null
     )
 
     companion object {

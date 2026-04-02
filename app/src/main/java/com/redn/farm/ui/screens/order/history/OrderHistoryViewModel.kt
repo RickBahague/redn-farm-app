@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.redn.farm.data.local.FarmDatabase
+import com.redn.farm.data.local.session.SessionManager
+import com.redn.farm.security.Rbac
 import com.redn.farm.data.model.Acquisition
 import com.redn.farm.data.model.Customer
 import com.redn.farm.data.model.Order
@@ -35,6 +37,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 
 class OrderHistoryViewModel(application: Application) : AndroidViewModel(application) {
+    private val sessionManager = SessionManager(application)
     private val database = FarmDatabase.getDatabase(application)
     private val customerRepository = CustomerRepository(database.customerDao())
     private val orderRepository = OrderRepository(database.orderDao())
@@ -162,6 +165,7 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
 
     fun updatePaymentStatus(orderId: Int, isPaid: Boolean) {
         viewModelScope.launch {
+            if (!Rbac.canWriteOrders(sessionManager.getRole())) return@launch
             val currentOrder = orderRepository.getOrderById(orderId).first()
             currentOrder?.let {
                 val updatedOrder = it.copy(
@@ -176,6 +180,7 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
 
     fun deleteOrder(orderId: Int) {
         viewModelScope.launch {
+            if (!Rbac.canWriteOrders(sessionManager.getRole())) return@launch
             orderRepository.deleteOrder(orderId)
         }
     }
@@ -189,11 +194,13 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
     }
 
     suspend fun updateOrder(order: Order, items: List<OrderItem>) {
+        if (!Rbac.canWriteOrders(sessionManager.getRole())) return
         orderRepository.updateOrder(order, items)
     }
 
     fun saveOrder(order: Order, items: List<OrderItem>, onComplete: () -> Unit) {
         viewModelScope.launch {
+            if (!Rbac.canWriteOrders(sessionManager.getRole())) return@launch
             updateOrder(order, items)
             onComplete()
         }
@@ -222,6 +229,7 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
 
     fun updateOrderDate(orderId: Int, newDate: LocalDateTime) {
         viewModelScope.launch {
+            if (!Rbac.canWriteOrders(sessionManager.getRole())) return@launch
             val currentOrder = orderRepository.getOrderById(orderId).first()
             currentOrder?.let {
                 val updatedOrder = it.copy(
@@ -235,6 +243,7 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
 
     fun updateOrderDeliveryStatus(orderId: Int, isDelivered: Boolean) {
         viewModelScope.launch {
+            if (!Rbac.canWriteOrders(sessionManager.getRole())) return@launch
             val currentOrder = orderRepository.getOrderById(orderId).first()
             currentOrder?.let {
                 val updatedOrder = it.copy(

@@ -76,7 +76,15 @@ fun PaymentCard(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "Signature: ${payment.signature}",
+                        text = "Signature: ${
+                            if (payment.signature.isNotBlank() &&
+                                (payment.signature.contains("/") || payment.signature.contains("+") || payment.signature.contains("="))
+                            ) {
+                                "Captured (image)"
+                            } else {
+                                payment.signature
+                            }
+                        }",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     payment.received_date?.let {

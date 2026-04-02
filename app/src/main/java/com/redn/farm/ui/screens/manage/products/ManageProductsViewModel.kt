@@ -1,33 +1,30 @@
 package com.redn.farm.ui.screens.manage.products
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import android.content.Context
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import com.redn.farm.data.local.DatabaseInitializer
-import com.redn.farm.data.local.FarmDatabase
+import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.ProductPrice
+import com.redn.farm.data.model.ProductFilters
 import com.redn.farm.data.repository.ProductRepository
-import kotlinx.coroutines.delay
+import com.redn.farm.security.Rbac
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
+import javax.inject.Inject
 
-class ManageProductsViewModel(application: Application) : AndroidViewModel(application) {
-    private val databaseInitializer = DatabaseInitializer(application)
-    private val repository = ProductRepository(
-        FarmDatabase.getDatabase(application).productDao(),
-        FarmDatabase.getDatabase(application).productPriceDao()
+@HiltViewModel
+class ManageProductsViewModel @Inject constructor(
+    @ApplicationContext appContext: Context,
+    private val repository: ProductRepository
+) : ViewModel() {
+
+    private val sessionManager = SessionManager(appContext)
+    private val _canMutateProducts = MutableStateFlow(
+        Rbac.canMutateProducts(sessionManager.getRole())
     )
-
-    private val _isReinitializing = MutableStateFlow(false)
-    val isReinitializing = _isReinitializing.asStateFlow()
-
-    private val _error = MutableStateFlow<String?>(null)
-    val error = _error.asStateFlow()
+    val canMutateProducts: StateFlow<Boolean> = _canMutateProducts.asStateFlow()
 
     val products = repository.getAllProducts()
         .stateIn(
@@ -43,50 +40,31 @@ class ManageProductsViewModel(application: Application) : AndroidViewModel(appli
             initialValue = emptyList()
         )
 
-    fun reinitializeDatabase() {
-        viewModelScope.launch {
-            try {
-                _isReinitializing.value = true
-                _error.value = null
-                
-                // Reinitialize database
-                databaseInitializer.reinitializeDatabase()
-                
-                // Add a small delay to ensure database is ready
-                delay(500)
-                
-            } catch (e: Exception) {
-                _error.value = e.message
-            } finally {
-                _isReinitializing.value = false
-            }
-        }
+    suspend fun updateProduct(product: Product) {
+        if (!Rbac.canMutateProducts(sessionManager.getRole())) return
+        repository.updateProduct(product)
     }
 
-    fun updateProduct(product: Product) {
-        viewModelScope.launch {
-            repository.updateProduct(product)
-        }
+    suspend fun updateProductPrice(productPrice: ProductPrice) {
+        if (!Rbac.canMutateProducts(sessionManager.getRole())) return
+        repository.updateProductPrice(productPrice)
     }
 
-    fun updateProductPrice(productPrice: ProductPrice) {
-        viewModelScope.launch {
-            repository.updateProductPrice(productPrice)
-        }
+    suspend fun deleteProduct(productId: String) {
+        if (!Rbac.canMutateProducts(sessionManager.getRole())) return
+        repository.deleteProduct(productId)
     }
 
-    fun deleteProduct(productId: String) {
-        viewModelScope.launch {
-            repository.deleteProduct(productId)
-        }
+    suspend fun insertProduct(product: Product) {
+        if (!Rbac.canMutateProducts(sessionManager.getRole())) return
+        repository.insertProduct(product)
     }
 
-    companion object {
-        val Factory: ViewModelProvider.Factory = viewModelFactory {
-            initializer {
-                val application = (this[APPLICATION_KEY] as Application)
-                ManageProductsViewModel(application)
-            }
-        }
+    suspend fun insertProductPrice(productPrice: ProductPrice) {
+        if (!Rbac.canMutateProducts(sessionManager.getRole())) return
+        repository.insertProductPrice(productPrice)
     }
-} 
+
+    fun getFilteredProductsFlow(filters: ProductFilters): Flow<List<Product>> =
+        repository.getFilteredProducts(filters)
+}

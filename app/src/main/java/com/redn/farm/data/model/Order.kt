@@ -24,4 +24,8 @@ data class OrderItem(
     val price_per_unit: Double,
     val is_per_kg: Boolean,
     val total_price: Double
-) 
+)
+
+/** Paid and delivered: order is treated as complete; line items and channel are locked until a flag is cleared. */
+val Order.isOrderFinalized: Boolean
+    get() = is_paid && is_delivered 

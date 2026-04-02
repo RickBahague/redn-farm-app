@@ -23,6 +23,7 @@ import java.util.*
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,7 +54,13 @@ fun RemittanceScreen(
     // Calculate total remittances
     val totalRemittances = filteredRemittances.sumOf { it.amount }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) {
+        viewModel.userMessage.collectLatest { snackbarHostState.showSnackbar(it) }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Remittances") },
@@ -74,6 +81,7 @@ fun RemittanceScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
         ) {
             // Summary Card
             Card(
