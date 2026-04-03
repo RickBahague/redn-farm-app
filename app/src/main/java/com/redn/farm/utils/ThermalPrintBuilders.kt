@@ -10,9 +10,9 @@ import com.redn.farm.data.model.Remittance
 import com.redn.farm.data.model.lifetimeOutstandingAdvance
 import com.redn.farm.data.model.netPayAmount
 import com.redn.farm.data.model.periodTotals
+import com.redn.farm.data.pricing.PricingChannelEngine
 import com.redn.farm.data.pricing.SalesChannel
 import java.time.Instant
-import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -37,17 +37,17 @@ fun centerThermalLine(text: String, width: Int = THERMAL_LINE_WIDTH): String {
     return " ".repeat(pad) + t
 }
 
-private val isoDate: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+private val isoDate: DateTimeFormatter =
+    DateTimeFormatter.ISO_LOCAL_DATE.withZone(ZoneId.systemDefault())
 private val detailDateTime: DateTimeFormatter =
     DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm", Locale.getDefault())
+        .withZone(ZoneId.systemDefault())
 
 fun formatOrderDetailDate(millis: Long): String =
-    LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault())
-        .format(detailDateTime)
+    detailDateTime.format(Instant.ofEpochMilli(millis))
 
 fun formatThermalDate(millis: Long): String =
-    LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault())
-        .format(isoDate)
+    isoDate.format(Instant.ofEpochMilli(millis))
 
 /** CUR-01 / PRN-07 — same body as historical OrderDetail receipt. */
 fun buildOrderReceiptText(order: Order, items: List<OrderItem>): String = buildString {
@@ -60,8 +60,9 @@ fun buildOrderReceiptText(order: Order, items: List<OrderItem>): String = buildS
     appendLine(thermalDividerLight())
     items.forEach { item ->
         appendLine(formatThermalLine(item.product_name, CurrencyFormatter.format(item.total_price)))
+        val unitSuffix = if (item.is_per_kg) "/kg" else "/pc"
         appendLine(
-            "   ${item.quantity}${if (item.is_per_kg) "kg" else "pc"} x ${CurrencyFormatter.format(item.price_per_unit)}"
+            "   ${item.quantity}${if (item.is_per_kg) "kg" else "pc"} x ${CurrencyFormatter.format(item.price_per_unit)}$unitSuffix"
         )
     }
     appendLine(thermalDividerLight())
@@ -127,24 +128,18 @@ fun buildAcquisitionReceivingSlip(
     appendLine(thermalDividerLight())
     if (acquisition.preset_ref != null) {
         appendLine(formatThermalLine("Preset   :", (presetDisplayName ?: acquisition.preset_ref.orEmpty()).take(18)))
-        appendLine(
-            formatThermalLine(
-                "SRP Online :",
-                acquisition.srp_online_per_kg?.let { "${CurrencyFormatter.format(it)}/kg" } ?: "—"
-            )
-        )
-        appendLine(
-            formatThermalLine(
-                "SRP Reseller:",
-                acquisition.srp_reseller_per_kg?.let { "${CurrencyFormatter.format(it)}/kg" } ?: "—"
-            )
-        )
-        appendLine(
-            formatThermalLine(
-                "SRP Offline:",
-                acquisition.srp_offline_per_kg?.let { "${CurrencyFormatter.format(it)}/kg" } ?: "—"
-            )
-        )
+        if (acquisition.is_per_kg) {
+            appendLine(formatThermalLine("SRP Online :", acquisition.srp_online_per_kg?.let { "${CurrencyFormatter.format(it)}/kg" } ?: "—"))
+            appendLine(formatThermalLine("SRP Reseller:", acquisition.srp_reseller_per_kg?.let { "${CurrencyFormatter.format(it)}/kg" } ?: "—"))
+            appendLine(formatThermalLine("SRP Offline:", acquisition.srp_offline_per_kg?.let { "${CurrencyFormatter.format(it)}/kg" } ?: "—"))
+        } else {
+            val pc = acquisition.piece_count?.takeIf { it > 0 }
+            fun piecePrice(stored: Double?, perKg: Double?) =
+                stored ?: if (pc != null && perKg != null) PricingChannelEngine.perPieceSrp(perKg, pc) else null
+            appendLine(formatThermalLine("SRP Online :", piecePrice(acquisition.srp_online_per_piece, acquisition.srp_online_per_kg)?.let { "${CurrencyFormatter.format(it)}/pc" } ?: "—"))
+            appendLine(formatThermalLine("SRP Reseller:", piecePrice(acquisition.srp_reseller_per_piece, acquisition.srp_reseller_per_kg)?.let { "${CurrencyFormatter.format(it)}/pc" } ?: "—"))
+            appendLine(formatThermalLine("SRP Offline:", piecePrice(acquisition.srp_offline_per_piece, acquisition.srp_offline_per_kg)?.let { "${CurrencyFormatter.format(it)}/pc" } ?: "—"))
+        }
     }
     appendLine(thermalDividerHeavy())
     appendLine("Received by: ___________________")
@@ -163,6 +158,7 @@ const val ACQUISITION_BATCH_REPORT_MAX_CHARS = 16_000
 
 private val batchPrintedAtFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.getDefault())
+        .withZone(ZoneId.systemDefault())
 
 /**
  * PRN-08 — filtered acquisition batch report (same rows as `AcquireProduceScreen` list).
@@ -172,14 +168,10 @@ fun buildAcquisitionBatchReport(
     acquisitions: List<Acquisition>,
     searchQuery: String,
     locationFilter: AcquisitionLocation?,
-    dateRange: Pair<LocalDateTime?, LocalDateTime?>,
+    dateRange: Pair<Long?, Long?>,
     printedAtMillis: Long = System.currentTimeMillis(),
 ): String? {
     if (acquisitions.isEmpty()) return null
-    val printedAt = LocalDateTime.ofInstant(
-        Instant.ofEpochMilli(printedAtMillis),
-        ZoneId.systemDefault(),
-    )
     val n = acquisitions.size
     val grandTotal = acquisitions.sumOf { it.total_amount }
 
@@ -195,7 +187,7 @@ fun buildAcquisitionBatchReport(
         appendLine(centerThermalLine("REDN GREENS FRESH"))
         appendLine(centerThermalLine("ACQUISITION REPORT"))
         appendLine(thermalDividerHeavy())
-        appendLine(formatThermalLine("Printed :", printedAt.format(batchPrintedAtFormatter)))
+        appendLine(formatThermalLine("Printed :", batchPrintedAtFormatter.format(Instant.ofEpochMilli(printedAtMillis))))
         appendLine("Filter  :")
         wrapThermalWords(filterSummary, THERMAL_LINE_WIDTH - 2).forEach { line ->
             appendLine("> ${line.take(THERMAL_LINE_WIDTH - 2)}".take(THERMAL_LINE_WIDTH))
@@ -232,14 +224,14 @@ fun buildAcquisitionBatchReport(
     return if (body.length > ACQUISITION_BATCH_REPORT_MAX_CHARS) null else body
 }
 
-private fun formatAcquisitionBatchDateRange(range: Pair<LocalDateTime?, LocalDateTime?>): String {
+private fun formatAcquisitionBatchDateRange(range: Pair<Long?, Long?>): String {
     val (start, end) = range
     return when {
         start == null && end == null -> "All dates"
         start != null && end != null ->
-            "${start.toLocalDate().format(isoDate)} – ${end.toLocalDate().format(isoDate)}"
-        start != null -> "From ${start.toLocalDate().format(isoDate)}"
-        else -> "Until ${end!!.toLocalDate().format(isoDate)}"
+            "${isoDate.format(Instant.ofEpochMilli(start))} – ${isoDate.format(Instant.ofEpochMilli(end))}"
+        start != null -> "From ${isoDate.format(Instant.ofEpochMilli(start))}"
+        else -> "Until ${isoDate.format(Instant.ofEpochMilli(end!!))}"
     }
 }
 
@@ -316,6 +308,8 @@ data class ThermalSrpPrintRow(
     val perKg: Double?,
     val per500g: Double?,
     val perPiece: Double?,
+    /** When false, customer price is **per piece** only (CLARIF-01 / BUG-ACQ-08). */
+    val isPerKg: Boolean = true,
 )
 
 fun buildSrpPriceList(
@@ -336,18 +330,35 @@ fun buildSrpPriceList(
         )
     )
     appendLine(thermalDividerLight())
-    appendLine(formatThermalLine("Product", "/kg    /500g"))
+    val hasKg = rows.any { it.isPerKg }
+    val hasPc = rows.any { !it.isPerKg }
+    val headerRight = when {
+        hasKg && hasPc -> "/kg /500g *"
+        hasPc -> "/pc"
+        else -> "/kg    /500g"
+    }
+    appendLine(formatThermalLine("Product", headerRight))
     appendLine(thermalDividerLight())
     rows.forEach { r ->
-        val name = r.name.take(16)
-        val kg = r.perKg?.let { "%.2f".format(it) } ?: "—"
-        val h = r.per500g?.let { "%.2f".format(it) } ?: "—"
-        appendLine(formatThermalLine(name, "$kg   $h"))
-        if (r.perPiece != null) {
-            appendLine(formatThermalLine("  /pc", CurrencyFormatter.format(r.perPiece)))
+        if (r.isPerKg) {
+            val name = r.name.take(16)
+            val kg = r.perKg?.let { "%.2f".format(it) } ?: "—"
+            val h = r.per500g?.let { "%.2f".format(it) } ?: "—"
+            appendLine(formatThermalLine(name, "$kg   $h"))
+            if (r.perPiece != null) {
+                appendLine(formatThermalLine("  /pc", CurrencyFormatter.format(r.perPiece)))
+            }
+        } else {
+            val name = r.name.take(16)
+            val pc = r.perPiece?.let { CurrencyFormatter.format(it) } ?: "—"
+            appendLine(formatThermalLine(name, "$pc /pc"))
         }
     }
     appendLine(thermalDividerLight())
+    if (hasKg && hasPc) {
+        appendLine("* Mixed list: /pc = per-piece items")
+        appendLine(thermalDividerLight())
+    }
     appendLine("* All prices in PHP")
     appendLine(thermalDividerHeavy())
 }
@@ -357,7 +368,7 @@ fun buildFarmOperationLog(operation: FarmOperation): String = buildString {
     appendLine(centerThermalLine("REDN GREENS FRESH"))
     appendLine(centerThermalLine("FARM OPERATION LOG"))
     appendLine(thermalDividerHeavy())
-    appendLine(formatThermalLine("Date     :", operation.operation_date.toLocalDate().format(isoDate)))
+    appendLine(formatThermalLine("Date     :", formatThermalDate(operation.operation_date)))
     appendLine(formatThermalLine("Type     :", operation.operation_type.name))
     appendLine(formatThermalLine("Product  :", operation.product_name.ifBlank { "—" }.take(20)))
     appendLine(formatThermalLine("Area     :", operation.area.ifBlank { "—" }.take(20)))

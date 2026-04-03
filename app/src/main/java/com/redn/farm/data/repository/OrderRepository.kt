@@ -7,10 +7,11 @@ import com.redn.farm.data.model.Order
 import com.redn.farm.data.model.OrderItem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import java.time.LocalDateTime
-import java.time.ZoneId
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class OrderRepository(private val orderDao: OrderDao) {
+@Singleton
+class OrderRepository @Inject constructor(private val orderDao: OrderDao) {
     fun getAllOrders(): Flow<List<Order>> {
         return orderDao.getAllOrders().map { orders ->
             orders.map { orderWithDetails ->

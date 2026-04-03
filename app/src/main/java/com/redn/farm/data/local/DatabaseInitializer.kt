@@ -17,12 +17,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeParseException
 
 class DatabaseInitializer(private val context: Context) {
     private val gson: Gson = GsonBuilder()
-        .create()  // Remove date format since we'll handle it manually
+        .create()
     private val applicationScope = CoroutineScope(SupervisorJob())
+    private val zone: ZoneId = ZoneId.systemDefault()
 
     private data class SeedProducts(val products: List<SeedProduct>)
     private data class SeedProduct(
@@ -44,13 +46,25 @@ class DatabaseInitializer(private val context: Context) {
     private fun readAssetText(path: String): String =
         context.assets.open(path).bufferedReader().use { it.readText() }
 
+    private fun parseSeedLocalDateToMillis(dateText: String): Long =
+        try {
+            LocalDate.parse(dateText).atStartOfDay(zone).toInstant().toEpochMilli()
+        } catch (_: DateTimeParseException) {
+            System.currentTimeMillis()
+        }
+
+    private fun parseSeedDateTimeToMillis(dateText: String, fallback: Long): Long =
+        runCatching {
+            LocalDateTime.parse(dateText).atZone(zone).toInstant().toEpochMilli()
+        }.recoverCatching {
+            LocalDate.parse(dateText).atStartOfDay(zone).toInstant().toEpochMilli()
+        }.getOrDefault(fallback)
+
     val callback = object : RoomDatabase.Callback() {
         override fun onCreate(db: SupportSQLiteDatabase) {
             super.onCreate(db)
             Log.d("DatabaseInitializer", "Database creation started")
 
-            // Note: Room creates tables from Entities. We intentionally avoid executing any manual
-            // CREATE TABLE statements here to prevent divergence from the actual schema.
             applicationScope.launch(Dispatchers.IO) {
                 try {
                     populateDatabase()
@@ -66,7 +80,6 @@ class DatabaseInitializer(private val context: Context) {
         val database = FarmDatabase.getDatabase(context)
 
         try {
-            // Populate products from assets.
             val seedProducts = gson.fromJson(
                 readAssetText("data/products.json"),
                 SeedProducts::class.java
@@ -77,7 +90,7 @@ class DatabaseInitializer(private val context: Context) {
                         product_id = p.product_id,
                         product_name = p.product_name,
                         product_description = p.description(),
-                        unit_type = "kg", // seed data does not carry unit_type yet; default to kg
+                        unit_type = "kg",
                         category = null,
                         default_piece_count = null,
                         is_active = true
@@ -85,17 +98,12 @@ class DatabaseInitializer(private val context: Context) {
                 )
             }
 
-            // Populate product fallback prices from assets.
             val seedPrices = gson.fromJson(
                 readAssetText("data/product_prices.json"),
                 SeedProductPrices::class.java
             )
             seedPrices.product_prices.forEach { price ->
-                val createdAt = try {
-                    LocalDate.parse(price.valid_date).atStartOfDay()
-                } catch (_: DateTimeParseException) {
-                    LocalDateTime.now()
-                }
+                val createdAtMillis = parseSeedLocalDateToMillis(price.valid_date)
                 database.productPriceDao().insert(
                     ProductPriceEntity(
                         product_id = price.product_id,
@@ -103,12 +111,11 @@ class DatabaseInitializer(private val context: Context) {
                         per_piece_price = price.per_piece_price,
                         discounted_per_kg_price = null,
                         discounted_per_piece_price = null,
-                        date_created = createdAt
+                        date_created = createdAtMillis
                     )
                 )
             }
 
-            // Populate customers from assets.
             val seedCustomers = gson.fromJson(
                 readAssetText("data/customers.json"),
                 CustomerList::class.java
@@ -116,8 +123,9 @@ class DatabaseInitializer(private val context: Context) {
             seedCustomers.customers.forEach { c ->
                 val ct = runCatching { CustomerType.valueOf(c.customer_type.uppercase()) }
                     .getOrDefault(CustomerType.RETAIL)
-                val createdAt = runCatching { LocalDateTime.parse(c.date_created) }.getOrDefault(LocalDateTime.now())
-                val updatedAt = runCatching { LocalDateTime.parse(c.date_updated) }.getOrDefault(createdAt)
+                val now = System.currentTimeMillis()
+                val createdAt = parseSeedDateTimeToMillis(c.date_created, now)
+                val updatedAt = parseSeedDateTimeToMillis(c.date_updated, createdAt)
                 database.customerDao().insertCustomer(
                     CustomerEntity(
                         firstname = c.firstname,
@@ -139,4 +147,4 @@ class DatabaseInitializer(private val context: Context) {
             throw e
         }
     }
-} 
+}

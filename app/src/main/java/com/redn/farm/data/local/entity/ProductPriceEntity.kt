@@ -3,7 +3,6 @@ package com.redn.farm.data.local.entity
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
-import java.time.LocalDateTime
 
 @Entity(
     tableName = "product_prices",
@@ -24,5 +23,5 @@ data class ProductPriceEntity(
     val per_piece_price: Double?,
     val discounted_per_kg_price: Double? = null,
     val discounted_per_piece_price: Double? = null,
-    val date_created: LocalDateTime = LocalDateTime.now()
-) 
+    val date_created: Long = System.currentTimeMillis()
+)

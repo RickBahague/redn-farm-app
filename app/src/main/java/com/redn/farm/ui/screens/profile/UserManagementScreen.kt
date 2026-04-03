@@ -240,15 +240,25 @@ private fun CreateUserDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Role", style = MaterialTheme.typography.labelLarge)
-                    roleOptions.forEach { (value, label) ->
-                        FilterChip(
-                            selected = selectedRole == value,
-                            onClick = { selectedRole = value },
-                            label = { Text(label) },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    roleOptions.chunked(2).forEach { pair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            pair.forEach { (value, label) ->
+                                FilterChip(
+                                    selected = selectedRole == value,
+                                    onClick = { selectedRole = value },
+                                    label = { Text(label, maxLines = 2) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            if (pair.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
                     }
                 }
             }

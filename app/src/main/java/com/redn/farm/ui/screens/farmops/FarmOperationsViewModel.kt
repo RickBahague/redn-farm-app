@@ -20,8 +20,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import com.redn.farm.utils.MillisDateRange
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
 import javax.inject.Inject
 
 @HiltViewModel
@@ -42,7 +42,7 @@ class FarmOperationsViewModel @Inject constructor(
     private val _selectedType = MutableStateFlow<FarmOperationType?>(null)
     val selectedType = _selectedType.asStateFlow()
 
-    private val _dateRange = MutableStateFlow<Pair<LocalDateTime?, LocalDateTime?>>(null to null)
+    private val _dateRange = MutableStateFlow<Pair<Long?, Long?>>(null to null)
     val dateRange = _dateRange.asStateFlow()
 
     val operations = combine(
@@ -55,7 +55,7 @@ class FarmOperationsViewModel @Inject constructor(
             val matchesSearch = operation.details.contains(query, ignoreCase = true) ||
                               operation.personnel.contains(query, ignoreCase = true)
             val matchesType = type == null || operation.operation_type == type
-            val matchesDateRange = isWithinDateRange(operation.operation_date, dateRange)
+            val matchesDateRange = MillisDateRange.contains(operation.operation_date, dateRange)
             
             matchesSearch && matchesType && matchesDateRange
         }
@@ -80,7 +80,7 @@ class FarmOperationsViewModel @Inject constructor(
         _selectedType.value = type
     }
 
-    fun updateDateRange(range: Pair<LocalDateTime?, LocalDateTime?>) {
+    fun updateDateRange(range: Pair<Long?, Long?>) {
         _dateRange.value = range
     }
 
@@ -114,16 +114,4 @@ class FarmOperationsViewModel @Inject constructor(
         }
     }
 
-    private fun isWithinDateRange(
-        date: LocalDateTime,
-        range: Pair<LocalDateTime?, LocalDateTime?>
-    ): Boolean {
-        val (start, end) = range
-        return when {
-            start == null && end == null -> true
-            start == null -> date.isBefore(end!!.plusDays(1))
-            end == null -> date.isAfter(start.minusDays(1))
-            else -> date.isAfter(start.minusDays(1)) && date.isBefore(end.plusDays(1))
-        }
-    }
 } 

@@ -1,26 +1,20 @@
 package com.redn.farm.ui.screens.database
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.redn.farm.data.export.CsvExportService
+import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DatabaseMigrationScreen(
     onDatabaseReady: () -> Unit,
-    viewModel: DatabaseMigrationViewModel = viewModel(factory = DatabaseMigrationViewModel.Factory)
+    viewModel: DatabaseMigrationViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     
     var showExistingDatabaseDialog by remember { mutableStateOf(false) }
@@ -102,22 +96,7 @@ fun DatabaseMigrationScreen(
                         showExportProgressDialog = true
                         scope.launch {
                             try {
-                                val exportService = CsvExportService(context)
-                                
-                                // Export all tables
-                                viewModel.getAllData()?.let { data ->
-                                    exportService.exportProducts(data.products)
-                                    exportService.exportProductPrices(data.productPrices)
-                                    exportService.exportCustomers(data.customers)
-                                    exportService.exportOrders(data.orders)
-                                    exportService.exportOrderItems(data.orderItems)
-                                    exportService.exportEmployees(data.employees)
-                                    exportService.exportEmployeePayments(data.employeePayments)
-                                    exportService.exportFarmOperations(data.farmOperations)
-                                    exportService.exportAcquisitions(data.acquisitions)
-                                    exportService.exportRemittances(data.remittances)
-                                }
-                                
+                                viewModel.exportAllDataBeforeMigration()
                                 showExportProgressDialog = false
                                 showExportSuccessDialog = true
                             } catch (e: Exception) {

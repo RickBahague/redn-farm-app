@@ -8,13 +8,16 @@ data class Acquisition(
     val price_per_unit: Double,
     val total_amount: Double,
     val is_per_kg: Boolean,
-    val piece_count: Int? = null,
+    /** Pieces per kg (may be fractional when per-piece acquisition uses non-integer sizing). */
+    val piece_count: Double? = null,
     val date_acquired: Long,
     /** DB insert time; preserved on update. Use `0` for new rows (repository assigns [System.currentTimeMillis]). */
     val created_at: Long = 0L,
     val location: AcquisitionLocation,
     val preset_ref: String? = null,
     val spoilage_rate: Double? = null,
+    /** BUG-PRC-04: per-kg only — absolute unsellable kg for this lot; null = use preset spoilage rate. */
+    val spoilage_kg: Double? = null,
     val additional_cost_per_kg: Double? = null,
     val hauling_weight_kg: Double? = null,
     val hauling_fees_json: String? = null,
@@ -33,7 +36,9 @@ data class Acquisition(
     val srp_offline_100g: Double? = null,
     val srp_online_per_piece: Double? = null,
     val srp_reseller_per_piece: Double? = null,
-    val srp_offline_per_piece: Double? = null
+    val srp_offline_per_piece: Double? = null,
+    /** MGT-US-07: final SRPs were entered per sales channel instead of pure preset formula output. */
+    val srp_custom_override: Boolean = false,
 )
 
 enum class AcquisitionLocation {

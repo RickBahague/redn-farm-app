@@ -19,9 +19,24 @@ object OrderPricingResolver {
             }
         } else {
             when (ch) {
-                SalesChannel.ONLINE -> acq.srp_online_per_piece
-                SalesChannel.RESELLER -> acq.srp_reseller_per_piece
-                else -> acq.srp_offline_per_piece
+                SalesChannel.ONLINE ->
+                    acq.srp_online_per_piece ?: acq.srp_online_per_kg?.let { perKg ->
+                        acq.piece_count?.takeIf { it > 0 }?.let { pc ->
+                            PricingChannelEngine.perPieceSrp(perKg, pc)
+                        }
+                    }
+                SalesChannel.RESELLER ->
+                    acq.srp_reseller_per_piece ?: acq.srp_reseller_per_kg?.let { perKg ->
+                        acq.piece_count?.takeIf { it > 0 }?.let { pc ->
+                            PricingChannelEngine.perPieceSrp(perKg, pc)
+                        }
+                    }
+                else ->
+                    acq.srp_offline_per_piece ?: acq.srp_offline_per_kg?.let { perKg ->
+                        acq.piece_count?.takeIf { it > 0 }?.let { pc ->
+                            PricingChannelEngine.perPieceSrp(perKg, pc)
+                        }
+                    }
             }
         }
     }

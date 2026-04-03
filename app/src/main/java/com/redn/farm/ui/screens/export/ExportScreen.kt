@@ -27,14 +27,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExportScreen(
     modifier: Modifier = Modifier,
-    viewModel: ExportViewModel = viewModel(factory = ExportViewModel.Factory),
+    viewModel: ExportViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit = {}
 ) {
     val exportState by viewModel.exportState.collectAsState()
@@ -478,12 +478,16 @@ fun ExportScreen(
                                     )
                                 }
                             }
+                            val n = bundleSelection.size
                             Button(
                                 onClick = { viewModel.exportSelectedBundle(bundleSelection) },
-                                enabled = bundleSelection.isNotEmpty(),
+                                enabled = n > 0,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Export selected tables")
+                                Text(
+                                    if (n == 0) "Export selected tables"
+                                    else "Export $n table${if (n == 1) "" else "s"}"
+                                )
                             }
                         }
                     }

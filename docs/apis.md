@@ -224,6 +224,10 @@ Upload orders and their line items together.
 ### POST /sync/acquisitions
 Upload acquisition records including all SRP columns and snapshot fields.
 
+Example **SRP** numbers below match **INV-US-05** / **FR-PC-14**: `(bulk / sellable kg) + additional_cost_per_kg`, then channel markup and **ceil** rounding (same scenario as `SrpCalculatorTest.compute_us6DefaultValues_exactSrps`).
+
+**`quantity` / `is_per_kg` / `piece_count` (aligned with `USER_STORIES.md` INV-US-01 / INV-US-05, **`docs/pricing_clarif.md`**, and **PricingReference.md** §4.3 / §4.3.1 / §5.1.1):** When **`is_per_kg` is true**, **`quantity`** is bulk kilograms. When **`is_per_kg` is false**, **`quantity`** is **total pieces** and **`piece_count`** is **Estimated Qty per Kg** (pieces/kg); effective kg is **`quantity / n`**. **CLARIF-01:** per-piece SRP math uses **no spoilage** (**`Q_sell = Q`**) while **`spoilage_rate`** on the row remains preset snapshot for audit. Preset **`additional_cost_per_kg`** stays a per-kg rate. **`piece_count`** may be null when per-piece SRP columns are null.
+
 **Request:**
 ```json
 {
@@ -243,21 +247,22 @@ Upload acquisition records including all SRP columns and snapshot fields.
       "preset_ref": "preset-uuid-here",
       "spoilage_rate": 0.25,
       "additional_cost_per_kg": 10.286,
-      "srp_online_per_kg": 137.0,
-      "srp_reseller_per_kg": 127.0,
-      "srp_offline_per_kg": 132.0,
-      "srp_online_500g": 69.0,
-      "srp_reseller_500g": 64.0,
-      "srp_offline_500g": 66.0,
+      "srp_online_per_kg": 140.0,
+      "srp_reseller_per_kg": 130.0,
+      "srp_offline_per_kg": 135.0,
+      "srp_online_500g": 70.0,
+      "srp_reseller_500g": 65.0,
+      "srp_offline_500g": 68.0,
       "srp_online_250g": 35.0,
-      "srp_reseller_250g": 32.0,
-      "srp_offline_250g": 33.0,
+      "srp_reseller_250g": 33.0,
+      "srp_offline_250g": 34.0,
       "srp_online_100g": 14.0,
       "srp_reseller_100g": 13.0,
       "srp_offline_100g": 14.0,
       "srp_online_per_piece": null,
       "srp_reseller_per_piece": null,
       "srp_offline_per_piece": null,
+      "srp_custom_override": false,
       "channels_snapshot_json": "{...}",
       "hauling_fees_json": "[...]"
     }

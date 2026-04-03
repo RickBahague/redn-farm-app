@@ -18,7 +18,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Product
 import androidx.compose.ui.platform.LocalConfiguration
 import com.redn.farm.data.pricing.SalesChannel
@@ -28,7 +28,7 @@ import com.redn.farm.data.pricing.SalesChannel
 fun ProductSelectionDialog(
     onDismiss: () -> Unit,
     onProductSelected: (Product, Double, Boolean) -> Unit,
-    viewModel: TakeOrderViewModel = viewModel(factory = TakeOrderViewModel.Factory)
+    viewModel: TakeOrderViewModel = hiltViewModel()
 ) {
     var selectedProduct by remember { mutableStateOf<Product?>(null) }
     var quantity by remember { mutableStateOf("") }

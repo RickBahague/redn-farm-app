@@ -62,11 +62,15 @@ Android app (Kotlin + Jetpack Compose) for farm management. Package: `com.redn.f
 
 ### Database
 
-`FarmDatabase` (Room, version 3) in `data/local/FarmDatabase.kt`. Migrations are defined inline in the companion object (`MIGRATION_1_2`, `MIGRATION_2_3`). Always add new migrations there and increment the version in the `@Database` annotation.
+`FarmDatabase` (Room, version 8) in `data/local/FarmDatabase.kt`. Incremental migrations in code: `MIGRATION_1_2`, `MIGRATION_2_3` only. Newer schema bumps (e.g. v6 `acquisitions.srp_custom_override`, v7 `acquisitions.spoilage_kg` / **BUG-PRC-04**, v8 **BUG-ARC-02** — `customers` / `product_prices` timestamps as epoch millis, **`DateTimeConverter` removed**) rely on **`fallbackToDestructiveMigration()`** during dev / fresh install — no incremental migration until production strategy is defined.
 
 On first create, default users are seeded: `admin` / `admin123` and `user` / `user123`.
 
 Seed assets live in `app/src/main/assets/`: `data/products.json`, `data/product_prices.json`, `data/customers.json`, and a pre-populated `database/farm.db`.
+
+### Pricing (acquisition SRP)
+
+`SrpCalculator` + `PricingChannelEngine` implement **INV-US-05** / **PricingReference.md** **FR-PC-14**: **`C_bulk` = B / sellable kg**, **`C = C_bulk + A`** (hauling per kg), *then* channel markup/margin, optional per-channel fees, rounding; fractional tiers and per-piece from rounded per-kg SRP. **Per-piece acquisition mode** (`is_per_kg = false`): **`quantity`** = total pieces, **`piece_count`** = **Estimated Qty per Kg** \(n\); **`bulkQuantityKg`** = `quantity / n`. **CLARIF-01 / §5.1.1 (design):** per-piece SRP uses **`s_eff = 0`** → **`Q_sell = Q`** (spoilage not in per-piece SRP math); **implement in code** when aligning with **`docs/pricing_clarif.md`**. Spreadsheet notation: **§4.3.1** (CLARIF “**A**” in by-weight rows = **`C_bulk`**, not spec **`A`**). Checklist: `docs/INV_ACQUISITION_SRP_TRACKER.md`. See `docs/USER_STORIES.md`, **`docs/pricing_clarif.md`** (**by-weight** spoilage: **rate** or **actual kg** per line 10 — **BUG-PRC-04**; per-piece **B** = **`Q × A_spec`** lot total; **SRP** = **(A + B/total_quantity)** × markup), **`docs/PricingReference.md`** (v0.9.33-draft). Align legacy training sheets with **§4.3.1** if they still use literal **(A + lot B)** without **÷ P_tot**.
 
 ### DI pattern
 

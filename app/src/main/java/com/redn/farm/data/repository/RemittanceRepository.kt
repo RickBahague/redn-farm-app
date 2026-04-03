@@ -5,8 +5,11 @@ import com.redn.farm.data.local.entity.RemittanceEntity
 import com.redn.farm.data.model.Remittance
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class RemittanceRepository(
+@Singleton
+class RemittanceRepository @Inject constructor(
     private val remittanceDao: RemittanceDao
 ) {
     fun getAllRemittances(): Flow<List<Remittance>> {

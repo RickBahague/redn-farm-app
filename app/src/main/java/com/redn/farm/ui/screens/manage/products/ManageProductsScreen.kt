@@ -27,15 +27,21 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.ProductPrice
 import kotlinx.coroutines.launch
-import java.time.LocalDate
-import java.time.LocalDateTime
 import com.redn.farm.utils.CurrencyFormatter
 import androidx.compose.foundation.clickable
+import java.time.Instant
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import com.redn.farm.data.model.ProductFilters
 import com.redn.farm.ui.components.NumericPadBottomSheet
 
 private enum class FallbackPadTarget { PER_KG, PER_PIECE }
+
+private val productPriceDateFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMM dd, yyyy")
+
+private fun formatProductPriceDate(millis: Long): String =
+    Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(productPriceDateFormatter)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -174,7 +180,7 @@ fun ManageProductsScreen(
                                     per_piece_price = perPiece,
                                     discounted_per_kg_price = null,
                                     discounted_per_piece_price = null,
-                                    date_created = LocalDateTime.now()
+                                    date_created = System.currentTimeMillis()
                                 )
                             )
                             snackbarHostState.showSnackbar("Saved fallback price: ${product.product_name}")
@@ -490,7 +496,7 @@ fun EditPriceDialog(
                             product_id = product.product_id,
                             per_kg_price = perKgPrice.toDoubleOrNull(),
                             per_piece_price = perPiecePrice.toDoubleOrNull(),
-                            date_created = LocalDateTime.now()
+                            date_created = System.currentTimeMillis()
                         )
                     )
                     onDismiss()
@@ -573,7 +579,7 @@ private fun PriceHistoryCard(prices: List<ProductPrice>) {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = price.date_created.format(DateTimeFormatter.ofPattern("MMM dd, yyyy")),
+                            text = formatProductPriceDate(price.date_created),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Row(

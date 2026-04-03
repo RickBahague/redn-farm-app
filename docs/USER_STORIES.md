@@ -256,7 +256,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a store assistant, **I want to** see the current active selling prices for all products across all channels **so that** I can answer customer price questions and confirm prices before placing an order.
 
 **Actor:** Store Assistant  
-**Status:** 📋
+**Status:** ✅ *(implementation tracker: [`INV_ACQUISITION_SRP_TRACKER.md`](./INV_ACQUISITION_SRP_TRACKER.md) — `ActiveSrpsScreen`)*  
 
 **Canonical reference:** PricingReference.md US-3a, FR-PC-36
 
@@ -295,7 +295,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 
 **Acceptance criteria:**
 1. I can enter a product name, description, and unit type (kg / pieces).
-2. I can optionally assign a **product category** (from the list defined in MGT-US-03) so that the correct spoilage rate and hauling cost are applied when computing SRPs for acquisitions of this product.
+2. I can optionally assign a **product category** (from the list defined in MGT-US-03) so that the correct spoilage rate and hauling cost are applied for **per kg** acquisitions; **per piece** acquisitions still use hauling from the preset but **do not** apply spoilage in SRP per **CLARIF-01** / **§5.1.1**.
 3. I can optionally enter a **default piece count** — the number of pieces per kg — used to compute per-piece SRP in INV-US-05.
 4. The new product is immediately available for selection when taking orders and recording acquisitions.
 5. New products default to active status.
@@ -461,13 +461,13 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a purchasing assistant, **I want to** record when and where I acquired produce **so that** there is a record of inventory intake and cost.
 
 **Actor:** Purchasing Assistant  
-**Status:** ✅
+**Status:** ✅ *(per-piece **§5.1.1** — [`INV_ACQUISITION_SRP_TRACKER.md`](./INV_ACQUISITION_SRP_TRACKER.md))*  
 
 **Acceptance criteria:**
-1. I can select a product, enter quantity (decimal for kg), price per unit, acquisition date, and source location (Farm / Market / Supplier / Other).
+1. I can select a product, enter quantity, price per unit, acquisition date, and source location (Farm / Market / Supplier / Other). In **per kg** mode, quantity is kg (decimal); in **per piece** mode, quantity is **total pieces** in the lot (**PricingReference.md** §5.1.1).
 2. The total amount is calculated automatically.
 3. I can toggle whether the unit is per kg or per piece.
-4. I can enter a **piece count** (number of pieces per kg) to enable per-piece SRP computation in INV-US-05. If the selected product has a default piece count (PRD-US-02), it is pre-filled; I can override it for this acquisition.
+4. I can enter a **piece count** (**pieces per kg** \(n\)) when per-piece SRP is needed: it converts **total pieces → kg** for the cost/SRP pipeline (`Q = quantity / n`) and defines **`SRP_piece = ⌈SRP / n⌉`** in INV-US-05. If the selected product has a default piece count (PRD-US-02), it is pre-filled; I can override it for this acquisition.
 
 ---
 
@@ -519,7 +519,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a store assistant or purchasing assistant, **I want** to know which SRP is considered "active" for a product **so that** orders and price lists always reflect the latest purchase cost.
 
 **Actor:** Store Assistant, Purchasing Assistant  
-**Status:** 📋
+**Status:** ✅ *(latest by **date_acquired**, tiebreak **created_at** — [`INV_ACQUISITION_SRP_TRACKER.md`](./INV_ACQUISITION_SRP_TRACKER.md))*  
 
 **Acceptance criteria:**
 1. The **active SRP** for a product is the SRP computed from the **most recently saved acquisition** for that product, determined by acquisition date (not save timestamp).
@@ -535,37 +535,45 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a purchasing assistant, **I want** the app to automatically compute suggested selling prices for each sales channel whenever I enter an acquisition **so that** the store always has consistent, formula-driven SRPs derived from actual purchase cost — without me having to do the math manually.
 
 **Actor:** Purchasing Assistant  
-**Status:** 📋
+**Status:** ✅ *(pipeline + per-piece **§5.1.1** — [`INV_ACQUISITION_SRP_TRACKER.md`](./INV_ACQUISITION_SRP_TRACKER.md), `SrpCalculator` / `AcquisitionRepository`)*  
 
-**Pricing formula** *(canonical reference: PricingReference.md §4.3, §5.2 FR-PC-10–14, US-6)*
+**Pricing formula** *(normative in this story; shared IDs in **PricingReference.md** §4.3, §4.3.1 (CLARIF-01 — **`docs/pricing_clarif.md`**), §5.1.1, §5.2 **FR-PC-02**, **FR-PC-10–14**, **US-6** — spec **0.9.33-draft**+; pipeline order: **\(C_{\text{bulk}} + A\)** before channel markup)*
 
 Given:
 - **B** = total acquisition cost (`quantity × price_per_unit`)
-- **Q** = quantity in kg
-- **s** = spoilage rate (default **25%**; management-configurable per product category)
-- **A** = required additional cost per kg = (driver fee + fuel + toll + handling) / hauling weight
+- **Q** = quantity in **kg** for the pipeline. When the acquisition unit is **per kg**, **Q** is the entered quantity. When the unit is **per piece**, **Q** is **derived**: `Q = quantity / piece_count` where **quantity** = total pieces in the lot and **`piece_count`** = **Estimated Qty per Kg** (pieces per kg, user input — **PricingReference.md** §5.1.1). Preset **\(A\)** and markups are **not** overridden; only how **Q** is obtained changes.
+- **Spoilage (by-weight only — `pricing_clarif.md` line 10):** preset (or policy) supplies **either** a **rate** **`s`** (fraction of acquired kg, default illustration **25%**; category overrides) **or** **absolute unsellable kg** **`s_kg`** for the lot. Stored on the acquisition snapshot for audit per **BUG-PRC-04** / **FR-PC-10**. **CLARIF-01 / §5.1.1:** for **per piece** acquisitions, **spoilage is not applied in SRP math** — use **`s_eff = 0`** so **`Q_sell = Q`** regardless of preset.
+- **A** = required additional cost per kg (hauling) = (driver fee + fuel + toll + handling) / hauling weight — **not** the same symbol as CLARIF “**A**” in the by-weight row (**§4.3.1** maps CLARIF **A** there to **\(C_{\text{bulk}}\)**).
   - Defaults: (2,000 + 4,000 + 1,000 + 200) / 700 kg = **≈ 10.29 PHP/kg**
 - Channel markups (management-configurable): **online 35%**, **offline 30%**, **reseller 25%**
 
 Pipeline (executed for each channel):
-1. **Sellable quantity:** `Q_sell = Q × (1 − s)`
-2. **Cost per sellable kg:** `C = B / Q_sell`
+1. **Sellable quantity:** **`Q_sell = Q × (1 − s)`** when using **rate** spoilage, **or** **`Q_sell = Q − s_kg`** when using **absolute kg** (by-weight only — **`pricing_clarif.md`**, **BUG-PRC-04**). When the acquisition unit is **per piece**, **`Q_sell = Q`** (**`s_eff = 0`** — **CLARIF-01**, **PricingReference.md** §5.1.1).
+2. **Bulk cost per sellable kg** (spoilage in the divisor only when **per kg**): `C_bulk = B / Q_sell`. **Combined base before channel policy:** `C = C_bulk + A` (**PricingReference.md** §4.3 / **FR-PC-10** — hauling **A** is **not** folded into **C_bulk**).
 3. **Price after markup:** `priceAfterCore = C × (1 + channel_markup)`
-4. **Add hauling cost:** `priceBeforeFees = priceAfterCore + A`
-5. **Round up to nearest whole PHP:** `SRP = ⌈priceBeforeFees⌉`
-6. **Fractional packages** (per channel): `SRP_500g = ⌈SRP × 0.5⌉`, `SRP_250g = ⌈SRP × 0.25⌉`, `SRP_100g = ⌈SRP × 0.1⌉`
-7. **Per piece** (when piece count is provided): `SRP_piece = ⌈SRP / piece_count⌉`
+4. **Round up to nearest whole PHP:** `SRP = ⌈priceAfterCore⌉`
+5. **Fractional packages** (per channel): `SRP_500g = ⌈SRP × 0.5⌉`, `SRP_250g = ⌈SRP × 0.25⌉`, `SRP_100g = ⌈SRP × 0.1⌉`
+6. **Per piece** (when **piece_count** \(n\) is provided): `SRP_piece = ⌈SRP / n⌉` (same **\(n\)** as pieces per kg in the per-piece entry path).
+
+**Per-piece lot entry (aligned with PricingReference §5.1.1 / CLARIF-01):**
+- Assistant enters **total cost** \(B\), **total piece count** (as **quantity** in per-piece mode), and **pieces per kg** (**`piece_count`** — **Estimated Qty per Kg**).
+- **Spoilage** is **not** part of per-piece SRP calculations: **`s_eff = 0`**, **`Q_sell = Q`** (preset **`spoilage_rate`** still saved on the snapshot for traceability).
+- **Additional cost** **\(A\)** stays the preset’s **PHP per kg** (haul model / `additional_cost_per_kg`); it is applied after **\(Q\)** is known — **not** replaced by a separate per-piece hauling formula.
+- **SRP per kg**, fractional packs, and **per-piece** selling prices use the **same** markup, rounding, and tier rules as a lot entered directly in kg. **CLARIF** per-piece **B** = **(pieces / n) × additional costs** = **`Q × A_spec`** (lot hauling PHP); **per-piece** hauling share **`B / P_tot = A_spec / n`**, matching **`C_bulk / n`** algebra when **`Q_sell = Q`**. Canonical per-piece **SRP** in **`pricing_clarif.md`**: **(A + B/total_quantity)** × (1+μ). Legacy sheets that used **(A + B)** with lot **B** should use **(A + B/P_tot)** instead — **PricingReference.md** §4.3.1.
 
 **Acceptance criteria:**
 1. As I fill in quantity and price per unit on the acquisition form, suggested SRPs for **online**, **reseller**, and **offline** channels are computed and displayed in real time.
 2. The SRP computation uses the **currently active preset** (MGT-US-06) — the one explicitly tagged as active by management. If no preset has been activated yet, SRP computation is unavailable and the form shows a notice prompting management to activate a preset.
-3. The purchasing assistant sees the active preset's resolved values (spoilage rate, hauling cost, channel markups) as read-only context on the form. They cannot edit preset values.
+3. The purchasing assistant sees the active preset's resolved values (spoilage **rate** / policy per **BUG-PRC-04**, hauling cost, channel markups) as read-only context on the form. They cannot edit preset values except where **BUG-PRC-04** adds an optional per-line **spoilage kg** override.
 4. Fractional package SRPs (500g, 250g, 100g) are shown for each channel.
 5. If a piece count is entered for the product, per-piece SRP is also shown for each channel.
 6. All SRPs are rounded **up** to the nearest whole PHP (e.g. 153.40 → 154, 165.50 → 166).
 7. SRPs are saved on the acquisition record alongside the cost data.
-8. If `Q_sell = 0` (100% spoilage), validation blocks save with a clear error message.
-9. The full preset snapshot (spoilage rate, hauling fees, channel markups) and a `presetRef` pointing to the active preset record are stored on the acquisition at save time. This snapshot is immutable after save — it is never updated, even if the preset is later deactivated or modified.
+8. If `Q_sell = 0` from the effective pipeline (e.g. **per kg** with **100%** rate spoilage, **s_kg ≥ Q**, or **Q ≤ 0**), validation blocks save with a clear error message. **Per piece:** **`Q_sell = Q`** implies **Q** must be positive (invalid **`piece_count`** / quantity).
+9. The full preset snapshot (spoilage fields per **BUG-PRC-04** / **FR-PC-10**, hauling fees, channel markups) and a `presetRef` pointing to the active preset record are stored on the acquisition at save time. This snapshot is immutable after save — it is never updated, even if the preset is later deactivated or modified.
+10. When **unit is per piece**, **quantity** is the **total number of pieces** in the lot, **`piece_count`** is **pieces per kg** (user input); the app derives **\(Q\)** in kg and applies **\(C_{\text{bulk}}\)** / **\(A\)** / markup with **no spoilage in the divisor** (**`Q_sell = Q`**, **CLARIF-01**). Preset snapshot still records **`spoilage_rate`** from the active preset for audit.
+
+**Optional override (policy):** Per-line **custom / customer SRP per sales channel** on the same form, replacing preset-computed values for that save only, is specified in **MGT-US-07** (Epic 10).
 
 ---
 
@@ -945,7 +953,7 @@ Top bar → Settings (admin only)
 **Canonical reference:** PricingReference.md US-6, §7.3, FR-PC-50–51
 
 **Acceptance criteria:**
-1. I can set a **default spoilage rate** (fraction 0–0.99, e.g. 0.25 for 25%) that applies to all products unless overridden by category.
+1. I can set a **default spoilage** for **by-weight** SRP: **either** a **rate** (fraction 0–0.99, e.g. 0.25 for **25%** of acquired kg) **or**, per **`pricing_clarif.md`** line 10, policy for **absolute unsellable kg** (e.g. **2 kg**) — detail in **BUG-PRC-04** / **PricingReference.md** **FR-PC-10** (farm app may ship rate-only first). Category overrides follow the same pattern when implemented.
 2. I can configure the **hauling model** with individual named fee line items (e.g. driver fee, fuel, toll, handling) and a hauling weight in kg. The additional cost per kg `A` is derived automatically as `sum(fee amounts) / hauling weight`.
 3. I can alternatively enter `A` as a direct override value instead of using the hauling model.
 4. Before saving, the admin can enter an optional **preset name** (e.g. "Q2 2026 Rates"). If left blank, the system auto-generates a name from the save timestamp (e.g. "Preset 2026-04-02 14:30"). The preset is also assigned a unique system ID on save. Both the name and the ID are stored and displayed in the history list (MGT-US-05).
@@ -960,16 +968,17 @@ Top bar → Settings (admin only)
 **Actor:** Admin  
 **Status:** 📋
 
-**Canonical reference:** PricingReference.md US-6, §7.2, §11.1.2, FR-PC-05, FR-PC-14
+**Canonical reference:** PricingReference.md US-6, §4.3, §4.3.1 (preset table / CLARIF), §7.2, §11.1.2, FR-PC-05, FR-PC-14
 
 **Channels:** online, reseller, offline
 
 **Acceptance criteria:**
 1. For each channel I can set exactly one of: **markup %** (e.g. 35%) or **margin %** — not both. The UI enforces this constraint and shows a validation error if both are set.
+   - Let `C_bulk = B / Q_sell` and `A` = required additional cost per kg (same symbols as **INV-US-05** / **§4.3** — not CLARIF’s by-weight **“A”**, which is **C_bulk**; see **§4.3.1**). Combined base before channel policy: `C = C_bulk + A`.
    - Markup formula: `priceAfterCore = C × (1 + markup%)`
    - Margin formula: `priceAfterCore = C / (1 − margin%)`
 2. For each channel I can set a **rounding rule**. Default is `ceil_whole_peso` (round up to the nearest whole PHP). Other supported rules: `nearest_whole_peso`, `nearest_0.25`.
-3. For each channel I can optionally configure **channel-attributable fees** (fixed PHP amount or %) applied after `priceAfterCore + A` and before rounding — e.g. delivery surcharge, payment processing fee.
+3. For each channel I can optionally configure **channel-attributable fees** (fixed PHP amount or %) applied **after** `priceAfterCore` (post–markup/margin subtotal) and **before** final rounding — e.g. delivery surcharge, payment processing fee (**FR-PC-14** / **§11.1.9**).
 4. Default values on first setup: online 35% markup, reseller 25% markup, offline 30% markup; all channels use `ceil_whole_peso` rounding.
 5. Saving channel configuration creates a new inactive preset record (same as MGT-US-01 AC#4) — it does not take effect until activated (MGT-US-06).
 6. The purchasing assistant sees the **active preset's** resolved channel values as read-only context on the acquisition form — they cannot edit them.
@@ -1047,6 +1056,31 @@ Top bar → Settings (admin only)
 
 ---
 
+### MGT-US-07 — Custom / customer SRP per channel on acquisition (overrides preset for that item)
+**As** a purchasing assistant, **I want** to optionally set **customer SRPs per sales channel** for a specific product on an acquisition **so that** the **online**, **reseller**, and **offline** prices customers see can differ from what the active preset would compute — e.g. for a special buy or one-off deal — **without** changing the global preset.
+
+**Actor:** Purchasing Assistant  
+**Status:** ✅ *(core implementation; device QA recommended)*
+
+**Implementation (2026):** `acquisitions.srp_custom_override` (Room v6, **destructive rebuild** / fresh install — no incremental 5→6 migration); **`AcquisitionFormScreen`** switch + per-channel SRP/kg (numeric pad); **`SrpCalculator.outputFromCustomerSrpPerKg`** / **`mergeCostContextWithCustomSrps`**; **`AcquisitionRepository`** insert/update; CSV **`SrpCustomOverride`**; list card label on **`AcquireProduceScreen`**.
+
+**Terminology:** **Customer SRP** means the **customer-facing** suggested retail price for that product in a given **sales channel** (the same three channels as **MGT-US-02** / **INV-US-05**: online, reseller, offline). Override is **per channel**: each channel can have its own customer SRP on that acquisition line (not a single blended price unless the UI offers a shortcut that fills all channels).
+
+**Related:** **INV-US-03** (edit acquisition), **INV-US-05** (preset-based SRP pipeline); acquisition UI is **`AcquisitionFormScreen`**. This story does **not** let anyone edit preset definitions on the form (**MGT-US-02** AC#6 remains: preset parameters are read-only there).
+
+**Acceptance criteria:**
+1. On **add** and **edit acquisition**, for the product line being saved, the assistant can choose **preset-computed customer SRPs** (default, current behaviour) or enable a **custom / customer SRP override** for that line only.
+2. When **custom override** is **off**, customer SRPs **per channel** are computed exactly as in **INV-US-05** from the active preset and acquisition cost; the saved acquisition stores the computed values and **`presetRef`** / preset snapshot as today.
+3. When **custom override** is **on**, the assistant enters **customer SRP per channel** (at minimum **online**, **reseller**, and **offline** per kg, consistent with stored acquisition shape). **Each channel may be set independently.** Those values **replace** the preset-derived customer SRPs for **that acquisition record only**. The UI may still show the preset-based **preview** (read-only) **per channel** so the assistant can compare against intended customer prices.
+4. **Fractional package** SRPs (500g / 250g / 100g) and **per-piece** SRPs, when shown: either (a) recomputed from the custom per-kg **customer** SRP for each channel using the same rounding rules as **INV-US-05**, or (b) offered as optional additional override fields — the chosen approach (a or b) is documented in implementation notes; behaviour must be consistent for order-taking and exports.
+5. Saving the acquisition persists the **final** **per-channel customer SRPs** used at sale time (computed or custom) and preserves **immutability** after save: later preset activation does **not** rewrite that row (**INV-US-05** AC#9, **MGT-US-06** AC#5). The record remains traceable to the **`presetRef`** / snapshot that was active at save time; if override was used, stored customer SRPs reflect the override while audit data still links to the preset policy context.
+6. **Orders** and **active product pricing** continue to use the **latest acquisition’s stored per-channel SRPs** for that product (**INV-US-03** / **ORD-US-01** precedence), respecting the **channel** of the sale. When the latest acquisition used a custom override, those **per-channel customer SRPs** drive pre-filled order prices until a newer acquisition replaces them.
+7. **Export / history** can distinguish lines that used **preset-computed** vs **custom / customer** per-channel SRPs (e.g. flag or parallel columns) so management can audit exceptions without opening every detail screen.
+
+**Schema:** Boolean **`srp_custom_override`** on **`acquisitions`**; per-channel values remain **`srp_*_per_kg`** (and derived pack/piece columns). See **`FarmDatabase`** v6.
+
+---
+
 ## Epic 11 — System & Setup
 
 ### SYS-US-01 — First-time database initialization
@@ -1098,9 +1132,9 @@ Top bar → Settings (admin only)
 | `products` | `category` | String? | Links to pricing preset category (MGT-US-03) |
 | `products` | `default_piece_count` | Int? | Used to pre-fill piece count on acquisitions (PRD-US-02) |
 | `orders` | `channel` | String | `"online"` / `"reseller"` / `"offline"` (ORD-US-01) |
-| `acquisitions` | `piece_count` | Int? | Pieces per kg for per-piece SRP (INV-US-01) |
+| `acquisitions` | `piece_count` | Double? | Pieces per kg \(n\; may be fractional\); with per-piece **quantity** = total pieces, effective kg \(Q = quantity/n\) for INV-US-05 (**PricingReference.md** §5.1.1, **§4.3.1** CLARIF per-piece steps) |
 | `acquisitions` | `preset_ref` | String? | FK to `pricing_presets.preset_id` (INV-US-05) |
-| `acquisitions` | `spoilage_rate` | Double? | Snapshot value at save time |
+| `acquisitions` | `spoilage_rate` | Double? | Preset snapshot at save; **per piece** SRP uses **`s_eff = 0`** (not applied in divisor — **§5.1.1**) |
 | `acquisitions` | `additional_cost_per_kg` | Double? | Snapshot value at save time |
 | `acquisitions` | `hauling_weight_kg` | Double? | Snapshot value at save time |
 | `acquisitions` | `hauling_fees_json` | String? | Snapshot: JSON array of `{label, amount}` |

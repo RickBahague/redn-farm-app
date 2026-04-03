@@ -1,47 +1,44 @@
 package com.redn.farm.ui.screens.export
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModelProvider
+import android.content.Context
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.redn.farm.data.export.CsvExportService
-import com.redn.farm.data.local.FarmDatabase
+import com.redn.farm.data.local.dao.UserDao
 import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.security.Rbac
 import com.redn.farm.data.repository.*
 import com.redn.farm.data.util.DatabasePopulator
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import javax.inject.Inject
 
-class ExportViewModel(application: Application) : AndroidViewModel(application) {
-    private val csvExportService = CsvExportService(application)
-    private val database = FarmDatabase.getDatabase(application)
-    private val orderRepository = OrderRepository(database.orderDao())
-    private val customerRepository = CustomerRepository(database.customerDao())
-    private val employeePaymentRepository = EmployeePaymentRepository(database.employeePaymentDao())
-    private val employeeRepository = EmployeeRepository(database.employeeDao())
-    private val farmOperationRepository = FarmOperationRepository(application, database, database.farmOperationDao())
-    private val productRepository = ProductRepository(database.productDao(), database.productPriceDao())
-    private val remittanceRepository = RemittanceRepository(database.remittanceDao())
-    private val pricingPresetRepository = PricingPresetRepository(
-        database.pricingPresetDao(),
-        database.presetActivationLogDao()
-    )
-    private val acquisitionRepository = AcquisitionRepository(
-        database.acquisitionDao(),
-        pricingPresetRepository,
-        database.productDao()
-    )
-    private val userDao = database.userDao()
-    private val sessionManager = SessionManager(application)
+@HiltViewModel
+class ExportViewModel @Inject constructor(
+    private val csvExportService: CsvExportService,
+    private val orderRepository: OrderRepository,
+    private val customerRepository: CustomerRepository,
+    private val employeePaymentRepository: EmployeePaymentRepository,
+    private val employeeRepository: EmployeeRepository,
+    private val farmOperationRepository: FarmOperationRepository,
+    private val productRepository: ProductRepository,
+    private val remittanceRepository: RemittanceRepository,
+    private val pricingPresetRepository: PricingPresetRepository,
+    private val acquisitionRepository: AcquisitionRepository,
+    private val userDao: UserDao,
+    @ApplicationContext appContext: Context
+) : ViewModel() {
+
+    private val sessionManager = SessionManager(appContext)
 
     private val _isAdmin = MutableStateFlow(false)
     val isAdmin: StateFlow<Boolean> = _isAdmin.asStateFlow()
@@ -65,7 +62,9 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun sharedExportTimestamp(): String =
-        LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+        DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
+            .withZone(ZoneId.systemDefault())
+            .format(Instant.now())
 
     private val _exportState = MutableStateFlow<ExportState>(ExportState.Idle)
     val exportState = _exportState.asStateFlow()
@@ -481,15 +480,5 @@ class ExportViewModel(application: Application) : AndroidViewModel(application) 
             val message: String? = null
         ) : ExportState()
         data class Error(val message: String) : ExportState()
-    }
-    
-    companion object {
-        val Factory: ViewModelProvider.Factory = viewModelFactory {
-            initializer {
-                ExportViewModel(
-                    application = (this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as Application)
-                )
-            }
-        }
     }
 } 

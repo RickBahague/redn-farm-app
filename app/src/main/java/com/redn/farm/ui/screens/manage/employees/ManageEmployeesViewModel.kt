@@ -1,21 +1,45 @@
 package com.redn.farm.ui.screens.manage.employees
 
-import android.app.Application
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.redn.farm.data.local.FarmDatabase
 import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.model.Employee
+import com.redn.farm.data.repository.EmployeePaymentRepository
 import com.redn.farm.data.repository.EmployeeRepository
 import com.redn.farm.security.Rbac
-import kotlinx.coroutines.flow.*
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import android.content.Context
+import javax.inject.Inject
 
-class ManageEmployeesViewModel(
+@HiltViewModel
+class ManageEmployeesViewModel @Inject constructor(
     private val repository: EmployeeRepository,
-    private val sessionManager: SessionManager
+    private val paymentRepository: EmployeePaymentRepository,
+    @ApplicationContext appContext: Context
 ) : ViewModel() {
+
+    private val sessionManager = SessionManager(appContext)
+
+    private val _userMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val userMessage: SharedFlow<String> = _userMessage.asSharedFlow()
+
+    private val _saveSucceeded = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val saveSucceeded: SharedFlow<Unit> = _saveSucceeded.asSharedFlow()
+
+    private val _isSaving = MutableStateFlow(false)
+    val isSaving: StateFlow<Boolean> = _isSaving.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
@@ -27,8 +51,8 @@ class ManageEmployeesViewModel(
             } else {
                 employees.filter {
                     it.fullName.contains(query, ignoreCase = true) ||
-                    it.contact.contains(query, ignoreCase = true) ||
-                    it.formattedId.contains(query, ignoreCase = true)
+                        it.contact.contains(query, ignoreCase = true) ||
+                        it.formattedId.contains(query, ignoreCase = true)
                 }
             }
         }
@@ -44,46 +68,69 @@ class ManageEmployeesViewModel(
 
     fun addEmployee(firstname: String, lastname: String, contact: String) {
         viewModelScope.launch {
-            if (!Rbac.canWriteEmployees(sessionManager.getRole())) return@launch
-            repository.addEmployee(
-                Employee(
-                    firstname = firstname,
-                    lastname = lastname,
-                    contact = contact
+            _isSaving.value = true
+            try {
+                if (!Rbac.canWriteEmployees(sessionManager.getRole())) {
+                    _userMessage.emit("You don't have permission to add employees.")
+                    return@launch
+                }
+                repository.addEmployee(
+                    Employee(
+                        firstname = firstname,
+                        lastname = lastname,
+                        contact = contact
+                    )
                 )
-            )
+                _saveSucceeded.emit(Unit)
+                delay(200)
+                _userMessage.emit("Employee saved")
+            } catch (_: Exception) {
+                _userMessage.emit("Save failed — try again")
+            } finally {
+                _isSaving.value = false
+            }
         }
     }
 
     fun updateEmployee(employee: Employee) {
         viewModelScope.launch {
-            if (!Rbac.canWriteEmployees(sessionManager.getRole())) return@launch
-            repository.updateEmployee(
-                employee.copy(
-                    date_updated = System.currentTimeMillis()
+            _isSaving.value = true
+            try {
+                if (!Rbac.canWriteEmployees(sessionManager.getRole())) {
+                    _userMessage.emit("You don't have permission to update employees.")
+                    return@launch
+                }
+                repository.updateEmployee(
+                    employee.copy(
+                        date_updated = System.currentTimeMillis()
+                    )
                 )
-            )
+                _saveSucceeded.emit(Unit)
+                delay(200)
+                _userMessage.emit("Employee saved")
+            } catch (_: Exception) {
+                _userMessage.emit("Save failed — try again")
+            } finally {
+                _isSaving.value = false
+            }
         }
     }
 
     fun deleteEmployee(employee: Employee) {
         viewModelScope.launch {
-            if (!Rbac.canWriteEmployees(sessionManager.getRole())) return@launch
-            repository.deleteEmployee(employee)
-        }
-    }
-
-    class Factory(private val application: Application) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            if (modelClass.isAssignableFrom(ManageEmployeesViewModel::class.java)) {
-                val database = FarmDatabase.getDatabase(application)
-                return ManageEmployeesViewModel(
-                    EmployeeRepository(database.employeeDao()),
-                    SessionManager(application)
-                ) as T
+            if (!Rbac.canWriteEmployees(sessionManager.getRole())) {
+                _userMessage.emit("You don't have permission to delete employees.")
+                return@launch
             }
-            throw IllegalArgumentException("Unknown ViewModel class")
+            if (paymentRepository.countPaymentsForEmployee(employee.employee_id) > 0) {
+                _userMessage.emit("Cannot delete — employee has payment history")
+                return@launch
+            }
+            try {
+                repository.deleteEmployee(employee)
+            } catch (_: Exception) {
+                _userMessage.emit("Save failed — try again")
+            }
         }
     }
-} 
+}

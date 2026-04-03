@@ -1,7 +1,5 @@
 package com.redn.farm.data.model
 
-import java.time.LocalDateTime
-
 data class ProductPrice(
     val price_id: Int = 0,
     val product_id: String,
@@ -9,9 +7,9 @@ data class ProductPrice(
     val per_piece_price: Double?,
     val discounted_per_kg_price: Double? = null,
     val discounted_per_piece_price: Double? = null,
-    val date_created: LocalDateTime = LocalDateTime.now()
+    val date_created: Long = System.currentTimeMillis()
 )
 
 data class ProductPriceList(
     val product_prices: List<ProductPrice>
-) 
+)

@@ -5,9 +5,11 @@ import com.redn.farm.data.local.entity.CustomerEntity
 import com.redn.farm.data.model.Customer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import java.time.LocalDateTime
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class CustomerRepository(private val customerDao: CustomerDao) {
+@Singleton
+class CustomerRepository @Inject constructor(private val customerDao: CustomerDao) {
     fun getAllCustomers(): Flow<List<Customer>> {
         return customerDao.getAllCustomers().map { entities ->
             entities.map { it.toCustomer() }
@@ -26,7 +28,7 @@ class CustomerRepository(private val customerDao: CustomerDao) {
 
     suspend fun updateCustomer(customer: Customer) {
         customerDao.updateCustomer(customer.toEntity().copy(
-            date_updated = LocalDateTime.now()
+            date_updated = System.currentTimeMillis()
         ))
     }
 

@@ -1,23 +1,22 @@
 package com.redn.farm.ui.screens.order
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import com.redn.farm.data.local.FarmDatabase
 import com.redn.farm.data.model.*
 import com.redn.farm.data.pricing.OrderPricingResolver
+import com.redn.farm.data.pricing.PricingChannelEngine
 import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.data.pricing.defaultOrderChannel
+import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.repository.AcquisitionRepository
 import com.redn.farm.data.repository.CustomerRepository
-import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.repository.OrderRepository
-import com.redn.farm.data.repository.PricingPresetRepository
 import com.redn.farm.data.repository.ProductRepository
 import com.redn.farm.security.Rbac
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import android.content.Context
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -30,17 +29,16 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class TakeOrderViewModel(application: Application) : AndroidViewModel(application) {
-    private val sessionManager = SessionManager(application)
-    private val database = FarmDatabase.getDatabase(application)
-    private val customerRepository = CustomerRepository(database.customerDao())
-    private val productRepository = ProductRepository(database.productDao(), database.productPriceDao())
-    private val orderRepository = OrderRepository(database.orderDao())
-    private val acquisitionRepository = AcquisitionRepository(
-        database.acquisitionDao(),
-        PricingPresetRepository(database.pricingPresetDao(), database.presetActivationLogDao()),
-        database.productDao()
-    )
+@HiltViewModel
+class TakeOrderViewModel @Inject constructor(
+    @ApplicationContext appContext: Context,
+    private val customerRepository: CustomerRepository,
+    private val productRepository: ProductRepository,
+    private val orderRepository: OrderRepository,
+    private val acquisitionRepository: AcquisitionRepository
+) : ViewModel() {
+
+    private val sessionManager = SessionManager(appContext)
 
     private val _selectedCustomer = MutableStateFlow<Customer?>(null)
     val selectedCustomer = _selectedCustomer.asStateFlow()
@@ -155,8 +153,16 @@ class TakeOrderViewModel(application: Application) : AndroidViewModel(applicatio
         val srpKg = acq?.let {
             listOfNotNull(it.srp_online_per_kg, it.srp_reseller_per_kg, it.srp_offline_per_kg).any { v -> v > 0 }
         } ?: false
+        val pc = acq?.piece_count?.takeIf { it > 0 }
+        val derivedOnlinePc = if (pc != null) acq?.srp_online_per_kg?.let { PricingChannelEngine.perPieceSrp(it, pc) } else null
+        val derivedResellerPc = if (pc != null) acq?.srp_reseller_per_kg?.let { PricingChannelEngine.perPieceSrp(it, pc) } else null
+        val derivedOfflinePc = if (pc != null) acq?.srp_offline_per_kg?.let { PricingChannelEngine.perPieceSrp(it, pc) } else null
         val srpPc = acq?.let {
-            listOfNotNull(it.srp_online_per_piece, it.srp_reseller_per_piece, it.srp_offline_per_piece).any { v -> v > 0 }
+            listOfNotNull(
+                it.srp_online_per_piece ?: derivedOnlinePc,
+                it.srp_reseller_per_piece ?: derivedResellerPc,
+                it.srp_offline_per_piece ?: derivedOfflinePc,
+            ).any { v -> v > 0 }
         } ?: false
         return (hasKg && hasPc) || (srpKg && srpPc) || (hasKg && srpPc) || (hasPc && srpKg)
     }
@@ -253,14 +259,5 @@ class TakeOrderViewModel(application: Application) : AndroidViewModel(applicatio
         _selectedCustomer.value = null
         _cartItems.value = emptyList()
         _channel.value = SalesChannel.OFFLINE
-    }
-
-    companion object {
-        val Factory: ViewModelProvider.Factory = viewModelFactory {
-            initializer {
-                val application = (this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as Application)
-                TakeOrderViewModel(application)
-            }
-        }
     }
 }

@@ -119,9 +119,9 @@
 
 ---
 
-## P1-8 — Acquisitions (INV-US-01–04)
+## P1-8 — Acquisitions (INV-US-01–06) + active SRP query
 
-**Scope:** `created_at` set on insert, **unchanged** on update; full row mapping so SRP/snapshot columns (when added in Phase 3) are not nulled by edits.
+**Scope:** `created_at` set on insert, **unchanged** on update; full row mapping so SRP/snapshot columns are not nulled by edits; **INV-US-05** pipeline and **INV-US-06** “active” queries — see [`INV_ACQUISITION_SRP_TRACKER.md`](./INV_ACQUISITION_SRP_TRACKER.md).
 
 | Step | Status | Notes |
 |------|--------|--------|

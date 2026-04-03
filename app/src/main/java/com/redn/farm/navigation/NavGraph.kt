@@ -16,8 +16,12 @@ import com.redn.farm.ui.screens.order.history.EditOrderScreen
 import com.redn.farm.ui.screens.order.history.OrderDetailScreen
 import com.redn.farm.ui.screens.acquire.AcquireProduceScreen
 import com.redn.farm.ui.screens.acquire.AcquisitionFormScreen
+import com.redn.farm.ui.screens.remittance.RemittanceFormScreen
 import com.redn.farm.ui.screens.remittance.RemittanceScreen
+import com.redn.farm.ui.screens.remittance.RemittanceViewModel
+import com.redn.farm.ui.screens.manage.employees.EmployeeFormScreen
 import com.redn.farm.ui.screens.manage.employees.ManageEmployeesScreen
+import com.redn.farm.ui.screens.manage.employees.ManageEmployeesViewModel
 import com.redn.farm.ui.screens.manage.employees.payment.EmployeePaymentScreen
 import com.redn.farm.ui.screens.manage.employees.payment.PaymentFormScreen
 import com.redn.farm.ui.screens.farmops.FarmOperationFormScreen
@@ -39,7 +43,6 @@ import com.redn.farm.ui.screens.profile.UserManagementScreen
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.redn.farm.security.Rbac
 import com.redn.farm.ui.screens.manage.customers.CustomerFormScreen
 import com.redn.farm.ui.screens.manage.customers.ManageCustomersViewModel
@@ -71,7 +74,13 @@ sealed class Screen(val route: String) {
         fun createRoute(acquisitionId: String) = "acquisition_form/$acquisitionId"
     }
     object Remittance : Screen("remittance")
+    object RemittanceForm : Screen("remittance_add_edit/{remittanceId}") {
+        fun createRoute(remittanceId: String) = "remittance_add_edit/$remittanceId"
+    }
     object Employees : Screen("employees")
+    object EmployeeForm : Screen("employee_add_edit/{employeeId}") {
+        fun createRoute(employeeId: String) = "employee_add_edit/$employeeId"
+    }
     object EmployeePayments : Screen("employee_payments/{employeeId}/{employeeName}") {
         fun createRoute(employeeId: Int, employeeName: String) =
             "employee_payments/$employeeId/${employeeName.replace(" ", "_")}"
@@ -168,11 +177,6 @@ fun NavGraph(
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)
                 },
-                onLogout = {
-                    navController.navigate(Screen.Login.route) {
-                        popUpTo(0) { inclusive = true }
-                    }
-                }
             )
         }
         composable(Screen.Products.route) {
@@ -229,10 +233,7 @@ fun NavGraph(
                 CustomerFormScreen(
                     customerId = cid,
                     onNavigateBack = { navController.navigateUp() },
-                    viewModel = viewModel(
-                        viewModelStoreOwner = customersListEntry,
-                        factory = ManageCustomersViewModel.Factory
-                    )
+                    viewModel = hiltViewModel(customersListEntry)
                 )
             }
         }
@@ -262,7 +263,10 @@ fun NavGraph(
                 )
             }
         }
-        composable(Screen.OrderHistory.route) {
+        composable(Screen.OrderHistory.route) { entry ->
+            val orderHistoryListEntry = remember(entry) {
+                navController.getBackStackEntry(Screen.OrderHistory.route)
+            }
             RequireRole(navController, Rbac.ROLES_ORDERS_FLOW) {
                 OrderHistoryScreen(
                     onNavigateBack = {
@@ -274,7 +278,8 @@ fun NavGraph(
                     },
                     onNavigateToOrderDetail = { orderId ->
                         navController.navigate(Screen.OrderDetail.createRoute(orderId))
-                    }
+                    },
+                    viewModel = hiltViewModel(orderHistoryListEntry)
                 )
             }
         }
@@ -285,13 +290,17 @@ fun NavGraph(
             )
         ) { backStackEntry ->
             val orderId = backStackEntry.arguments?.getInt("orderId") ?: return@composable
+            val orderHistoryListEntry = remember(backStackEntry) {
+                navController.getBackStackEntry(Screen.OrderHistory.route)
+            }
             RequireRole(navController, Rbac.ROLES_ORDERS_FLOW) {
                 OrderDetailScreen(
                     orderId = orderId,
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToEdit = {
                         navController.navigate(Screen.EditOrder.createRoute(orderId))
-                    }
+                    },
+                    viewModel = hiltViewModel(orderHistoryListEntry)
                 )
             }
         }
@@ -302,10 +311,14 @@ fun NavGraph(
             )
         ) { backStackEntry ->
             val orderId = backStackEntry.arguments?.getInt("orderId") ?: return@composable
+            val orderHistoryListEntry = remember(backStackEntry) {
+                navController.getBackStackEntry(Screen.OrderHistory.route)
+            }
             RequireRole(navController, Rbac.ROLES_ORDERS_FLOW) {
                 EditOrderScreen(
                     orderId = orderId,
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    viewModel = hiltViewModel(orderHistoryListEntry)
                 )
             }
         }
@@ -340,7 +353,28 @@ fun NavGraph(
         composable(Screen.Remittance.route) {
             RequireRole(navController, Rbac.ROLES_REMITTANCE) {
                 RemittanceScreen(
-                    onNavigateBack = { navController.navigateUp() }
+                    onNavigateBack = { navController.navigateUp() },
+                    onNavigateToForm = { remittanceId ->
+                        navController.navigate(Screen.RemittanceForm.createRoute(remittanceId))
+                    }
+                )
+            }
+        }
+        composable(
+            route = Screen.RemittanceForm.route,
+            arguments = listOf(
+                navArgument("remittanceId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            val remittanceIdKey = entry.arguments?.getString("remittanceId") ?: return@composable
+            val remittanceListEntry = remember(entry) {
+                navController.getBackStackEntry(Screen.Remittance.route)
+            }
+            RequireRole(navController, Rbac.ROLES_REMITTANCE) {
+                RemittanceFormScreen(
+                    remittanceIdKey = remittanceIdKey,
+                    onNavigateBack = { navController.navigateUp() },
+                    viewModel = hiltViewModel(remittanceListEntry)
                 )
             }
         }
@@ -350,7 +384,28 @@ fun NavGraph(
                     onNavigateBack = { navController.navigateUp() },
                     onNavigateToPayments = { employeeId, employeeName ->
                         navController.navigate(Screen.EmployeePayments.createRoute(employeeId, employeeName))
+                    },
+                    onNavigateToEmployeeForm = { employeeId ->
+                        navController.navigate(Screen.EmployeeForm.createRoute(employeeId))
                     }
+                )
+            }
+        }
+        composable(
+            route = Screen.EmployeeForm.route,
+            arguments = listOf(
+                navArgument("employeeId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            val employeeIdKey = entry.arguments?.getString("employeeId") ?: return@composable
+            val employeesListEntry = remember(entry) {
+                navController.getBackStackEntry(Screen.Employees.route)
+            }
+            RequireRole(navController, Rbac.ROLES_EMPLOYEES) {
+                EmployeeFormScreen(
+                    employeeIdKey = employeeIdKey,
+                    onNavigateBack = { navController.navigateUp() },
+                    viewModel = hiltViewModel(employeesListEntry)
                 )
             }
         }
@@ -360,10 +415,12 @@ fun NavGraph(
                 navArgument("employeeId") { type = NavType.IntType },
                 navArgument("employeeName") { type = NavType.StringType }
             )
-        ) { backStackEntry ->
-            val employeeId = backStackEntry.arguments?.getInt("employeeId") ?: return@composable
-            val employeeName = backStackEntry.arguments?.getString("employeeName")?.replace("_", " ") ?: return@composable
-
+        ) { entry ->
+            val employeeId = entry.arguments?.getInt("employeeId") ?: return@composable
+            val employeeName = entry.arguments?.getString("employeeName")?.replace("_", " ") ?: return@composable
+            val employeePaymentsListEntry = remember(entry) {
+                navController.getBackStackEntry(Screen.EmployeePayments.route)
+            }
             RequireRole(navController, Rbac.ROLES_EMPLOYEES) {
                 EmployeePaymentScreen(
                     onNavigateBack = { navController.navigateUp() },
@@ -373,7 +430,8 @@ fun NavGraph(
                         )
                     },
                     employeeId = employeeId,
-                    employeeName = employeeName
+                    employeeName = employeeName,
+                    viewModel = hiltViewModel(employeePaymentsListEntry)
                 )
             }
         }
@@ -384,17 +442,21 @@ fun NavGraph(
                 navArgument("employeeName") { type = NavType.StringType },
                 navArgument("paymentId") { type = NavType.IntType }
             )
-        ) { backStackEntry ->
-            val formEmployeeId = backStackEntry.arguments?.getInt("employeeId") ?: return@composable
-            val formEmployeeName = backStackEntry.arguments?.getString("employeeName")?.replace("_", " ")
+        ) { entry ->
+            val formEmployeeId = entry.arguments?.getInt("employeeId") ?: return@composable
+            val formEmployeeName = entry.arguments?.getString("employeeName")?.replace("_", " ")
                 ?: return@composable
-            val formPaymentId = backStackEntry.arguments?.getInt("paymentId") ?: return@composable
+            val formPaymentId = entry.arguments?.getInt("paymentId") ?: return@composable
+            val employeePaymentsListEntry = remember(entry) {
+                navController.getBackStackEntry(Screen.EmployeePayments.route)
+            }
             RequireRole(navController, Rbac.ROLES_EMPLOYEES) {
                 PaymentFormScreen(
                     employeeId = formEmployeeId,
                     employeeName = formEmployeeName,
                     paymentId = formPaymentId,
-                    onNavigateBack = { navController.navigateUp() }
+                    onNavigateBack = { navController.navigateUp() },
+                    viewModel = hiltViewModel(employeePaymentsListEntry)
                 )
             }
         }

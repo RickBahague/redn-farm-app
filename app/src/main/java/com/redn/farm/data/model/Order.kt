@@ -1,7 +1,5 @@
 package com.redn.farm.data.model
 
-import java.time.LocalDateTime
-
 data class Order(
     val order_id: Int = 0,
     val customer_id: Int,

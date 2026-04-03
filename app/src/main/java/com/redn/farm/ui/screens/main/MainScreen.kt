@@ -13,8 +13,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.security.Rbac
+import com.redn.farm.ui.screens.login.LoginViewModel
 import com.redn.farm.ui.theme.FarmTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,8 +41,8 @@ fun MainScreen(
     onNavigateToAbout: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onLogout: () -> Unit,
-    viewModel: MainViewModel = hiltViewModel()
+    viewModel: MainViewModel = hiltViewModel(),
+    loginViewModel: LoginViewModel = hiltViewModel(LocalContext.current as ComponentActivity),
 ) {
     val isAdmin by viewModel.isAdmin.collectAsState()
     val userRole by viewModel.userRole.collectAsState()
@@ -62,8 +64,7 @@ fun MainScreen(
                     }
                     IconButton(
                         onClick = {
-                            viewModel.logout()
-                            onLogout()
+                            loginViewModel.logout()
                         }
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
@@ -187,7 +188,6 @@ fun MainScreenPreview() {
             onNavigateToAbout = {},
             onNavigateToProfile = {},
             onNavigateToSettings = {},
-            onLogout = {}
         )
     }
 } 

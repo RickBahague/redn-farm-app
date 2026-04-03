@@ -1,6 +1,9 @@
 package com.redn.farm.data.export
 
 import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import com.redn.farm.data.local.entity.UserEntity
 import com.redn.farm.data.model.Order
 import com.redn.farm.data.model.OrderItem
@@ -15,10 +18,12 @@ import com.redn.farm.data.model.Acquisition
 import com.redn.farm.utils.DeviceUtils
 import java.io.File
 import java.io.FileWriter
-import java.time.LocalDateTime
+import java.time.Instant
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-class CsvExportService(private val context: Context) {
+@Singleton
+class CsvExportService @Inject constructor(@ApplicationContext private val context: Context) {
 
     private fun getExportsDirectory(): File {
         val exportsDir = File(context.getExternalFilesDir(null), "exports")
@@ -29,7 +34,9 @@ class CsvExportService(private val context: Context) {
     }
 
     private fun makeTimestamp(): String =
-        LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+        DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
+            .withZone(ZoneId.systemDefault())
+            .format(Instant.now())
 
     /** Double-quote CSV text field; escape internal quotes. */
     private fun csvTextField(value: String?): String {
@@ -263,12 +270,13 @@ class CsvExportService(private val context: Context) {
             writer.append(
                 "AcquisitionId,ProductId,ProductName,Quantity,PricePerUnit,TotalAmount,IsPerKg,PieceCount," +
                     "DateAcquired,CreatedAt,Location," +
-                    "PresetRef,SpoilageRate,AdditionalCostPerKg,HaulingWeightKg,HaulingFeesJson,ChannelsSnapshotJson," +
+                    "PresetRef,SpoilageRate,SpoilageKg,AdditionalCostPerKg,HaulingWeightKg,HaulingFeesJson,ChannelsSnapshotJson," +
                     "SrpOnlinePerKg,SrpResellerPerKg,SrpOfflinePerKg," +
                     "SrpOnline500g,SrpOnline250g,SrpOnline100g," +
                     "SrpReseller500g,SrpReseller250g,SrpReseller100g," +
                     "SrpOffline500g,SrpOffline250g,SrpOffline100g," +
                     "SrpOnlinePerPiece,SrpResellerPerPiece,SrpOfflinePerPiece," +
+                    "SrpCustomOverride," +
                     "DeviceId\n"
             )
             val deviceId = DeviceUtils.getDeviceId(context)
@@ -286,6 +294,7 @@ class CsvExportService(private val context: Context) {
                     .append(csvTextField(a.location.name)).append(",")
                     .append(csvTextField(a.preset_ref)).append(",")
                     .append("${a.spoilage_rate ?: ""},")
+                    .append("${a.spoilage_kg ?: ""},")
                     .append("${a.additional_cost_per_kg ?: ""},")
                     .append("${a.hauling_weight_kg ?: ""},")
                     .append(csvTextField(a.hauling_fees_json)).append(",")
@@ -305,6 +314,7 @@ class CsvExportService(private val context: Context) {
                     .append("${a.srp_online_per_piece ?: ""},")
                     .append("${a.srp_reseller_per_piece ?: ""},")
                     .append("${a.srp_offline_per_piece ?: ""},")
+                    .append("${a.srp_custom_override},")
                     .append(csvTextField(deviceId))
                     .append("\n")
             }

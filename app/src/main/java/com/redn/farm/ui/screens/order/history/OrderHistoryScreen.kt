@@ -13,7 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Order
 import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.utils.buildOrderReceiptText
@@ -34,7 +34,7 @@ import java.time.Instant
 fun OrderHistoryScreen(
     onNavigateBack: () -> Unit,
     onNavigateToOrderDetail: (Int) -> Unit,
-    viewModel: OrderHistoryViewModel = viewModel(factory = OrderHistoryViewModel.Factory)
+    viewModel: OrderHistoryViewModel = hiltViewModel()
 ) {
     var showDeleteDialog by remember { mutableStateOf<Order?>(null) }
     var showFilters by remember { mutableStateOf(false) }

@@ -39,8 +39,4 @@ class MainViewModel @Inject constructor(
         val user = userDao.getUserByUsername(username) ?: return
         _userRole.value = Rbac.normalizeRole(user.role)
     }
-
-    fun logout() {
-        sessionManager.endSession()
-    }
 }

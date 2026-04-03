@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -49,14 +50,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.EmployeePayment
 import com.redn.farm.utils.buildEmployeePaymentVoucher
 import com.redn.farm.utils.CurrencyFormatter
@@ -78,7 +83,7 @@ fun PaymentFormScreen(
     employeeName: String,
     paymentId: Int,
     onNavigateBack: () -> Unit,
-    viewModel: EmployeePaymentViewModel = viewModel(factory = EmployeePaymentViewModel.Factory)
+    viewModel: EmployeePaymentViewModel = hiltViewModel()
 ) {
     val isNew = paymentId <= 0
     val payments by viewModel.payments.collectAsState(initial = emptyList())
@@ -144,6 +149,10 @@ fun PaymentFormScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val grossFocus = remember { FocusRequester() }
+    val advanceFocus = remember { FocusRequester() }
+    val liquidatedFocus = remember { FocusRequester() }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -364,9 +373,17 @@ fun PaymentFormScreen(
                         }
                     },
                     isError = grossWage.isNotBlank() && !grossValid,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { advanceFocus.requestFocus() },
+                    ),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(grossFocus),
                 )
 
                 OutlinedTextField(
@@ -374,9 +391,17 @@ fun PaymentFormScreen(
                     onValueChange = { cashAdvanceAmount = it },
                     readOnly = isFinalized,
                     label = { Text("Cash advance (optional)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { liquidatedFocus.requestFocus() },
+                    ),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(advanceFocus),
                 )
 
                 OutlinedTextField(
@@ -384,9 +409,17 @@ fun PaymentFormScreen(
                     onValueChange = { liquidatedAmount = it },
                     readOnly = isFinalized,
                     label = { Text("Liquidated (optional)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { focusManager.clearFocus() },
+                    ),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(liquidatedFocus),
                 )
 
                 NetPaySummaryCard(

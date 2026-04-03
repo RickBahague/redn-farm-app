@@ -30,8 +30,8 @@ class PresetActivationPreviewViewModel @Inject constructor(
     private val _preset = MutableStateFlow<PricingPresetEntity?>(null)
     val preset: StateFlow<PricingPresetEntity?> = _preset.asStateFlow()
 
-    private val _previewRows = MutableStateFlow<List<PresetPreviewCalculator.ChannelResult>>(emptyList())
-    val previewRows: StateFlow<List<PresetPreviewCalculator.ChannelResult>> = _previewRows.asStateFlow()
+    private val _previewRows = MutableStateFlow<List<PresetPreviewCalculator.ChannelDetailedResult>>(emptyList())
+    val previewRows: StateFlow<List<PresetPreviewCalculator.ChannelDetailedResult>> = _previewRows.asStateFlow()
 
     private val _activated = MutableStateFlow(false)
     val activated: StateFlow<Boolean> = _activated.asStateFlow()

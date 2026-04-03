@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
-import java.time.LocalDateTime
 
 @Singleton
 class ProductRepository @Inject constructor(
@@ -155,7 +154,7 @@ class ProductRepository @Inject constructor(
                 per_piece_price = productPrice.per_piece_price,
                 discounted_per_kg_price = productPrice.discounted_per_kg_price,
                 discounted_per_piece_price = productPrice.discounted_per_piece_price,
-                date_created = LocalDateTime.now() // Always use current time for new prices
+                date_created = System.currentTimeMillis()
             )
         )
     }

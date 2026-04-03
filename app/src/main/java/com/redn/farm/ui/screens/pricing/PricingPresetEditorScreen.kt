@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -42,9 +41,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.redn.farm.ui.components.NumericPadOutlinedTextField
+import com.redn.farm.ui.components.NumericPadOutlinedTextFieldForDouble
+import com.redn.farm.ui.components.NumericPadOutlinedTextFieldForNullableDouble
 import com.redn.farm.data.pricing.ChannelConfig
 import com.redn.farm.data.pricing.ChannelFee
 
@@ -133,13 +134,13 @@ fun PricingPresetEditorScreen(
             )
 
             Text("Spoilage & hauling", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(
+            NumericPadOutlinedTextField(
                 value = form.spoilageRateText,
                 onValueChange = { viewModel.updateForm { f -> f.copy(spoilageRateText = it) } },
                 label = { Text("Default spoilage rate (0–0.99)") },
+                padTitle = "Default spoilage rate",
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true
+                maxDecimalPlaces = 4,
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -152,22 +153,22 @@ fun PricingPresetEditorScreen(
                 )
             }
             if (form.useDirectAdditionalPerKg) {
-                OutlinedTextField(
+                NumericPadOutlinedTextField(
                     value = form.directAdditionalPerKgText,
                     onValueChange = { viewModel.updateForm { f -> f.copy(directAdditionalPerKgText = it) } },
                     label = { Text("Additional cost per kg (₱)") },
+                    padTitle = "Additional cost per kg",
                     modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
+                    maxDecimalPlaces = 2,
                 )
             } else {
-                OutlinedTextField(
+                NumericPadOutlinedTextField(
                     value = form.haulingWeightKgText,
                     onValueChange = { viewModel.updateForm { f -> f.copy(haulingWeightKgText = it) } },
                     label = { Text("Hauling weight (kg)") },
+                    padTitle = "Hauling weight (kg)",
                     modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
+                    maxDecimalPlaces = 3,
                 )
                 Text("Hauling fee lines", style = MaterialTheme.typography.labelLarge)
                 form.haulingFees.forEachIndexed { index, fee ->
@@ -183,16 +184,15 @@ fun PricingPresetEditorScreen(
                             modifier = Modifier.weight(1f),
                             singleLine = true
                         )
-                        OutlinedTextField(
-                            value = if (fee.amount == 0.0) "" else fee.amount.toString(),
-                            onValueChange = { raw ->
-                                val v = raw.toDoubleOrNull() ?: 0.0
-                                viewModel.updateHaulingFee(index, fee.label, v)
-                            },
+                        NumericPadOutlinedTextFieldForDouble(
+                            value = fee.amount,
+                            emptyWhenZero = true,
+                            onValueChange = { viewModel.updateHaulingFee(index, fee.label, it) },
                             label = { Text("₱") },
+                            padTitle = "Hauling fee (₱)",
                             modifier = Modifier.weight(0.8f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true
+                            rememberKey = index,
+                            maxDecimalPlaces = 2,
                         )
                         IconButton(onClick = { viewModel.removeHaulingFee(index) }) {
                             Icon(Icons.Default.Delete, contentDescription = "Remove")
@@ -232,25 +232,27 @@ fun PricingPresetEditorScreen(
                             Icon(Icons.Default.Delete, contentDescription = "Remove category")
                         }
                     }
-                    OutlinedTextField(
-                        value = cat.spoilageRate?.toString() ?: "",
+                    NumericPadOutlinedTextFieldForNullableDouble(
+                        value = cat.spoilageRate,
                         onValueChange = { v ->
-                            viewModel.updateCategory(index) { c -> c.copy(spoilageRate = v.toDoubleOrNull()) }
+                            viewModel.updateCategory(index) { c -> c.copy(spoilageRate = v) }
                         },
                         label = { Text("Spoilage override (optional)") },
+                        padTitle = "Category spoilage",
                         modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true
+                        rememberKey = index to "spoilage",
+                        maxDecimalPlaces = 4,
                     )
-                    OutlinedTextField(
-                        value = cat.additionalCostPerKg?.toString() ?: "",
+                    NumericPadOutlinedTextFieldForNullableDouble(
+                        value = cat.additionalCostPerKg,
                         onValueChange = { v ->
-                            viewModel.updateCategory(index) { c -> c.copy(additionalCostPerKg = v.toDoubleOrNull()) }
+                            viewModel.updateCategory(index) { c -> c.copy(additionalCostPerKg = v) }
                         },
                         label = { Text("Additional ₱/kg override (optional)") },
+                        padTitle = "Additional ₱/kg",
                         modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true
+                        rememberKey = index to "addkg",
+                        maxDecimalPlaces = 2,
                     )
                 }
             }
@@ -306,22 +308,26 @@ private fun ChannelEditorBlock(
             )
         }
         if (useMarkup) {
-            OutlinedTextField(
-                value = config.markupPercent?.toString() ?: "",
-                onValueChange = { onChange(config.copy(markupPercent = it.toDoubleOrNull())) },
+            NumericPadOutlinedTextFieldForDouble(
+                value = config.markupPercent ?: 0.0,
+                emptyWhenZero = false,
+                onValueChange = { onChange(config.copy(markupPercent = it, marginPercent = null)) },
                 label = { Text("Markup %") },
+                padTitle = "$title — markup %",
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true
+                rememberKey = "$title-markup",
+                maxDecimalPlaces = 2,
             )
         } else {
-            OutlinedTextField(
-                value = config.marginPercent?.toString() ?: "",
-                onValueChange = { onChange(config.copy(marginPercent = it.toDoubleOrNull())) },
+            NumericPadOutlinedTextFieldForDouble(
+                value = config.marginPercent ?: 0.0,
+                emptyWhenZero = false,
+                onValueChange = { onChange(config.copy(marginPercent = it, markupPercent = null)) },
                 label = { Text("Margin %") },
+                padTitle = "$title — margin %",
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true
+                rememberKey = "$title-margin",
+                maxDecimalPlaces = 2,
             )
         }
         ExposedDropdownMenuBox(
@@ -406,17 +412,19 @@ private fun ChannelEditorBlock(
                         }
                     }
                 }
-                OutlinedTextField(
-                    value = if (fee.amount == 0.0) "" else fee.amount.toString(),
-                    onValueChange = { raw ->
+                NumericPadOutlinedTextFieldForDouble(
+                    value = fee.amount,
+                    emptyWhenZero = true,
+                    onValueChange = { amt ->
                         val updated = config.fees.toMutableList()
-                            .also { it[i] = fee.copy(amount = raw.toDoubleOrNull() ?: 0.0) }
+                            .also { it[i] = fee.copy(amount = amt) }
                         onChange(config.copy(fees = updated))
                     },
                     label = { Text("Amount") },
+                    padTitle = "$title — fee amount",
                     modifier = Modifier.weight(0.8f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
+                    rememberKey = "$title-fee-$i",
+                    maxDecimalPlaces = 4,
                 )
                 IconButton(onClick = {
                     onChange(config.copy(fees = config.fees.filterIndexed { idx, _ -> idx != i }))

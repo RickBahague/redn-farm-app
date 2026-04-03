@@ -200,9 +200,9 @@ Price/kg : PHP    70.00
 TOTAL    : PHP 7,000.00
 --------------------------------
 Preset   : Q2 2026 Rates
-SRP Online : PHP 137.00/kg
-SRP Reseller: PHP 127.00/kg
-SRP Offline: PHP 132.00/kg
+SRP Online : PHP 140.00/kg
+SRP Reseller: PHP 130.00/kg
+SRP Offline: PHP 135.00/kg
 ================================
 Received by: ___________________
 ================================
@@ -259,7 +259,7 @@ Verified by: _________________
 **Formatting rules:**
 - **Header block:** Document title **ACQUISITION REPORT** (or **BATCH RECEIVING REPORT**). **Printed** = device local date-time. **Filter** = human-readable summary of active filters (truncate/wrap at 30 cols with continuation prefix `>` or indent; if no search, omit that line). **Date** = acquisition date-range filter if set, else *"All dates"* or omit.
 - **Roll-up:** **Lines** = count of acquisitions in the filtered set. **TOTAL** = `sum(total_amount)` over those rows.
-- **Per acquisition:** Repeat a **mini slip** patterned on PRN-02: `--- Line i / N ---` divider, then Acq ID, `date_acquired` (ISO or short), `product_name` (truncate ~18 chars; wrap name on second line if needed), `location` enum label, `quantity` + `kg`/`pcs`, `price_per_unit` with `/kg` or `/pc`, **Line** = `total_amount`. **Preset** line only if `preset_ref != null`; **SRP** = one compressed line if any per-kg SRPs exist (e.g. `SRP On : 137/kg · Res 127 · Off 132`), else `—`. Omit pack-tier SRP lines in v1 to save paper; optional v2 expand per PRN-02.
+- **Per acquisition:** Repeat a **mini slip** patterned on PRN-02: `--- Line i / N ---` divider, then Acq ID, `date_acquired` (ISO or short), `product_name` (truncate ~18 chars; wrap name on second line if needed), `location` enum label, `quantity` + `kg`/`pcs`, `price_per_unit` with `/kg` or `/pc`, **Line** = `total_amount`. **Preset** line only if `preset_ref != null`; **SRP** = one compressed line if any per-kg SRPs exist (e.g. `SRP On : 140/kg · Res 130 · Off 135`), else `—`. Omit pack-tier SRP lines in v1 to save paper; optional v2 expand per PRN-02.
 - **Long jobs:** If the string exceeds practical length, split into **multiple print jobs** (cut between acquisitions) or warn *"List too long — narrow filters"* (product decision).
 - **Footer:** Single **Verified by** for the whole batch (not per line).
 
@@ -316,7 +316,7 @@ As of: 2026-04-03
 --------------------------------
 Product          /kg    /500g
 --------------------------------
-Tomatoes       137.00   69.00
+Tomatoes       140.00   70.00
 Lettuce        145.00   73.00
 Kangkong        98.00   49.00
 --------------------------------

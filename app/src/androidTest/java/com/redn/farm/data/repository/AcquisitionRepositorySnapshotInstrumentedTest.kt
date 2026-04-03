@@ -86,6 +86,7 @@ class AcquisitionRepositorySnapshotInstrumentedTest {
         location = AcquisitionLocation.FARM,
         preset_ref = "preset1",
         spoilage_rate = 0.1,
+        spoilage_kg = null,
         additional_cost_per_kg = 5.0,
         hauling_weight_kg = null,
         hauling_fees_json = null,

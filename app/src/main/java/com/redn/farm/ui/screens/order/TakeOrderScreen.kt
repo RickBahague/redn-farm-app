@@ -15,7 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.CartItem
 import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.utils.CurrencyFormatter
@@ -29,7 +29,7 @@ fun TakeOrderScreen(
     onNavigateBack: () -> Unit,
     onNavigateToOrderHistory: () -> Unit,
     onNavigateToActiveSrps: () -> Unit = {},
-    viewModel: TakeOrderViewModel = viewModel(factory = TakeOrderViewModel.Factory)
+    viewModel: TakeOrderViewModel = hiltViewModel()
 ) {
     var showCustomerDialog by remember { mutableStateOf(false) }
     var showProductDialog by remember { mutableStateOf(false) }

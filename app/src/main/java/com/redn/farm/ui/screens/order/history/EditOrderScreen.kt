@@ -12,7 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Order
 import com.redn.farm.data.model.OrderItem
 import com.redn.farm.data.model.isOrderFinalized
@@ -59,7 +59,7 @@ private fun formatDate(timestamp: Long): String {
 fun EditOrderScreen(
     orderId: Int,
     onNavigateBack: () -> Unit,
-    viewModel: OrderHistoryViewModel = viewModel(factory = OrderHistoryViewModel.Factory)
+    viewModel: OrderHistoryViewModel = hiltViewModel()
 ) {
     var order by remember { mutableStateOf<Order?>(null) }
     var orderItems by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
@@ -134,7 +134,8 @@ fun EditOrderScreen(
                                             
                                             orderItems.forEach { item ->
                                                 appendLine("${item.product_name} - ${CurrencyFormatter.format(item.total_price)}")
-                                                appendLine("${item.quantity}${if (item.is_per_kg) "kg" else "pc"} x ${CurrencyFormatter.format(item.price_per_unit)}")
+                                                val u = if (item.is_per_kg) "/kg" else "/pc"
+                                                appendLine("${item.quantity}${if (item.is_per_kg) "kg" else "pc"} x ${CurrencyFormatter.format(item.price_per_unit)}$u")
                                             }
                                             
                                             appendLine("--------------------------------")
@@ -489,13 +490,14 @@ fun EditOrderScreen(
                 DatePickerDialog(
                     onDismissRequest = { showDatePicker = false },
                     onDateSelected = { selectedDate ->
+                        val dayMillis = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                         val updatedOrder = currentOrder.copy(
-                            order_date = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                            order_date = dayMillis,
                             order_update_date = System.currentTimeMillis()
                         )
                         order = updatedOrder
                         hasChanges = true
-                        viewModel.updateOrderDate(orderId, selectedDate.atStartOfDay())
+                        viewModel.updateOrderDate(orderId, dayMillis)
                         showDatePicker = false
                     },
                     initialDate = LocalDate.ofInstant(
@@ -684,14 +686,15 @@ private fun CustomerInfoCard(
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             onDateSelected = { selectedDate ->
+                val dayMillis = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                 val updatedOrder = order.copy(
-                    order_date = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                    order_date = dayMillis,
                     order_update_date = System.currentTimeMillis()
                 )
                 onOrderUpdated(updatedOrder)
                 viewModel.updateOrderDate(
                     orderId = order.order_id,
-                    newDate = selectedDate.atStartOfDay()
+                    orderDateMillis = dayMillis
                 )
                 showDatePicker = false
             },
@@ -809,7 +812,7 @@ private fun OrderItemRow(
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
-                        text = "@${CurrencyFormatter.format(item.price_per_unit)}",
+                        text = "@${CurrencyFormatter.format(item.price_per_unit)}${if (item.is_per_kg) "/kg" else "/pc"}",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

@@ -10,7 +10,6 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.redn.farm.data.local.dao.*
 import com.redn.farm.data.local.entity.*
-import com.redn.farm.data.local.converters.DateTimeConverter
 import com.redn.farm.data.local.converters.EnumConverters
 import com.redn.farm.data.local.security.PasswordManager
 import kotlinx.coroutines.CoroutineScope
@@ -33,9 +32,9 @@ import kotlinx.coroutines.launch
         PricingPresetEntity::class,
         PresetActivationLogEntity::class
     ],
-    version = 5
+    version = 8
 )
-@TypeConverters(DateTimeConverter::class, EnumConverters::class)
+@TypeConverters(EnumConverters::class)
 abstract class FarmDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
     abstract fun productPriceDao(): ProductPriceDao
@@ -95,8 +94,8 @@ abstract class FarmDatabase : RoomDatabase() {
             }
         }
 
-        // Version 5 schema includes `employee_payments.is_finalized` (BUG-EMP-03). No incremental
-        // migration yet — build phase: `fallbackToDestructiveMigration()` or fresh install.
+        // Version 5+ schema: `employee_payments.is_finalized` (v5), `acquisitions.srp_custom_override` (v6),
+        // `acquisitions.spoilage_kg` (v7, BUG-PRC-04). Build phase: destructive migration on bump or fresh install.
 
         fun getDatabase(context: Context): FarmDatabase {
             return INSTANCE ?: synchronized(this) {

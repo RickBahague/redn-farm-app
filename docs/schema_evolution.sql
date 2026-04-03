@@ -241,18 +241,18 @@ CREATE TABLE IF NOT EXISTS `acquisitions` (
     `acquisition_id`         INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     `product_id`             TEXT    NOT NULL,
     `product_name`           TEXT    NOT NULL,
-    `quantity`               REAL    NOT NULL,
+    `quantity`               REAL    NOT NULL,            -- kg when is_per_kg; total pieces when not (INV-US-01)
     `price_per_unit`         REAL    NOT NULL,
     `total_amount`           REAL    NOT NULL,
     `is_per_kg`              INTEGER NOT NULL,
-    `piece_count`            INTEGER,                    -- INV-US-01; pieces per kg
+    `piece_count`            REAL,                       -- INV-US-01; pieces per kg when not is_per_kg; PricingReference §5.1.1 / §4.3.1 (may be fractional)
     `date_acquired`          INTEGER NOT NULL,           -- user-entered acquisition date
     `created_at`             INTEGER NOT NULL,           -- INV-US-06 tiebreaker: DB insert timestamp
     `location`               TEXT    NOT NULL,
     -- preset traceability (INV-US-05)
     `preset_ref`             TEXT,                       -- FK to pricing_presets.preset_id
     -- preset snapshot at save time (INV-US-05 — immutable audit trail)
-    `spoilage_rate`          REAL,
+    `spoilage_rate`          REAL,                       -- preset snapshot; CLARIF-01: not applied in SRP when is_per_kg=0 (design — PricingReference §5.1.1)
     `additional_cost_per_kg` REAL,
     `hauling_weight_kg`      REAL,
     `hauling_fees_json`      TEXT,                       -- JSON: [{label, amount}, ...]
@@ -358,3 +358,19 @@ CREATE TABLE IF NOT EXISTS `preset_activation_log` (
 -- `employee_payments` columns (v5):
 --   payment_id, employee_id, amount, cash_advance_amount, liquidated_amount,
 --   date_paid, signature, received_date, is_finalized
+--
+-- ============================================================
+-- VERSION 6  (MGT-US-07 — customer / custom SRP per acquisition)
+-- ============================================================
+-- Build phase: no incremental 5→6 Room migration. New DBs get full DDL from Room `onCreate`.
+-- Existing v5 installs hit `fallbackToDestructiveMigration()` when opening v6 (acceptable during dev).
+--
+-- `acquisitions` adds boolean column: `srp_custom_override` (0/1)
+
+-- ============================================================
+-- VERSION 8  (BUG-ARC-02 — epoch millis for customer / product price timestamps)
+-- ============================================================
+-- `customers.date_created`, `customers.date_updated`, `product_prices.date_created`:
+-- INTEGER NOT NULL, epoch **milliseconds** (system default zone at UI/seed boundaries).
+-- Room **`DateTimeConverter`** (epoch seconds ↔ LocalDateTime) removed from `FarmDatabase`.
+-- No incremental 7→8 migration in code; dev relies on `fallbackToDestructiveMigration()`.

@@ -27,6 +27,9 @@ interface EmployeePaymentDao {
 
     @Query("DELETE FROM employee_payments")
     suspend fun truncate()
+
+    @Query("SELECT COUNT(*) FROM employee_payments WHERE employee_id = :employeeId")
+    suspend fun countByEmployeeId(employeeId: Int): Int
 }
 
 data class EmployeePaymentWithEmployee(

@@ -5,8 +5,11 @@ import com.redn.farm.data.local.entity.EmployeePaymentEntity
 import com.redn.farm.data.model.EmployeePayment
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class EmployeePaymentRepository(
+@Singleton
+class EmployeePaymentRepository @Inject constructor(
     private val employeePaymentDao: EmployeePaymentDao
 ) {
     fun getAllPayments(): Flow<List<EmployeePayment>> {
@@ -71,6 +74,9 @@ class EmployeePaymentRepository(
     suspend fun truncate() {
         employeePaymentDao.truncate()
     }
+
+    suspend fun countPaymentsForEmployee(employeeId: Int): Int =
+        employeePaymentDao.countByEmployeeId(employeeId)
 
     private fun EmployeePaymentEntity.toPayment() = EmployeePayment(
         payment_id = payment_id,

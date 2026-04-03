@@ -55,8 +55,8 @@ import androidx.compose.ui.unit.dp
 import com.redn.farm.data.model.FarmOperation
 import com.redn.farm.data.model.FarmOperationType
 import com.redn.farm.data.model.Product
+import com.redn.farm.utils.MillisDateRange
 import java.time.Instant
-import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -95,7 +95,9 @@ fun FarmOperationFormScreen(
     var area by remember(operationIdKey) { mutableStateOf("") }
     var weather by remember(operationIdKey) { mutableStateOf("") }
     var personnel by remember(operationIdKey) { mutableStateOf("") }
-    var operationDate by remember(operationIdKey) { mutableStateOf(LocalDateTime.now()) }
+    var operationDateMillis by remember(operationIdKey) {
+        mutableStateOf(MillisDateRange.startOfDayMillis(System.currentTimeMillis()))
+    }
     var selectedProduct by remember(operationIdKey) { mutableStateOf<Product?>(null) }
     var productSectionExpanded by remember(operationIdKey) { mutableStateOf(false) }
     var showProductSheet by remember { mutableStateOf(false) }
@@ -109,7 +111,7 @@ fun FarmOperationFormScreen(
         area = op.area
         weather = op.weather_condition
         personnel = op.personnel
-        operationDate = op.operation_date
+        operationDateMillis = MillisDateRange.startOfDayMillis(op.operation_date)
         selectedProduct = op.product_id?.let { pid -> products.find { it.product_id == pid } }
         productSectionExpanded = op.product_id != null
     }
@@ -128,18 +130,19 @@ fun FarmOperationFormScreen(
 
     fun performSave() {
         if (!canSave) return
+        val now = System.currentTimeMillis()
         val op = FarmOperation(
             operation_id = existing?.operation_id ?: 0,
             operation_type = selectedType,
-            operation_date = operationDate,
+            operation_date = operationDateMillis,
             details = details,
             area = area,
             weather_condition = weather,
             personnel = personnel,
             product_id = selectedProduct?.product_id,
             product_name = selectedProduct?.product_name ?: "",
-            date_created = existing?.date_created ?: LocalDateTime.now(),
-            date_updated = LocalDateTime.now()
+            date_created = existing?.date_created ?: now,
+            date_updated = now
         )
         if (isNew) viewModel.addOperation(op) else viewModel.updateOperation(op)
         onNavigateBack()
@@ -147,10 +150,7 @@ fun FarmOperationFormScreen(
 
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = operationDate
-                .atZone(ZoneId.systemDefault())
-                .toInstant()
-                .toEpochMilli()
+            initialSelectedDateMillis = operationDateMillis
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
@@ -158,10 +158,7 @@ fun FarmOperationFormScreen(
                 TextButton(
                     onClick = {
                         datePickerState.selectedDateMillis?.let { millis ->
-                            operationDate = LocalDateTime.ofInstant(
-                                Instant.ofEpochMilli(millis),
-                                ZoneId.systemDefault()
-                            )
+                            operationDateMillis = MillisDateRange.startOfDayMillis(millis)
                         }
                         showDatePicker = false
                     }
@@ -311,7 +308,11 @@ fun FarmOperationFormScreen(
             ) {
                 Column(Modifier.padding(12.dp)) {
                     Text("Date", style = MaterialTheme.typography.labelMedium)
-                    Text(dateFormatter.format(operationDate), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        dateFormatter.withZone(ZoneId.systemDefault())
+                            .format(Instant.ofEpochMilli(operationDateMillis)),
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
             }
 

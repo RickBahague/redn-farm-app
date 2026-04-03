@@ -23,10 +23,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import com.redn.farm.utils.MillisDateRange
 import kotlinx.coroutines.flow.SharingStarted
-import java.time.LocalDateTime
-import java.time.Instant
-import java.time.ZoneId
 import javax.inject.Inject
 
 @HiltViewModel
@@ -44,7 +42,7 @@ class AcquireProduceViewModel @Inject constructor(
     private val _selectedLocation = MutableStateFlow<AcquisitionLocation?>(null)
     val selectedLocation = _selectedLocation.asStateFlow()
 
-    private val _selectedDateRange = MutableStateFlow<Pair<LocalDateTime?, LocalDateTime?>>(null to null)
+    private val _selectedDateRange = MutableStateFlow<Pair<Long?, Long?>>(null to null)
     val selectedDateRange = _selectedDateRange.asStateFlow()
     
     private val _acquisitions = MutableStateFlow<List<Acquisition>>(emptyList())
@@ -60,11 +58,7 @@ class AcquireProduceViewModel @Inject constructor(
 
             val matchesLocation = location == null || acquisition.location == location
 
-            val acquisitionDateTime = LocalDateTime.ofInstant(
-                Instant.ofEpochMilli(acquisition.date_acquired),
-                ZoneId.systemDefault()
-            )
-            val matchesDateRange = isWithinDateRange(acquisitionDateTime, dateRange)
+            val matchesDateRange = MillisDateRange.contains(acquisition.date_acquired, dateRange)
 
             matchesSearch && matchesLocation && matchesDateRange
         }
@@ -142,20 +136,7 @@ class AcquireProduceViewModel @Inject constructor(
         _selectedLocation.value = location
     }
 
-    fun updateDateRange(dateRange: Pair<LocalDateTime?, LocalDateTime?>) {
+    fun updateDateRange(dateRange: Pair<Long?, Long?>) {
         _selectedDateRange.value = dateRange
-    }
-
-    private fun isWithinDateRange(
-        date: LocalDateTime,
-        range: Pair<LocalDateTime?, LocalDateTime?>
-    ): Boolean {
-        val (start, end) = range
-        return when {
-            start == null && end == null -> true
-            start == null -> date <= end!!
-            end == null -> date >= start
-            else -> date in start..end
-        }
     }
 } 

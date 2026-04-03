@@ -69,7 +69,37 @@ class AcquisitionRepository @Inject constructor(
         val category = productDao.getProductById(acquisition.product_id)?.category
         return when (val run = runSrpForAcquisitionAndPreset(acquisition, preset, category)) {
             is SrpRun.Error -> AcquisitionDraftPricingPreview.Invalid(run.message)
-            is SrpRun.Ok -> AcquisitionDraftPricingPreview.Ok(presetName = preset.preset_name, output = run.output)
+            is SrpRun.Ok -> {
+                if (!acquisition.srp_custom_override) {
+                    AcquisitionDraftPricingPreview.Ok(presetName = preset.preset_name, output = run.output)
+                } else {
+                    val o = acquisition.srp_online_per_kg
+                    val r = acquisition.srp_reseller_per_kg
+                    val f = acquisition.srp_offline_per_kg
+                    if (o == null || r == null || f == null || o <= 0 || r <= 0 || f <= 0) {
+                        AcquisitionDraftPricingPreview.Invalid("Enter positive customer SRP/kg for online, reseller, and store.")
+                    } else {
+                        when (
+                            val m = SrpCalculator.mergeCostContextWithCustomSrps(
+                                run.output,
+                                run.channels,
+                                o,
+                                r,
+                                f,
+                                acquisition.piece_count,
+                            )
+                        ) {
+                            is SrpCalculator.Result.Error ->
+                                AcquisitionDraftPricingPreview.Invalid(m.message)
+                            is SrpCalculator.Result.Ok ->
+                                AcquisitionDraftPricingPreview.Ok(
+                                    presetName = preset.preset_name,
+                                    output = m.output,
+                                )
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -79,6 +109,20 @@ class AcquisitionRepository @Inject constructor(
     }
 
     suspend fun insertWithPricing(acquisition: Acquisition): AcquisitionSaveOutcome {
+        if (acquisition.srp_custom_override) {
+            val preset = pricingPresetRepository.getActivePresetOnce()
+                ?: return AcquisitionSaveOutcome.SavedWithoutActivePreset(
+                    "Custom customer SRP requires an active pricing preset.",
+                )
+            val category = productDao.getProductById(acquisition.product_id)?.category
+            return when (val out = computeCustomMerged(acquisition, preset, category)) {
+                is ComputeResult.Error -> AcquisitionSaveOutcome.ValidationError(out.message)
+                is ComputeResult.Ok -> {
+                    acquisitionDao.insert(out.acquisition.toEntityForSave(isInsert = true))
+                    AcquisitionSaveOutcome.Success
+                }
+            }
+        }
         val preset = pricingPresetRepository.getActivePresetOnce()
         if (preset == null) {
             acquisitionDao.insert(acquisition.withoutPricing().toEntityForSave(isInsert = true))
@@ -97,13 +141,22 @@ class AcquisitionRepository @Inject constructor(
             user.price_per_unit != old.price_per_unit ||
             user.piece_count != old.piece_count ||
             abs(user.total_amount - old.total_amount) > 0.001 ||
-            user.is_per_kg != old.is_per_kg
+            user.is_per_kg != old.is_per_kg ||
+            user.spoilage_kg != old.spoilage_kg
 
-        if (!costChanged) {
+        val customPricingChanged = user.srp_custom_override != old.srp_custom_override ||
+            (user.srp_custom_override && (
+                user.srp_online_per_kg != old.srp_online_per_kg ||
+                    user.srp_reseller_per_kg != old.srp_reseller_per_kg ||
+                    user.srp_offline_per_kg != old.srp_offline_per_kg
+                ))
+
+        if (!costChanged && !customPricingChanged) {
             val merged = user.copy(
                 created_at = old.created_at,
                 preset_ref = old.preset_ref,
                 spoilage_rate = old.spoilage_rate,
+                spoilage_kg = old.spoilage_kg,
                 additional_cost_per_kg = old.additional_cost_per_kg,
                 hauling_weight_kg = old.hauling_weight_kg,
                 hauling_fees_json = old.hauling_fees_json,
@@ -122,16 +175,34 @@ class AcquisitionRepository @Inject constructor(
                 srp_offline_100g = old.srp_offline_100g,
                 srp_online_per_piece = old.srp_online_per_piece,
                 srp_reseller_per_piece = old.srp_reseller_per_piece,
-                srp_offline_per_piece = old.srp_offline_per_piece
+                srp_offline_per_piece = old.srp_offline_per_piece,
+                srp_custom_override = old.srp_custom_override,
             )
             acquisitionDao.update(merged.toEntityForSave(isInsert = false))
             return AcquisitionSaveOutcome.Success
         }
 
+        if (user.srp_custom_override) {
+            val preset = pricingPresetRepository.getActivePresetOnce()
+                ?: return AcquisitionSaveOutcome.ValidationError(
+                    "Custom customer SRP requires an active pricing preset.",
+                )
+            val category = productDao.getProductById(user.product_id)?.category
+            return when (val out = computeCustomMerged(user.copy(created_at = old.created_at), preset, category)) {
+                is ComputeResult.Error -> AcquisitionSaveOutcome.ValidationError(out.message)
+                is ComputeResult.Ok -> {
+                    acquisitionDao.update(out.acquisition.toEntityForSave(isInsert = false))
+                    AcquisitionSaveOutcome.Success
+                }
+            }
+        }
+
         if (
+            costChanged &&
             old.channels_snapshot_json != null &&
             old.spoilage_rate != null &&
-            old.additional_cost_per_kg != null
+            old.additional_cost_per_kg != null &&
+            !old.srp_custom_override
         ) {
             return try {
                 val channels = PricingPresetGson.channelsFromJson(old.channels_snapshot_json!!)
@@ -147,7 +218,9 @@ class AcquisitionRepository @Inject constructor(
                             spoilageRate = old.spoilage_rate!!,
                             additionalCostPerKg = old.additional_cost_per_kg!!,
                             channels = channels,
-                            pieceCount = user.piece_count
+                            pieceCount = user.piece_count,
+                            isPerKgAcquisition = user.is_per_kg,
+                            spoilageKg = user.spoilage_kg,
                         )
                     )
                 ) {
@@ -182,6 +255,7 @@ class AcquisitionRepository @Inject constructor(
             created_at = old.created_at,
             preset_ref = old.preset_ref,
             spoilage_rate = old.spoilage_rate,
+            spoilage_kg = old.spoilage_kg,
             additional_cost_per_kg = old.additional_cost_per_kg,
             hauling_weight_kg = old.hauling_weight_kg,
             hauling_fees_json = old.hauling_fees_json,
@@ -200,7 +274,8 @@ class AcquisitionRepository @Inject constructor(
             srp_offline_100g = old.srp_offline_100g,
             srp_online_per_piece = old.srp_online_per_piece,
             srp_reseller_per_piece = old.srp_reseller_per_piece,
-            srp_offline_per_piece = old.srp_offline_per_piece
+            srp_offline_per_piece = old.srp_offline_per_piece,
+            srp_custom_override = old.srp_custom_override,
         )
         acquisitionDao.update(merged.toEntityForSave(isInsert = false))
         return AcquisitionSaveOutcome.Success
@@ -245,7 +320,9 @@ class AcquisitionRepository @Inject constructor(
                     spoilageRate = spoilage,
                     additionalCostPerKg = additional,
                     channels = channels,
-                    pieceCount = acquisition.piece_count
+                    pieceCount = acquisition.piece_count,
+                    isPerKgAcquisition = acquisition.is_per_kg,
+                    spoilageKg = acquisition.spoilage_kg,
                 )
             )
         ) {
@@ -277,15 +354,58 @@ class AcquisitionRepository @Inject constructor(
             is SrpRun.Error -> ComputeResult.Error(run.message)
             is SrpRun.Ok ->
                 ComputeResult.Ok(
-                    acquisition.withComputedPricing(
+                    acquisition.withPresetSnapshotAndPricing(
                         preset.preset_id,
                         run.spoilage,
                         run.additional,
                         preset,
                         run.channels,
-                        run.output
+                        run.output,
+                        srpCustomOverride = false,
                     )
                 )
+        }
+    }
+
+    private fun computeCustomMerged(
+        acquisition: Acquisition,
+        preset: PricingPresetEntity,
+        category: String?
+    ): ComputeResult {
+        return when (val run = runSrpForAcquisitionAndPreset(acquisition, preset, category)) {
+            is SrpRun.Error -> ComputeResult.Error(run.message)
+            is SrpRun.Ok -> {
+                val o = acquisition.srp_online_per_kg
+                val r = acquisition.srp_reseller_per_kg
+                val f = acquisition.srp_offline_per_kg
+                if (o == null || r == null || f == null) {
+                    return ComputeResult.Error("Enter customer SRP/kg for online, reseller, and store.")
+                }
+                when (
+                    val m = SrpCalculator.mergeCostContextWithCustomSrps(
+                        run.output,
+                        run.channels,
+                        o,
+                        r,
+                        f,
+                        acquisition.piece_count,
+                    )
+                ) {
+                    is SrpCalculator.Result.Error -> ComputeResult.Error(m.message)
+                    is SrpCalculator.Result.Ok ->
+                        ComputeResult.Ok(
+                            acquisition.withPresetSnapshotAndPricing(
+                                preset.preset_id,
+                                run.spoilage,
+                                run.additional,
+                                preset,
+                                run.channels,
+                                m.output,
+                                srpCustomOverride = true,
+                            ),
+                        )
+                }
+            }
         }
     }
 
@@ -303,16 +423,18 @@ class AcquisitionRepository @Inject constructor(
         return Triple(spoilage, additional, channels)
     }
 
-    private fun Acquisition.withComputedPricing(
+    private fun Acquisition.withPresetSnapshotAndPricing(
         presetId: String,
         spoilage: Double,
         additional: Double,
         preset: PricingPresetEntity,
         channels: ChannelsConfiguration,
-        out: SrpCalculator.Output
+        out: SrpCalculator.Output,
+        srpCustomOverride: Boolean,
     ) = copy(
         preset_ref = presetId,
         spoilage_rate = spoilage,
+        spoilage_kg = spoilage_kg,
         additional_cost_per_kg = additional,
         hauling_weight_kg = preset.hauling_weight_kg,
         hauling_fees_json = preset.hauling_fees_json,
@@ -331,13 +453,15 @@ class AcquisitionRepository @Inject constructor(
         srp_offline_100g = out.srpOffline100g,
         srp_online_per_piece = out.srpOnlinePerPiece,
         srp_reseller_per_piece = out.srpResellerPerPiece,
-        srp_offline_per_piece = out.srpOfflinePerPiece
+        srp_offline_per_piece = out.srpOfflinePerPiece,
+        srp_custom_override = srpCustomOverride,
     )
 
     private fun Acquisition.withSnapshotAndOutput(old: Acquisition, out: SrpCalculator.Output) = copy(
         created_at = old.created_at,
         preset_ref = old.preset_ref,
         spoilage_rate = old.spoilage_rate,
+        spoilage_kg = spoilage_kg,
         additional_cost_per_kg = old.additional_cost_per_kg,
         hauling_weight_kg = old.hauling_weight_kg,
         hauling_fees_json = old.hauling_fees_json,
@@ -356,12 +480,14 @@ class AcquisitionRepository @Inject constructor(
         srp_offline_100g = out.srpOffline100g,
         srp_online_per_piece = out.srpOnlinePerPiece,
         srp_reseller_per_piece = out.srpResellerPerPiece,
-        srp_offline_per_piece = out.srpOfflinePerPiece
+        srp_offline_per_piece = out.srpOfflinePerPiece,
+        srp_custom_override = false,
     )
 
     private fun Acquisition.withoutPricing() = copy(
         preset_ref = null,
         spoilage_rate = null,
+        spoilage_kg = null,
         additional_cost_per_kg = null,
         hauling_weight_kg = null,
         hauling_fees_json = null,
@@ -380,7 +506,8 @@ class AcquisitionRepository @Inject constructor(
         srp_offline_100g = null,
         srp_online_per_piece = null,
         srp_reseller_per_piece = null,
-        srp_offline_per_piece = null
+        srp_offline_per_piece = null,
+        srp_custom_override = false,
     )
 
     private fun AcquisitionEntity.toAcquisition() = Acquisition(
@@ -397,6 +524,7 @@ class AcquisitionRepository @Inject constructor(
         location = location,
         preset_ref = preset_ref,
         spoilage_rate = spoilage_rate,
+        spoilage_kg = spoilage_kg,
         additional_cost_per_kg = additional_cost_per_kg,
         hauling_weight_kg = hauling_weight_kg,
         hauling_fees_json = hauling_fees_json,
@@ -415,7 +543,8 @@ class AcquisitionRepository @Inject constructor(
         srp_offline_100g = srp_offline_100g,
         srp_online_per_piece = srp_online_per_piece,
         srp_reseller_per_piece = srp_reseller_per_piece,
-        srp_offline_per_piece = srp_offline_per_piece
+        srp_offline_per_piece = srp_offline_per_piece,
+        srp_custom_override = srp_custom_override,
     )
 
     private fun Acquisition.toEntityForSave(isInsert: Boolean) = AcquisitionEntity(
@@ -432,6 +561,7 @@ class AcquisitionRepository @Inject constructor(
         location = location,
         preset_ref = preset_ref,
         spoilage_rate = spoilage_rate,
+        spoilage_kg = spoilage_kg,
         additional_cost_per_kg = additional_cost_per_kg,
         hauling_weight_kg = hauling_weight_kg,
         hauling_fees_json = hauling_fees_json,
@@ -450,6 +580,7 @@ class AcquisitionRepository @Inject constructor(
         srp_offline_100g = srp_offline_100g,
         srp_online_per_piece = srp_online_per_piece,
         srp_reseller_per_piece = srp_reseller_per_piece,
-        srp_offline_per_piece = srp_offline_per_piece
+        srp_offline_per_piece = srp_offline_per_piece,
+        srp_custom_override = srp_custom_override,
     )
 }

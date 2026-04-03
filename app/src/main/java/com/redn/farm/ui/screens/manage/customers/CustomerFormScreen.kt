@@ -112,7 +112,9 @@ fun CustomerFormScreen(
             address = address,
             city = city,
             province = province,
-            postal_code = postalCode
+            postal_code = postalCode,
+            date_created = existing?.date_created ?: System.currentTimeMillis(),
+            date_updated = existing?.date_updated ?: System.currentTimeMillis()
         )
         scope.launch {
             if (isNew) viewModel.addCustomer(c) else viewModel.updateCustomer(c)

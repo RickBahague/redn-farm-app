@@ -98,11 +98,18 @@ Customer add/edit has: firstname, lastname, contact, customer type dropdown, add
 
 ### ManageEmployeesScreen
 **Pattern:** Add/Edit — `AlertDialog` with 3 fields (firstname, lastname, contact)  
-**Status:** ✅ Good
+**Status:** ⚠️ Friction — move to full-screen for consistency and future-proofing
 
-Three fields fit an `AlertDialog` without scrolling. The pattern is appropriate here.
+Although 3 fields technically fit an `AlertDialog`, keeping it as a dialog creates inconsistency with the rest of the app (Customers, Products, Acquisitions, FarmOps all moving to full-screen routes). More practically, the employee record is likely to grow (e.g. position, daily rate, hire date) — a full-screen route absorbs additional fields cleanly without requiring a rewrite later.
 
-**Minor suggestion:** Contact field should use `KeyboardType.Phone` with `ImeAction.Done` to dismiss keyboard and immediately focus the Save button.
+**Suggestion — full-screen route:**
+- Route: `employee_add_edit/{employeeId}` (`"new"` for add)
+- Same 3 fields initially; layout identical to `ChangePasswordScreen` (full-width fields, Save at bottom)
+- `KeyboardType.Phone` + `ImeAction.Next` chaining: firstname → lastname → contact → Save
+- Delete confirmation stays as `AlertDialog` (correct pattern for destructive action)
+- Navigation to payments from the employee list card remains unchanged
+
+**User story:** → See [SCR-EMP-01](#scr-emp-01--employee-add--edit-full-screen) below.
 
 ---
 
@@ -183,7 +190,7 @@ No change in interaction pattern needed. Verify that the channel picker and item
 **Pattern:** List of acquisition cards with expandable SRP detail; add/edit as `AlertDialog`; date picker nested in dialog  
 **Status:** ⚠️ Friction — add/edit dialog is large; date picker nesting
 
-The acquisition form has: product picker, quantity, price per unit, is_per_kg toggle, piece count, date, location — plus an SRP preview card if a preset is active. That is 7+ controls in a dialog, some of which open nested pickers.
+The acquisition form has: product picker, quantity, price per unit, is_per_kg toggle, piece count (CLARIF **Estimated Qty per kg** when not per-kg — **USER_STORIES.md** INV-US-01 / INV-US-05, **`pricing_clarif.md`**, **PricingReference.md** §5.1.1), date, location — plus an SRP preview card if a preset is active. That is 7+ controls in a dialog, some of which open nested pickers.
 
 **Suggestion — full-screen route:**
 - Route: `acquisition_add_edit/{acquisitionId}` (`"new"` for add)
@@ -196,18 +203,16 @@ The acquisition form has: product picker, quantity, price per unit, is_per_kg to
 ---
 
 ### RemittanceScreen
-**Pattern:** Add/Edit — `AlertDialog` with amount + date + remarks; date picker nested inside dialog  
-**Status:** ⚠️ Friction — nested date picker and missing delete confirmation
+**Pattern (implemented):** List + search + print/delete on **`RemittanceScreen`**; **add/edit** on full-screen **`RemittanceFormScreen`** (`remittance_add_edit/{remittanceId}`, `"new"` for add).  
+**Status:** ✅ Aligned with acquisitions and employee payments for date UX — see [SCR-REM-01](#scr-rem-01--remittance-add--edit-full-screen) and [`bugs.md`](./bugs.md) **BUG-RMT-02**.
 
-**Two issues:**
+**Behaviour:**
+- **Amount:** Shared numeric pad (`NumericPadOutlinedTextField` — no decimal IME on amount).
+- **Date:** **`OutlinedCard`** shows the selected date; tap opens **`DatePickerDialog`** with Material3 **`DatePicker`** and **OK** / **Cancel** — same model as **`AcquisitionFormScreen`** / **`PaymentFormScreen`**. Full month grid is visible in the dialog (avoids clipping an inline calendar in a scroll region; **BUG-RMT-02**).
+- **Remarks:** `OutlinedTextField`, multiline, optional.
+- **Save / Cancel:** `Scaffold.bottomBar` (`FilledButton` / `OutlinedButton`); **Delete** stays on the list card with **`AlertDialog`** confirmation.
 
-1. **Date picker nesting:** The remittance dialog has a clickable date card that opens a `DatePickerDialog` — two overlapping modals. This is confusing on a small screen.
-
-   **Fix:** Use a `ModalBottomSheet` for the whole add/edit form, with the `DatePicker` rendered inline inside the sheet. The sheet gives enough vertical space. Or keep the `AlertDialog` but replace the nested date card with a simple `OutlinedTextField` that opens a `DatePicker` directly (no intermediate alert).
-
-2. **No delete confirmation:** Delete fires immediately. Add a single-line `AlertDialog` confirm for delete (same pattern as other screens).
-
-**The form itself (3 fields) is small enough to stay in a dialog/sheet.** No need for a full-screen route.
+**User story:** → [SCR-REM-01](#scr-rem-01--remittance-add--edit-full-screen) below.
 
 ---
 
@@ -328,13 +333,13 @@ Expandable cards with `AnimatedVisibility` give good information density — sum
 | ManageCustomersScreen | 8+ | Full-screen route `customer_add_edit/{id}` |
 | AcquireProduceScreen | 7+ | Full-screen route `acquisition_add_edit/{id}` |
 | FarmOperationsScreen | 6+ multiline | Full-screen route `farm_op_add_edit/{id}` |
+| Remittance add/edit (`RemittanceFormScreen`) | 3 | Full-screen route `remittance_add_edit/{id}` ✅ |
 
 ### 2. Screens where `AlertDialog` is correct (keep)
 
 | Screen | Fields | Why it's fine |
 |---|---|---|
 | ManageEmployeesScreen | 3 | Fits without scrolling |
-| RemittanceScreen | 3 | Fits without scrolling (fix nested date picker) |
 | UserManagementScreen | 4 + role chips | Borderline — acceptable with chip grid |
 | Delete confirmations | 0 (text only) | Always `AlertDialog` |
 
@@ -347,18 +352,19 @@ Applies to: **OrderDetailScreen** (paid, delivered). Saves 1 tap per toggle per 
 
 ### 4. Numeric input — standardize on `ModalBottomSheet` numeric pad
 
-Already done: `ManageProductsScreen` (fallback price)  
-Missing: `RemittanceScreen` (amount), `PricingPresetEditorScreen` (all numeric fields)
+Already done: `ManageProductsScreen` (fallback price), **`RemittanceFormScreen`** (amount), **`PricingPresetEditorScreen`** (numeric fields via shared pad components)
 
 All currency and weight fields should trigger the `ModalBottomSheet` numeric pad instead of the soft keyboard. The numeric pad is already built — it just needs to be wired to more fields.
 
 ### 5. Date picker — no nested modals
 
-Pattern to eliminate: `AlertDialog` → tap date card → `DatePickerDialog` (2 overlapping modals)  
-Correct pattern: Single `ModalBottomSheet` containing the form + inline `DatePicker`  
-Or: `OutlinedTextField` that opens a `DatePicker` directly (no intermediate alert)
+**Pattern to eliminate:** **`AlertDialog`** add/edit **form** → date card → **`DatePickerDialog`** — two modal layers that felt stacked on a small POS (legacy remittance dialog).
 
-Applies to: **RemittanceScreen**, **AcquireProduceScreen** (if still in dialog)
+**Correct pattern on full-screen forms (implemented):** **`OutlinedCard`** date summary → **`DatePickerDialog`** hosting **`DatePicker`** (`showModeToggle = false`) with **OK** / **Cancel** — same as **`AcquisitionFormScreen`**, **`RemittanceFormScreen`**, **`PaymentFormScreen`**. One dialog at a time from a non-alert surface; full calendar fits in the dialog.
+
+**Avoid:** Embedding **`DatePicker`** inside a **`heightIn`-clipped** scroll column (month grid truncated — see **BUG-RMT-02** in [`bugs.md`](./bugs.md)).
+
+**Applies to:** **`RemittanceFormScreen`**, **`AcquisitionFormScreen`**, **`FarmOperationFormScreen`** / filters as applicable; not to destructive **delete** confirms (those stay **`AlertDialog`** only).
 
 ### 6. Long form — Save button visibility
 
@@ -374,13 +380,80 @@ Applies to: **PricingPresetEditorScreen**. May also apply to the new full-screen
 | Priority | Change | Screens affected | Effort |
 |---|---|:---:|---|
 | **P1** | `AlertDialog` → full-screen for large forms | Products, Customers, Acquisitions, FarmOps | Medium each |
-| **P1** | Fix nested date picker (no dialog-within-dialog) | Remittance, Acquisitions | Small |
+| **P1** | `AlertDialog` → full-screen (SCR-REM-01) | Remittance | Small — **`[x]`** (`RemittanceFormScreen`) |
+| **P1** | `AlertDialog` → full-screen (SCR-EMP-01) | ManageEmployees | Small |
+| **P1** | Fix nested date picker (no dialog-within-dialog) | Acquisitions, Remittance (historical) | Small — **`[x]`** remittance: card → `DatePickerDialog` (**BUG-RMT-02**) |
 | **P1** | Status toggle → direct + Snackbar undo | OrderDetail | Small |
 | **P1** | Duplicate Save to bottom bar on long full-screen forms | PricingPresetEditor + new forms | Small |
-| **P2** | `ModalBottomSheet` numeric pad for remaining currency fields | Remittance, PricingEditor | Small |
+| **P2** | `ModalBottomSheet` numeric pad for remaining currency fields | PricingEditor *(Remittance amount ✅ on `RemittanceFormScreen`)* | Small |
 | **P2** | Collapse EmployeePayment summary to banner row | EmployeePaymentScreen | Small |
 | **P2** | Render preset JSON fields as structured UI | PresetDetailScreen | Medium |
 | **P2** | Add count badge on Export button | ExportScreen | Trivial |
 | **P2** | 5-role chip grid (2-col) in UserManagement create dialog | UserManagementScreen | Small |
 | **P3** | `DateRangePicker` compound component | OrderHistory | Medium |
 | **P3** | `ImeAction.Next` chaining on PaymentFormScreen fields | PaymentFormScreen | Small |
+
+---
+
+## User Stories
+
+---
+
+### SCR-REM-01 — Remittance Add / Edit Full-Screen
+
+**As** a store assistant or admin,  
+**I want** to add and edit remittance records on a full-screen form  
+**so that** I can enter the amount, date, and remarks on a dedicated screen without a cramped dialog, without confusing stacked modals on the **add/edit** surface, and without the soft keyboard on amount.
+
+**Actor:** Store Assistant, Admin
+
+**Acceptance criteria:**
+
+1. Tapping the add button (top bar icon) on `RemittanceScreen` navigates to a new full-screen route (`remittance_add_edit/new`).
+2. Tapping the edit icon on a remittance card navigates to the same route pre-populated with that record's data (`remittance_add_edit/{remittanceId}`).
+3. The form contains exactly three fields:
+   - **Amount** — shared numeric pad (`NumericPadOutlinedTextField` / bottom sheet behaviour per app component; no soft keyboard for amount). Required; save is blocked if zero or empty.
+   - **Date** — **`OutlinedCard`** showing the selected date; tap opens **`DatePickerDialog`** with Material3 **`DatePicker`** (`showModeToggle = false`), **OK** and **Cancel** — **same UX as `AcquisitionFormScreen`** (full calendar in the dialog, explicit confirm). Defaults to today on add. Required. *(Rationale: inline `DatePicker` inside a clipped scroll region hid the month grid; see [`bugs.md`](./bugs.md) **BUG-RMT-02**.)*
+   - **Remarks** — `OutlinedTextField`, multiline (up to 4 lines), optional.
+4. A full-width **Save** `FilledButton` is fixed at the bottom of the screen (in `Scaffold.bottomBar`). It is disabled while saving.
+5. A full-width **Cancel** `OutlinedButton` sits immediately above the Save button. Tapping it navigates back without saving.
+6. On successful save, the screen pops back to `RemittanceScreen` and a `Snackbar("Remittance saved")` appears.
+7. On save error, a `Snackbar("Save failed — try again")` appears and the form stays open.
+8. The soft keyboard must not appear for the Amount field. `imePadding()` must be applied so the Remarks keyboard does not push the Save button off screen.
+9. The back button / back gesture navigates away without saving (no "discard changes" dialog needed — the form is short).
+10. Delete remains a separate action on the list card (not on this form). Delete confirmation uses `AlertDialog` with error-coloured confirm button.
+
+**Route:** `remittance_add_edit/{remittanceId}` — `remittanceId = "new"` for add, numeric string for edit  
+**Primary files:** `RemittanceScreen.kt`, `RemittanceFormScreen.kt`, `RemittanceViewModel.kt` (shared with list via parent `NavBackStackEntry`), `NavGraph.kt`  
+**Navigation:** `Screen.RemittanceForm` + `composable(...)` (scoped `viewModel` to `Screen.Remittance`)
+
+---
+
+### SCR-EMP-01 — Employee Add / Edit Full-Screen
+
+**As** an admin,  
+**I want** to add and edit employee records on a full-screen form  
+**so that** the interaction is consistent with all other add/edit flows in the app and can accommodate additional fields in the future without a rewrite.
+
+**Actor:** Admin
+
+**Acceptance criteria:**
+
+1. Tapping the add button (top bar icon) on `ManageEmployeesScreen` navigates to a new full-screen route (`employee_add_edit/new`).
+2. Tapping the edit icon on an employee card navigates to the same route pre-populated with that employee's data (`employee_add_edit/{employeeId}`).
+3. The form contains three fields (matching the current `EmployeeEntity`):
+   - **First name** — `OutlinedTextField`, `KeyboardType.Text`, `ImeAction.Next`. Required.
+   - **Last name** — `OutlinedTextField`, `KeyboardType.Text`, `ImeAction.Next`. Required.
+   - **Contact** — `OutlinedTextField`, `KeyboardType.Phone`, `ImeAction.Done`. Optional.
+4. `ImeAction.Next` on First name moves focus to Last name. `ImeAction.Next` on Last name moves focus to Contact. `ImeAction.Done` on Contact triggers save.
+5. A full-width **Save** `FilledButton` is fixed at the bottom (`Scaffold.bottomBar`). Disabled while saving. Disabled if First name or Last name is blank.
+6. A full-width **Cancel** `OutlinedButton` sits above Save. Tapping it navigates back without saving.
+7. On successful save, the screen pops back to `ManageEmployeesScreen` and a `Snackbar("Employee saved")` appears.
+8. On save error (e.g. duplicate name), a `Snackbar("Save failed — try again")` appears.
+9. `imePadding()` applied so the keyboard does not cover the Save button.
+10. Delete remains a separate action on the list card (not on this form). Delete confirmation uses `AlertDialog` with error-coloured confirm button. An employee with existing payment records cannot be deleted — show `Snackbar("Cannot delete — employee has payment history")` instead.
+11. Navigation to the employee's payment history from `ManageEmployeesScreen` card remains unchanged (separate icon button on the card).
+
+**Route:** `employee_add_edit/{employeeId}` — `employeeId = "new"` for add, numeric string for edit  
+**Primary files:** `ManageEmployeesScreen.kt`, `ManageEmployeesViewModel.kt`, new `EmployeeFormScreen.kt` + `EmployeeFormViewModel.kt`  
+**Navigation:** Add entry to `Screen` sealed class; add `composable(Screen.EmployeeForm.route)` in `NavGraph.kt`

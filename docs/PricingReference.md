@@ -3,7 +3,7 @@
 | Field | Value |
 |--------|--------|
 | **Product** | REDN Utilities (working name) |
-| **Version** | 0.9.27-draft |
+| **Version** | 0.9.33-draft |
 | **Status** | Specification — implementation-ready (**v2-only** JSON; **US-3a / FR-PC-36** active list — **hybrid** summary + detail + **print** full grid; **fractional tiers** **500g / 250g / 100g**; **US-1b** preset + **custom item** names — suggested, **§11.2**; **US-6 / FR-PC-14**; **US-8 / FR-PC-40**; **FR-PC-31**; **§15**; **[archi.md §6.5](./archi.md)**) |
 | **Primary audience** | Implementation agents, future maintainers |
 
@@ -98,33 +98,72 @@ Provide **fast, repeatable, audit-friendly tools** that turn purchase costs and 
     **handling**: 200  
     **additional costs**: (**driver fee** + **fuel** + **toll** + **handling**) / **hauling weight**  
     channel markup: **online markup**: .35, **offline markup**: .30, **reseller markup**: .25  
-    **spoilage**: 25% of weight of item  
+    **spoilage**: 25% of weight of **total_quantity** acquired, **or** customized to **actual unsellable mass** (e.g. **2 kg**) — **`docs/pricing_clarif.md`** line 10  
     **Categories**: Vegetables, Fruits, Other Dry Goods  
-    **SRP Formula Per Channel**: ((**bulk purchase price** / (**quantity with unit** - (**quantity with unit** x **spoilage**))) x (1 + **channel markup**) + (**required additional costs**))  
+    **SRP Formula Per Channel** (same order as **INV-US-05** / **§4.3** / **FR-PC-14**): let \(Q_{\text{sell}}\) = sellable kg after spoilage, \(B\) = bulk purchase cost, \(A\) = required additional cost per kg; per channel (markup path): \(\lceil ((B / Q_{\text{sell}}) + A) \times (1 + \text{channel markup}) \rceil\) to whole PHP (default **`ceil_whole_peso`**). *(Fractional package tiers derive from the rounded per-kg SRP per §5.2 note.)*  
     **All calculated SRPs must be rounded up to the nearest peso** (e.g., 153.4 → 154.00, 165.5 → 166.00).
     **SRP per Piece**: (**SRP Formula Per Channel** / Store Assistant inputted **no of pieces**) and then **rounded up to the nearest peso** (same rounding rule).
 
 
 - **US-7:** As management, I can view an overview of which simulation is currently tagged as "in use now" for each item, and trace when changes to active simulations were made. Where assistants have recorded **`actualSpoilageKg`** on past revisions for an item, I can see — per item — the **preset spoilage rate** used at calculation time vs the **actual spoilage rate** derived from the recorded kg (`actualSpoilageKg / inputs.bulkQuantityKg`), so I can identify items where the preset consistently over- or under-estimates real spoilage and adjust accordingly.
 
-- **US-8:** As management, I can generate a report of the expected **gross sales** based on simulations currently marked as **in use now**. For each item, the report uses the **lowest SRP across all channels** (**P**, PHP per kg, from the active revision) and the **bulk quantity (kg)** and **spoilage rate** recorded on that revision. **Gross sales** (revenue-style expectation per row) **must** be **P × (kg of item − kg of item × spoilage)** = **P × sellable kg**, i.e. **P × Q × (1 − s)** with **Q** = `inputs.bulkQuantityKg` and **s** = `presetSnapshot.spoilageRate` (**FR-PC-10**, **FR-PC-40**). **v1** uses stored **`derived.sellableQuantityKg`** for **Q × (1 − s)** so the figure matches the saved simulation. Optional **estimated sell-through** or **past volume overlays** (manual or import) are **deferred** unless added by ADR (**§11.2**).
+- **US-8:** As management, I can generate a report of the expected **gross sales** based on simulations currently marked as **in use now**. For each item, the report uses the **lowest SRP across all channels** (**P**, PHP per kg, from the active revision) and the **bulk quantity (kg)** and spoilage inputs recorded on that revision. **Gross sales** (revenue-style expectation per row) **must** be **P × sellable kg** — with **rate-based** spoilage **P × Q × (1 − s)** (**Q** = `inputs.bulkQuantityKg`, **s** = rate), and with **absolute spoilage mass** per **CLARIF-01** / **`pricing_clarif.md`**: **P × (Q − s_kg)** when the saved pipeline used kg lost (**FR-PC-10**, **FR-PC-40**). **v1** should use stored **`derived.sellableQuantityKg`** so the figure matches the saved simulation regardless of spoilage mode. Optional **estimated sell-through** or **past volume overlays** (manual or import) are **deferred** unless added by ADR (**§11.2**). **Farm app alignment:** **BUG-PRC-04**.
 
 ### 4.3 Canonical pricing model (US-1 / US-6) — **normative**
 
-**US-1** and **US-6** are fully reflected in **§5.2** (**FR-PC-10–14**), **§7.2–7.3**, **§8.1**, **§11.1.1–11.1.2**, **§11.1.8**, and **§11.1.9**. Implementations **must** use that pipeline.
+**US-1** and **US-6** are fully reflected in **§5.2** (**FR-PC-10–14**), **§7.2–7.3**, **§8.1**, **§11.1.1–11.1.2**, **§11.1.8**, and **§11.1.9**. Implementations **must** use that pipeline (aligned with farm app **INV-US-05**: **\(A\)** is included **before** channel markup/margin).
 
 | Topic | Rule |
 |--------|------|
-| Assistant quantity | **Bulk quantity** is **kilograms** for the primary cost line (**FR-PC-02**). Optional **`pieceCount`** (positive integer) enables **SRP per piece** = channel SRP ÷ `pieceCount` when set. |
-| Sellable weight | **Spoilage** is a preset **fraction of purchased weight** \(s \in [0, 1)\). **Sellable quantity (kg)** \(Q_{\text{sell}} = Q \times (1 - s)\). Require \(Q_{\text{sell}} > 0\) (FR-PC-12). |
-| Unit cost | **Cost per sellable kg** \(C = \text{bulkCost} / Q_{\text{sell}}\) — **not** \((\text{bulk} + \text{lump sums}) / Q\) (that pre-0.9 formulation is **superseded**). |
+| Assistant quantity | **Bulk quantity** is **kilograms** for the primary cost line (**FR-PC-02**). Optional **`pieceCount`** (positive number, may be fractional) enables **SRP per piece** = channel SRP ÷ `pieceCount` when set. |
+| Sellable weight | **By-weight (CLARIF-01):** **(1)** **Rate** — preset **fraction** of purchased weight \(s \in [0, 1)\): **\(Q_{\text{sell}} = Q \times (1 - s)\)**. **(2)** **Absolute mass** — management may configure or enter **unsellable kg** \(s_{\text{kg}} \ge 0\): **\(Q_{\text{sell}} = Q - s_{\text{kg}}\)**, with **\(0 \le s_{\text{kg}} < Q\)** and **\(Q_{\text{sell}} > 0\)** (FR-PC-12). **Do not** apply both to the same line unless an ADR defines composition. **REDN Farm carve-out (§5.1.1 / CLARIF-01):** acquisitions entered **per piece** use **\(Q_{\text{sell}} = Q\)** for SRP — spoilage is **not** applied in that pricing path (preset spoilage fields may still be stored for audit). **Implementation:** **`SrpCalculator`**, preset + acquisition snapshot — **BUG-PRC-04**. |
+| Bulk cost per sellable kg | **\(C_{\text{bulk}} = \text{bulkCost} / Q_{\text{sell}}\)** — amortized purchase cost per kg that reaches sellable inventory; **not** \((\text{bulk} + \text{lump sums}) / Q\) (that pre-0.9 formulation is **superseded**). |
 | Per-kg add-on | **Required additional cost per kg** \(A\) is management-defined (**§7.3**), e.g. \((\sum \text{fee amounts}) / \text{haulingWeight}\) when using the **hauling** preset shape. |
-| Channel SRP | Per channel: apply **markup XOR margin** to \(C\) (**§11.1.2**), then **add** \(A\) (PHP per kg), then optional **channel fees** (**§7.2**, **§11.1.9**), then **rounding** (**FR-PC-14**). **US-6:** default REDN policy is **round up** to the nearest whole PHP per kg and for **SRP per piece** (see **`ceil_whole_peso`** in **§11.1.8**). |
-| Management defaults | **Illustrative REDN constants** (hauling **700 kg**, driver/fuel/toll/handling fees, **25%** spoilage default, markups **35% / 30% / 25%** online / offline / reseller, categories **Vegetables, Fruits, Other Dry Goods**) appear as **§11.1.8** example values; production files may differ if management edits config. |
+| Channel SRP | Per channel: **combined unit cost** **\(C = C_{\text{bulk}} + A\)**; apply **markup XOR margin** to **\(C\)** (**§11.1.2**) → **`priceAfterCore`**; optional **channel-attributable fees** on that subtotal (**§7.2**, **§11.1.9**); **rounding** → **SRP** (**FR-PC-14**). **US-6:** default REDN policy is **round up** to the nearest whole PHP per kg and for **SRP per piece** (see **`ceil_whole_peso`** in **§11.1.8**). |
+| Per-piece lot entry | When the assistant enters the lot **by piece** (**total cost** \(B\) + **total piece count** + **pieces per kg** \(n\) from user input — CLARIF **Estimated Qty per Kg**), derive **bulk kg** \(Q = P_{\text{tot}} / n\) and run the **FR-PC-10**–**14** pipeline with **effective spoilage \(s_{\text{eff}} = 0\)** for SRP (**\(Q_{\text{sell}} = Q\)**) per **CLARIF-01** / **§5.1.1**. **\(A\)** stays the preset’s **per-kg** additional cost — it is **not** replaced; it applies once \(Q\) is known. See **§5.1.1**; farm app stories **INV-US-01** / **INV-US-05** in **`USER_STORIES.md`**. |
+| Management defaults | **Illustrative REDN constants** (hauling **700 kg**, driver/fuel/toll/handling fees, **25%** spoilage default for **by-weight** SRP, markups **35% / 30% / 25%** online / offline / reseller, categories **Vegetables, Fruits, Other Dry Goods**) appear as **§11.1.8** example values; **per-piece** acquisitions omit spoilage in SRP per **§5.1.1**. Production files may differ if management edits config. |
 
 **Superseded material:** Any earlier draft text that described **lump-sum additional costs rolled into the numerator** of \((\text{bulk} + \sum\text{add-ons}) / Q\) before markup is **void** for v1 pricing.
 
 **Persistence (0.9.1):** New implementations use **only** **`schemaVersion: 2`** files for presets and revisions — **rebuild** `data/` as needed; **[archi.md §6.5](./archi.md)** (**no** legacy loaders).
+
+### 4.3.1 CLARIF-01 — Management narrative (REDN presets)
+
+Management-facing restatement of **US-6** (aligned with spreadsheet / training notes — **`docs/pricing_clarif.md`**). **Normative** math remains **§5.2** / **FR-PC-10–14**: for **by-weight** entries, spoilage reduces **sellable kg** (by **rate** or by **absolute kg** per line 10 of **`pricing_clarif.md`**) before amortizing bulk cost — **BUG-PRC-04** tracks farm-app implementation. **Per-piece REDN / CLARIF-01:** **`spoilage` for SRP is 0** — it is **not** part of per-piece SRP calculations (**§5.1.1**). **Spec \(A\)** is **required additional cost per kg** (hauling-derived); markup or margin applies to **\(C_{\text{bulk}} + A\)**.
+
+**Preset shape (illustrative REDN defaults — production files may differ):**
+
+| Parameter | Example value |
+|-----------|----------------|
+| **Hauling weight** | 700 kg |
+| **Driver fee** | 2000 |
+| **Fuel** | 4000 |
+| **Toll** | 1000 |
+| **Handling** | 200 |
+| **Additional costs** (per kg of product mass) | (**driver fee** + **fuel** + **toll** + **handling**) / **hauling weight** |
+| **Channel markup** | **Online** 0.35 · **Offline** 0.30 · **Reseller** 0.25 *(implementation may store as percent — **§11.1.2**)* |
+| **Spoilage** | **By-weight:** default illustration **25%** of acquired **total_quantity** (rate \(s\)), **or** **actual unsellable kg** (e.g. **2 kg**) per **`pricing_clarif.md`** — **BUG-PRC-04**; **per-piece** SRP path: **0** in formula per CLARIF-01 |
+| **Categories** | Vegetables, Fruits, Other Dry Goods |
+
+**For items sold by weight — SRP per kg per channel:**
+
+| Step | CLARIF-01 | Spec mapping |
+|------|-----------|--------------|
+| Sellable weight | **Rate:** **total_quantity** × (1 − **spoilage**). **Absolute kg:** **total_quantity** − **spoilage** when **spoilage** is **kg** lost | \(Q_{\text{sell}} = Q \times (1 - s)\) **or** \(Q_{\text{sell}} = Q - s_{\text{kg}}\) (**FR-PC-10**, **BUG-PRC-04**); **total_quantity** = **\(Q\)** / `bulkQuantityKg` |
+| Bulk cost per sellable kg | **A** = **bulk purchase cost** / **sellable kg after spoilage** | **\(C_{\text{bulk}} = B / Q_{\text{sell}}\)** — CLARIF uses the symbol **A** here; that is **not** spec **\(A\)** (hauling) |
+| SRP per kg | **SRP** = (**A** + **additional costs**) × (1 + **channel markup**) | **\(C = C_{\text{bulk}} + A_{\text{spec}}\)** then channel policy (markup **or** margin), optional fees, rounding (**FR-PC-14**) |
+
+**For items sold per piece — SRP per piece per channel:**
+
+| Step | CLARIF-01 | Spec mapping |
+|------|-----------|--------------|
+| Spoilage in SRP | **0** — **not** part of per-piece SRP calculations | **REDN Farm / §5.1.1:** **\(s_{\text{eff}} = 0\)** → **\(Q_{\text{sell}} = Q = P_{\text{tot}} / n\)**. Preset `spoilage_rate` may still be stored on the acquisition for audit. |
+| Pieces per kg | **Estimated Qty per Kg** (from user input) | **\(n\)** — pieces per kg (**FR-PC-02**, **§5.1.1**); may be fractional |
+| Bulk cost per piece | **A** = **bulk purchase cost** / **total_quantity** (piece count) | **\(B_{\text{bulk}} / P_{\text{tot}}\)** when **\(Q_{\text{sell}} = Q\)** — same as **\(C_{\text{bulk}} / n\)** with **\(C_{\text{bulk}} = B_{\text{bulk}}/Q\)**. |
+| Lot hauling (CLARIF **B**) | **B** = (**total_quantity** / **Estimated Qty per Kg**) × **additional costs** | **\(B_{\text{lot}} = Q \times A_{\text{spec}}\)** — **total** hauling PHP for derived bulk **\(Q\)** kg. **Per-piece hauling share:** **\(B_{\text{lot}} / P_{\text{tot}} = A_{\text{spec}} / n\)** (same as former one-line **B = additional costs / Estimated Qty per Kg** when read as **per piece**). |
+| SRP per piece | **SRP** = (**A** + **B**/**P_{\text{tot}}**) × (1 + **channel markup**) — **`pricing_clarif.md`** uses **total_quantity** for **P_{\text{tot}}** | **Same as** **(A + A_{\text{spec}}/n)** × (1 + **μ**) before rounding (**B** = lot hauling **\(Q \times A_{\text{spec}}\)**). Aligns with **FR-PC-14**: markup on **\(C_{\text{bulk}} + A_{\text{spec}}\)** **per kg**, then **per-piece** = rounded **SRP/kg ÷ n** (rounding order may differ slightly from a single combined formula). |
+
+**Notation:** In this subsection, **“additional costs”** always means hauling-derived **PHP per kg** (**§7.3**, spec **\(A\)** / **`additionalCostPerKg`**). CLARIF’s **A** in the **by-weight** row is **\(C_{\text{bulk}}\)** in **§4.3**. In the **per-piece** block, CLARIF **A** = bulk **per piece**; CLARIF **B** = **lot** hauling total **\(Q \times A_{\text{spec}}\)**; combine with **A** for **per-piece SRP** only after **\(B / P_{\text{tot}}\)** (or document spreadsheet cells explicitly).
 
 ---
 
@@ -137,25 +176,43 @@ Requirements align with **§4 Actors & user stories**. A **simulation** is a com
 | ID | Requirement |
 |----|----------------|
 | FR-PC-01 | System accepts **bulk purchase total cost** (currency assumed single; default **PHP** unless configured). |
-| FR-PC-02 | System accepts **bulk quantity in kilograms** \(Q > 0\) for the primary purchase line. **Optional `pieceCount`:** positive integer when the assistant needs **SRP per piece** (US-1); if omitted or empty, per-piece outputs are not shown. **Extension** to other purchase units (lb, crate) is **deferred** unless added by ADR. |
+| FR-PC-02 | System accepts **bulk quantity in kilograms** \(Q > 0\) for the primary purchase line, **or** an equivalent derived from **total pieces ÷ pieces per kg** (**§5.1.1**). **Optional `pieceCount`:** positive number (may be fractional) when the assistant needs **SRP per piece** (US-1) and/or **pieces per kg** for the per-piece entry path; if omitted or empty, per-piece outputs are not shown. **Extension** to other purchase units (lb, crate) is **deferred** unless added by ADR. |
 | FR-PC-03 | **Pricing parameters** (spoilage rate, **required additional cost per kg** \(A\), and any category overrides) come from **management-defined presets** (§7.3, §11.1.1). **Preset resolution (v1):** Assistant picks optional **item category** from the management-maintained list; if none selected or list empty, use **store defaults** for spoilage and \(A\). Assistants **do not** edit preset math; calculator shows resolved values read-only. |
 | FR-PC-04 | For every simulation, the system computes SRPs for **all** customer channels **concurrently**: **online**, **reseller**, **offline** (labels may be localized; semantics fixed). Assistants do **not** pick a channel to “run the math” for. The UI may **highlight** a channel for readability only (**US-2**); **save-time** identification uses **Basket Label** (**FR-PC-35**), not a channel selector. |
 | FR-PC-05 | **Markup / margin and rounding** per channel are **management configuration only** (§7.2, §11.1.2). Assistants cannot change these parameters in the calculator. |
 | FR-PC-06 | Each unsaved run is a **simulation**; the UI makes clear that results depend on current management presets. |
 | FR-PC-07 | Assistant-facing **item category** control (optional dropdown or picker): options are **exactly** the category keys under **`categories`** in management config (**§11.1.8**); changing category **recomputes** the simulation. If no categories exist, hide the control and always use the store **`default`** preset scope (**§7.3**). |
 
+#### 5.1.1 Per-piece lot entry (derived kg; preset markup and \(A\) unchanged)
+
+This path covers acquisitions or simulations where the assistant records **total lot cost** and **piece count**, and supplies **pieces per kilogram** \(n\) (**CLARIF-01: Estimated Qty per Kg**, from user input) so the engine can work in **kilograms** for **per-kg** hauling — **without** overriding management presets.
+
+1. **Assistant inputs:** **Bulk purchase total** \(B > 0\); **total number of pieces** in the lot \(P_{\text{tot}} > 0\); **pieces per kilogram** \(n > 0\) (may be fractional — the same factor used to derive **SRP per piece** from per-kg SRP in **FR-PC-14**).
+2. **Derived bulk quantity (kg):**  
+   \[
+   Q = \frac{P_{\text{tot}}}{n}
+   \]  
+   where **\(n\)** = pieces per kg (so **kg per piece** = \(1/n\)). Equivalently, if the UI collects **kg per piece** \(w\), use **\(Q = P_{\text{tot}} \times w\)**. Use this \(Q\) as **`bulkQuantityKg`** / **`inputs.bulkQuantityKg`** for **FR-PC-10** (\(C_{\text{bulk}}\), etc.).
+3. **Spoilage (REDN Farm / CLARIF-01):** For **per-piece** acquisition entry, **effective spoilage for SRP is zero**: **\(Q_{\text{sell}} = Q\)**. Preset **`spoilageRate`** remains on the saved **preset snapshot** for traceability but **does not** reduce \(Q\) in this path. *(Generic **Pricing Calculator** utilities may continue to apply category spoilage to derived \(Q\) until a deployment ADR aligns them; the **REDN Farm** acquisition app follows CLARIF-01.)*
+4. **Additional cost \(A\):** Still **`additionalCostPerKg`** from the **resolved preset** (§7.3) — **PHP per kg of product mass**. The “**kg**” in **per kg** is the **same mass basis** as \(Q\) above. **\(A\)** is **not** replaced by a special per-piece rate; tying it to **kg per piece** only means **total kg** \(Q\) is built from pieces × (kg per piece) before applying the **unchanged** preset rate **\(A\)**. **CLARIF-01 (revised `pricing_clarif.md`):** **B** = **\(Q \times A_{\text{spec}}\)** (**lot** hauling total). **Per-piece** hauling share is **\(B / P_{\text{tot}} = A_{\text{spec}} / n\)**, consistent with applying **\(A_{\text{spec}}\)** on **\(Q\)** then allocating to pieces.
+5. **SRP outputs:** **Same** markup/margin/fee/rounding pipeline as the per-kg entry path on **\(C = C_{\text{bulk}} + A\)**; then **500g / 250g / 100g** tiers from the rounded per-kg SRP; **SRP per piece** (selling unit) = per-kg SRP **÷** **\(n\)**, rounded up to whole PHP (**FR-PC-14**).
+
+**Clarification:** This is **not** a “preset override.” **\(A\)**, markups, margins, rounding rules, and channel fees come from the **active preset snapshot**. Spoilage is **excluded** from the SRP divisor only on this **per-piece entry** path per **§4.3** / **CLARIF-01**. Only the **UI path for obtaining \(Q\)** differs (pieces + pieces/kg instead of typing kg).
+
+**Implementation note (farm app):** `SrpCalculator.bulkQuantityKg(quantity, isPerKg = false, pieceCount = n)` returns \(Q = \text{quantity} / n\) when **quantity** is the **total piece count** for the lot. **Product requirements:** **`USER_STORIES.md`** **INV-US-01** (acquisition entry) and **INV-US-05** (formula + per-piece lot bullets + AC10). **Management narrative** for per-piece vs per-kg preset steps: **§4.3.1 (CLARIF-01)**.
+
 ### 5.2 Computation (behavioral)
 
 | ID | Requirement |
 |----|----------------|
-| FR-PC-10 | Let **bulkCost** \(B > 0\), **bulk quantity** \(Q > 0\) (kg), resolved **spoilage rate** \(s \in [0, 1)\) and **required additional cost per kg** \(A \ge 0\) from §7.3 / §11.1.1. **Sellable quantity (kg):** \(Q_{\text{sell}} = Q \times (1 - s)\). **Cost per sellable kg:** \(C = B / Q_{\text{sell}}\). **Validation:** reject \(Q_{\text{sell}} = 0\) (FR-PC-12). \(A\) is expressed in **currency per kg** and is applied **after** markup/margin on \(C\) (FR-PC-14), **not** added to \(B\) before division. |
-| FR-PC-11 | For **each** channel, final **SRP** follows **FR-PC-14**. The UI shows **transparent** intermediates **per channel:** \(Q\), \(s\), \(Q_{\text{sell}}\), \(C\), markup *or* margin step, \(A\), optional channel fees, rounding; optional **SRP per piece** when `pieceCount` is set (US-1, US-6). **At-a-glance** view of all channel SRPs (US-2). |
+| FR-PC-10 | Let **bulkCost** \(B > 0\), **bulk quantity** \(Q > 0\) (kg) and **required additional cost per kg** \(A \ge 0\) from §7.3 / §11.1.1. **Sellable quantity (kg)** for **by-weight** entries (**CLARIF-01 / `pricing_clarif.md` line 10): **either** resolved **spoilage rate** \(s \in [0, 1)\) with **\(Q_{\text{sell}} = Q \times (1 - s)\)**, **or** resolved **absolute spoilage mass** \(s_{\text{kg}} \in [0, Q)\) with **\(Q_{\text{sell}} = Q - s_{\text{kg}}\)** — **mutually exclusive per saved revision** unless an ADR defines otherwise; **BUG-PRC-04** (**preset schema**, acquisition UI, **`SrpCalculator`**, snapshot + **`derived.sellableQuantityKg`**). **REDN Farm per-piece acquisition entry (§5.1.1):** use **\(s_{\text{eff}} = 0\)** for SRP so **\(Q_{\text{sell}} = Q\)** — **CLARIF-01** (spoilage not in per-piece SRP math). **Bulk cost per sellable kg:** \(C_{\text{bulk}} = B / Q_{\text{sell}}\). **Validation:** reject \(Q_{\text{sell}} = 0\) (FR-PC-12). **`derived.costPerSellableKg`** (and equivalent audit fields) record **\(C_{\text{bulk}}\)** only; **\(A\)** is stored separately on the preset snapshot / derived context. **FR-PC-14** uses **\(C = C_{\text{bulk}} + A\)** as the base for markup/margin (**INV-US-05**). **Do not** replace \(C_{\text{bulk}}\) with \((B + \text{lump sums}) / Q_{\text{sell}}\) unless an ADR explicitly adopts that model. |
+| FR-PC-11 | For **each** channel, final **SRP** follows **FR-PC-14**. The UI shows **transparent** intermediates **per channel:** \(Q\), effective spoilage (including **0** when **§5.1.1** per-piece path applies), \(Q_{\text{sell}}\), \(C_{\text{bulk}}\), \(A\), combined **\(C = C_{\text{bulk}} + A\)**, markup *or* margin step → **`priceAfterCore`**, optional channel fees, rounding; optional **SRP per piece** when `pieceCount` is set (US-1, US-6). **At-a-glance** view of all channel SRPs (US-2). |
 | FR-PC-12 | Calculator prevents division by zero and validates positive numeric inputs where applicable; shows clear validation messages. |
 | FR-PC-13 | **Persistence of preset snapshot:** Each **saved** simulation stores enough data to reproduce or explain results later (embed preset values used, or preset version IDs + resolved numbers) so history reflects “what was true at save time” (US-5). |
-| FR-PC-14 | **Pricing pipeline (v1, per channel):** Let \(C\) be **cost per sellable kg** from **FR-PC-10**, and \(A\) **required additional cost per kg** from the resolved preset. **(1)** Apply **exactly one** of **markup** or **margin** from that channel’s config (§11.1.2) to \(C\) → **`priceAfterCore`** (pre-fee price per kg, before \(A\)). **(2)** Compute **`priceBeforeFees`** = **`priceAfterCore` + \(A\)**. **(3)** Apply optional **channel-attributable fees** from §7.2 to **`priceBeforeFees`** per **§11.1.9** (fixed or %; architecture locks base and order). **(4)** Apply **rounding rule** for that channel → **SRP** (currency per kg). **US-6 / REDN default:** **`ceil_whole_peso`** — **round up** to the nearest whole PHP (e.g. 153.4 → 154, 165.5 → 166). Other configured rules (e.g. **`nearest_0.25`**, **`whole_peso`**) remain valid where management sets them (**§7.2**). **(5)** If **`pieceCount`** \(n > 0\) is present, derive stored **`srpPerPiece`** by **rounding up** **SRP \(/ n\)** to the **nearest whole PHP** (**same rule as US-6**) — **`ceil_whole_peso`** / **[archi.md §6.4](./archi.md)** — **independent** of optional fractional channel rules for per-kg SRP. Same pipeline for online, reseller, offline. |
+| FR-PC-14 | **Pricing pipeline (v1, per channel):** Let **\(C_{\text{bulk}} = B / Q_{\text{sell}}\)** and **\(A\)** = required additional cost per kg (**FR-PC-10**). **(1)** **Combined unit cost:** **\(C = C_{\text{bulk}} + A\)** (same as **INV-US-05**). **(2)** Apply **exactly one** of **markup** or **margin** from that channel’s config (§11.1.2) to **\(C\)** → **`priceAfterCore`** (per kg, **after** channel policy on full unit cost, **before** optional channel-attributable fees). **(3)** Initialize **`priceBeforeFees`** = **`priceAfterCore`**; apply optional **channel-attributable fees** from §7.2 in order per **§11.1.9** (each fee updates the running price; fixed or %; architecture locks base and order). **(4)** Apply **rounding rule** for that channel → **SRP** (currency per kg). **US-6 / REDN default:** **`ceil_whole_peso`** — **round up** to the nearest whole PHP (e.g. 153.4 → 154, 165.5 → 166). Other configured rules (e.g. **`nearest_0.25`**, **`whole_peso`**) remain valid where management sets them (**§7.2**). **(5)** If **`pieceCount`** \(n > 0\) is present, derive stored **`srpPerPiece`** by **rounding up** **SRP \(/ n\)** to the **nearest whole PHP** (**same rule as US-6**) — **`ceil_whole_peso`** / **[archi.md §6.4](./archi.md)** — **independent** of optional fractional channel rules for per-kg SRP. Same pipeline for online, reseller, offline. |
 | FR-PC-15 | **Preset change while unsaved:** If management updates presets while the user has an **unsaved** simulation open, the app **recomputes** displayed results from **current** presets (on debounced config refresh or next explicit **Calculate** — architecture chooses) and shows a **short, non-blocking notice** (e.g., “Pricing settings were updated; figures refreshed”). **Saved revisions are immutable** and never auto-updated. |
 | FR-PC-16 | **Lineage vs revision (v1):** Behavior matches §11.1.4. |
-| FR-PC-17 | **Gross margin and markup display (management only):** When the user is in a **management session** (authenticated via the management PIN — §11.1.6), the per-channel breakdown (calculator and history detail) additionally shows two derived profitability metrics per channel — **not** visible to assistants: **(a) Gross margin %** = \((\text{SRP} - T) / \text{SRP} \times 100\); **(b) Gross markup %** = \((\text{SRP} - T) / T \times 100\); where **total cost per sellable kg** \(T = C + A + \text{channelFeeTotal}\), with \(C\) = `costPerSellableKg` (bulk cost ÷ sellable kg, already incorporating spoilage effect), \(A\) = `additionalCostPerKg` (hauling-derived per-kg cost from preset), and `channelFeeTotal` = sum of all channel fee amounts applied for that channel per **FR-PC-14**. All inputs are already stored on the revision (`derived` + `presetSnapshot`); no new persistence required. Displayed as read-only labeled fields (e.g., "Gross margin: 34.2% · Markup: 52.0%") beneath the SRP in the per-channel breakdown. |
+| FR-PC-17 | **Gross margin and markup display (management only):** When the user is in a **management session** (authenticated via the management PIN — §11.1.6), the per-channel breakdown (calculator and history detail) additionally shows two derived profitability metrics per channel — **not** visible to assistants: **(a) Gross margin %** = \((\text{SRP} - T) / \text{SRP} \times 100\); **(b) Gross markup %** = \((\text{SRP} - T) / T \times 100\); where **total cost per sellable kg** \(T = C_{\text{bulk}} + A + \text{channelFeeTotal}\), with \(C_{\text{bulk}}\) = `costPerSellableKg` (bulk cost ÷ sellable kg, spoilage already in the divisor), \(A\) = `additionalCostPerKg` (hauling-derived per-kg cost from preset), and `channelFeeTotal` = sum of all channel fee **amounts** applied for that channel per **FR-PC-14**. All inputs are already stored on the revision (`derived` + `presetSnapshot`); no new persistence required. Displayed as read-only labeled fields (e.g., "Gross margin: 34.2% · Markup: 52.0%") beneath the SRP in the per-channel breakdown. |
 
 > **Note for architects:** Isolate “pricing engine,” “preset resolution,” and “config load” in testable modules. VAT and tax handling remain **open** (§11.2).
 
@@ -238,10 +295,10 @@ Requirements align with **§4 Actors & user stories**. A **simulation** is a com
 
 For each channel (`online`, `reseller`, `offline`), configuration must include at minimum:
 
-- **Exactly one** of **markup** or **margin** (not both) applied to **\(C\)** (**cost per sellable kg** from **FR-PC-10**) — see **§11.1.2** for canonical formulas and validation.
+- **Exactly one** of **markup** or **margin** (not both) applied to **\(C = C_{\text{bulk}} + A\)** (**FR-PC-10**, **INV-US-05**) — see **§11.1.2** for canonical formulas and validation.
 - **Rounding rule** (e.g. **`ceil_whole_peso`** per **US-6**, round to nearest 0.25 PHP, or nearest whole peso — see **§11.1.8**).
 
-Optionally, per channel, configurable **channel-attributable fees** (fixed amount or percentage) applied **after** **`priceBeforeFees`** = **`priceAfterCore` + \(A\)** (**FR-PC-14**) and **before** final rounding — e.g. payment processing, delivery surcharge. **`\(A\)`** is the **store/category required additional cost per kg** from §7.3 (hauling-derived or override); do **not** double-count the same economic cost in both §7.3 and channel fees.
+Optionally, per channel, configurable **channel-attributable fees** (fixed amount or percentage) applied **after** **`priceAfterCore`** (**FR-PC-14**) — i.e. to the running subtotal that starts at **`priceAfterCore`** and becomes **`priceBeforeFees`** after each fee — and **before** final rounding — e.g. payment processing, delivery surcharge. **`\(A\)`** is folded into **\(C\)** **before** markup; do **not** double-count the same economic cost in both §7.3 and channel fees.
 
 **Editors:** management (or privileged deploy-time access). **Consumers:** pricing engine for every simulation. Initial values may be placeholders; **business owner** adjusts via config without code change.
 
@@ -258,6 +315,8 @@ Management defines **store defaults** and optionally **named categories** (e.g. 
 - **Formula:** \(A = (\sum \text{amounts}) / H\). Architecture **may** allow a **literal `additionalCostPerKg`** override instead of or after derivation — document in schema.
 
 **Resolution:** Assistant’s category (or default) yields resolved **`spoilageRate`** and **`additionalCostPerKg`** used in **FR-PC-10** and **FR-PC-14**. Snapshots (**FR-PC-13**, **§8.1**) must record **labels and numbers** used so history is auditable.
+
+**Per-piece lot entry:** When the assistant enters **total pieces** + **pieces per kg** instead of kg directly (**§5.1.1**), **`additionalCostPerKg`** (\(A\)) is **unchanged** — it remains a **per-kg** rate from the preset. The implementation **derives \(Q\)** in kg from pieces so \(A\) applies on the same mass basis as for kg-first entry.
 
 **Illustrative JSON:** **§11.1.8**.
 
@@ -328,33 +387,33 @@ Each persisted row is one **revision**. A **lineage** groups revisions of the �
     "additionalCostPerKg": 10.285714285714286,
     "byChannel": {
       "online": {
-        "srp": 101,
+        "srp": 104,
         "srpPerPiece": null,
         "breakdown": {
-          "priceAfterCore": 90,
-          "priceBeforeFees": 100.28571428571429,
+          "priceAfterCore": 103.88571428571429,
+          "priceBeforeFees": 103.88571428571429,
           "feesApplied": [],
-          "beforeRounding": 100.28571428571429
+          "beforeRounding": 103.88571428571429
         }
       },
       "reseller": {
-        "srp": 94,
-        "srpPerPiece": null,
-        "breakdown": {
-          "priceAfterCore": 83.33333333333333,
-          "priceBeforeFees": 93.61904761904762,
-          "feesApplied": [],
-          "beforeRounding": 93.61904761904762
-        }
-      },
-      "offline": {
         "srp": 97,
         "srpPerPiece": null,
         "breakdown": {
-          "priceAfterCore": 86.66666666666667,
-          "priceBeforeFees": 96.95238095238095,
+          "priceAfterCore": 96.19047619047619,
+          "priceBeforeFees": 96.19047619047619,
           "feesApplied": [],
-          "beforeRounding": 96.95238095238095
+          "beforeRounding": 96.19047619047619
+        }
+      },
+      "offline": {
+        "srp": 101,
+        "srpPerPiece": null,
+        "breakdown": {
+          "priceAfterCore": 100.03809523809545,
+          "priceBeforeFees": 100.03809523809545,
+          "feesApplied": [],
+          "beforeRounding": 100.03809523809545
         }
       }
     }
@@ -375,7 +434,7 @@ Each persisted row is one **revision**. A **lineage** groups revisions of the �
 
 Empty string is allowed for `basketLabel` and `notes`; `itemName` must be non-empty after normalization (§11.1.3).
 
-**Constraints:** `revisionId` unique. Timestamps in UTC or explicit offset. **Item key** for `inUseNow` exclusivity: **§11.1.3** (v1: normalized `itemName`). **At most one revision** in the store may have `inUseNow: true` per item key (FR-PC-24). **`presetSnapshot.channels`:** each channel records **either** `markupPercent` **or** `marginPercent`, plus `roundingRule` and resolved `channelFees` (FR-PC-13, US-5). **`schemaVersion`:** implementations support **only `2`** for new persistence (**FR-PC-10/14** shape above). **Greenfield / rebuild:** reject or omit pre-release JSON that does not match this shape — **no** requirement to read older draft schemas (**[archi.md §6.5](./archi.md)**). **`derived.byChannel.breakdown`** must support audit of **FR-PC-14** (including **`priceAfterCore`**, **`priceBeforeFees`**, fees, **beforeRounding**). Each **`derived.byChannel`** channel row (**`online`**, **`reseller`**, **`offline`**) **must** persist **`srp`**, **`srpPer500g`**, **`srpPer250g`**, **`srpPer100g`**, **`srpPerPiece`** (nullable), and **`breakdown`**, per **§5.2** fractional note and **US-1** / **US-3** — the JSON example above omits package-tier fields for brevity only. **Gross sales report (FR-PC-40)** uses stored **`srp`** (per kg) × **`derived.sellableQuantityKg`** from **in use** revisions (**US-8**). When **`pieceCount`** is set, store **`srpPerPiece`** per channel (**archi §6.4**). **`presetRef`** on each revision is the `savedAt` timestamp (ISO-8601 UTC) of the matching entry in the preset changelog (**FR-PC-54**); this enables forward lookup from a changelog entry to all revisions that used that preset version.
+**Constraints:** `revisionId` unique. Timestamps in UTC or explicit offset. **Item key** for `inUseNow` exclusivity: **§11.1.3** (v1: normalized `itemName`). **At most one revision** in the store may have `inUseNow: true` per item key (FR-PC-24). **`presetSnapshot.channels`:** each channel records **either** `markupPercent` **or** `marginPercent`, plus `roundingRule` and resolved `channelFees` (FR-PC-13, US-5). **`schemaVersion`:** implementations support **only `2`** for new persistence (**FR-PC-10/14** shape above). **Greenfield / rebuild:** reject or omit pre-release JSON that does not match this shape — **no** requirement to read older draft schemas (**[archi.md §6.5](./archi.md)**). **`derived.byChannel.breakdown`** must support audit of **FR-PC-14** (including **`priceAfterCore`**, **`priceBeforeFees`**, fees, **beforeRounding**). With **no** channel fees, **`priceBeforeFees`** equals **`priceAfterCore`** (markup/margin on **\(C_{\text{bulk}} + A\)**). Each **`derived.byChannel`** channel row (**`online`**, **`reseller`**, **`offline`**) **must** persist **`srp`**, **`srpPer500g`**, **`srpPer250g`**, **`srpPer100g`**, **`srpPerPiece`** (nullable), and **`breakdown`**, per **§5.2** fractional note and **US-1** / **US-3** — the JSON example above omits package-tier fields for brevity only. **Gross sales report (FR-PC-40)** uses stored **`srp`** (per kg) × **`derived.sellableQuantityKg`** from **in use** revisions (**US-8**). When **`pieceCount`** is set, store **`srpPerPiece`** per channel (**archi §6.4**). **`presetRef`** on each revision is the `savedAt` timestamp (ISO-8601 UTC) of the matching entry in the preset changelog (**FR-PC-54**); this enables forward lookup from a changelog entry to all revisions that used that preset version.
 
 ### 8.2 Storage layout (non-prescriptive)
 
@@ -444,7 +503,7 @@ Deliverable from design phase: **chosen pattern** + **mobile wireframe** (primar
 
 | Area | Expectation |
 |------|-------------|
-| Pricing engine | Unit tests: zero / invalid **sellable** qty (FR-PC-12), spoilage edge \(s \to 1\), rounding (**US-6** **`ceil_whole_peso`** + optional rules), **all three channels**, preset resolution (default vs category), **markup XOR margin**, order: markup/margin → **+\(A\)** → fees → rounding; **per-piece** SRP when `pieceCount` set (**ceil** to whole PHP); **fractional tiers** (**`srpPer500g`**, **`srpPer250g`**, **`srpPer100g`**) match **§5.2** (× **0.5 / 0.25 / 0.1** + channel **`roundingRule`**). |
+| Pricing engine | Unit tests: zero / invalid **sellable** qty (FR-PC-12), spoilage edge \(s \to 1\), rounding (**US-6** **`ceil_whole_peso`** + optional rules), **all three channels**, preset resolution (default vs category), **markup XOR margin**, order: **\(C_{\text{bulk}} + A\)** → markup/margin → optional channel fees → rounding (**FR-PC-14**, **INV-US-05**); **per-piece** SRP when `pieceCount` set (**ceil** to whole PHP); **fractional tiers** (**`srpPer500g`**, **`srpPer250g`**, **`srpPer100g`**) match **§5.2** (× **0.5 / 0.25 / 0.1** + channel **`roundingRule`**). |
 | Config / UX | **FR-PC-15:** after simulated preset reload, UI updates and notice; no mutation of saved revisions. |
 | Persistence | Integration: save → **second save as new revision** (same `lineageId`) → list/search shows expected revision behavior → **in use now** exclusivity per item; verify prior revision unchanged. Automated **HTTP + store** tests against a temp `data/` tree are recommended (**§14** acceptance). |
 | Reports | Integration or unit: **FR-PC-40** — **P = min** of stored channel SRPs; **line_total = round_currency(P × derived.sellableQuantityKg)** (**US-8**); document currency rounding. |
@@ -466,14 +525,14 @@ This section **closes** prior specification gaps with **v1 defaults** architects
 
 #### 11.1.2 Markup vs margin (canonical math)
 
-Here **`unitCost`** means **\(C\)** — **cost per sellable kg** from **FR-PC-10** (bulk cost ÷ sellable kg, **after** spoilage). Per channel, config contains **exactly one** of:
+Let **\(C_{\text{bulk}} = B / Q_{\text{sell}}\)** and **\(A\)** = required additional cost per kg (**FR-PC-10**). Here **`unitCost`** for channel policy means **\(C = C_{\text{bulk}} + A\)** (**INV-US-05** — hauling and amortized bulk cost are both in the base **before** markup/margin). Per channel, config contains **exactly one** of:
 
 | Mode | Config field (illustrative) | Formula |
 |------|-----------------------------|--------|
 | **Markup** | `markupPercent` | `priceAfterCore = C × (1 + markupPercent / 100)` |
 | **Margin** | `marginPercent` (strictly between 0 and 100) | `priceAfterCore = C / (1 − marginPercent / 100)` |
 
-Validation: **XOR** — setting both or neither is invalid at config load. Then **`priceBeforeFees` = `priceAfterCore` + \(A\)** (**FR-PC-14**). **Optional channel fees** (§7.2) apply to **`priceBeforeFees`** per **§11.1.9**, then **rounding** → **SRP**.
+Validation: **XOR** — setting both or neither is invalid at config load. Then initialize **`priceBeforeFees` = `priceAfterCore`** (**FR-PC-14**). **Optional channel fees** (§7.2) update the running price from **`priceBeforeFees`** per **§11.1.9**, then **rounding** → **SRP**.
 
 #### 11.1.3 Item identity & “in use now” key
 
@@ -513,7 +572,7 @@ Single-file example for **`pricing-presets.json`** (or equivalent). Semantics **
 
 **Categories:** Optional map of **category key** → same shape as `default` (override **`spoilageRate`** and/or hauling / **`additionalCostPerKg`**). Keys populate the assistant picker (FR-PC-07). Example keys align with **US-6** naming.
 
-**Channels:** Each of `online` | `reseller` | `offline` includes **exactly one** of `markupPercent` or `marginPercent`. **US-6** illustrates **35% / 30% / 25%** markup for online / offline / reseller. **`roundingRule`:** v1 schema supports at least **`ceil_whole_peso`** (**US-6** — round up to whole PHP), **`nearest_0.25`**, and **`whole_peso`** (nearest whole PHP, half-up). Illustrative REDN config uses **`ceil_whole_peso`**. `channelFees` optional — apply per **§11.1.9** to **`priceBeforeFees`** (**FR-PC-14**).
+**Channels:** Each of `online` | `reseller` | `offline` includes **exactly one** of `markupPercent` or `marginPercent`. **US-6** illustrates **35% / 30% / 25%** markup for online / offline / reseller. **`roundingRule`:** v1 schema supports at least **`ceil_whole_peso`** (**US-6** — round up to whole PHP), **`nearest_0.25`**, and **`whole_peso`** (nearest whole PHP, half-up). Illustrative REDN config uses **`ceil_whole_peso`**. `channelFees` optional — apply per **§11.1.9** on the post–markup/margin subtotal (**`priceAfterCore`** initial **`priceBeforeFees`**) (**FR-PC-14**).
 
 ```json
 {
@@ -576,8 +635,8 @@ Single-file example for **`pricing-presets.json`** (or equivalent). Semantics **
 
 Architects MUST document in the **architecture spec** (see **§14**):
 
-1. **Ordered list** of supported `type` values (e.g., `percent_of_price_after_core`, `fixed_add`). *(Legacy name `percent_of_price_after_core` may be retained in schema; its numeric **base** is **`priceBeforeFees`** per **FR-PC-14**, not `priceAfterCore` alone.)*
-2. For **percentage** fees: **base** is **`priceBeforeFees`** = **`priceAfterCore` + \(A\)** unless a type explicitly defines another base — **no compounding** across % fees unless a type says otherwise.
+1. **Ordered list** of supported `type` values (e.g., `percent_of_price_after_core`, `fixed_add`). *(Legacy name `percent_of_price_after_core` may be retained in schema; the fee **base** is the **running `priceBeforeFees`** starting from **`priceAfterCore`** per **FR-PC-14** — i.e. post–markup/margin on **\(C_{\text{bulk}} + A\)**, before final rounding.)*
+2. For **percentage** fees: **initial base** is **`priceAfterCore`** (equivalently **`priceBeforeFees`** before any fee); unless a type explicitly defines another base — **no compounding** across % fees unless a type says otherwise.
 3. **Multiple fees** on one channel: apply in **array order**; each fee updates the **running price** after prior fees (architecture locks whether all % fees share the **initial** `priceBeforeFees` base or a running total — **one** rule globally).
 4. **Rounding:** fee line amounts and final SRP: document **per-step** vs **end-only** (recommend **end-only** where possible; final channel rounding **last** per **FR-PC-14**).
 
@@ -596,7 +655,7 @@ Architects MUST document in the **architecture spec** (see **§14**):
 **v1 implementation defaults** are closed in **[archi.md §8](./archi.md)**; use this list when the business **overrides** those defaults or for **v2** planning.
 
 1. **VAT / tax:** **Closed for v1** — see **§11.1.10**. All SRPs are all-in prices; no VAT computation or display. VAT-exclusive pricing and per-channel VAT rules deferred to v2.
-2. **Selling unit vs purchase unit:** **Closed for v1:** purchase quantity is **kg**; optional **`pieceCount`** derives **SRP per piece** (**§5.1**, **FR-PC-14**). Further units (lb, bundle) remain **deferred** unless ADR.
+2. **Selling unit vs purchase unit:** **Closed for v1:** purchase quantity is **kg**; optional **`pieceCount`** derives **SRP per piece** (**§5.1**, **FR-PC-14**). **REDN Farm:** per-piece acquisitions use **no spoilage in SRP** (**§5.1.1**, **CLARIF-01**). Further units (lb, bundle) remain **deferred** unless ADR.
 3. **Deployment topology:** Local (Electron/Tauri), single internal server, or static + serverless API — still **environment-specific**; file storage path and backup procedure follow choice.
 4. **Gross sales report quantities:** **Closed for v1:** row total = **min SRP × sellable kg** from the active revision (**US-8**, **FR-PC-40**). **Manual / CSV overlays** on top of sellable kg **deferred** to v2 unless ADR.
 5. **Authentication strength:** **Closed for v1** — see **NFR-06** and **§11.1.6**. Management is remote (public internet); assistants are on-site. HTTPS is mandatory; PIN over HTTPS is the minimum baseline; VPN or second factor strongly recommended for management routes. The deployment ADR must document the remote-access hardening chosen. Further strengthening (hardware tokens, SSO) deferred to v2.
@@ -616,8 +675,10 @@ Architects MUST document in the **architecture spec** (see **§14**):
 | **Revision** | One immutable stored snapshot of a simulation at a save/update; older revisions remain readable (FR-PC-21). |
 | **In use now** | Flag on **at most one revision per item**: the store’s **current** price guidance until another revision for that item is marked active. |
 | **Preset** | Management-defined **spoilage**, **required additional cost per kg** (§7.3), and per-channel markup/margin/rounding and fees (§7.2); assistants consume, not edit. |
-| **Sellable quantity (kg)** | \(Q \times (1 - \text{spoilageRate})\) — weight available for sale after spoilage (**FR-PC-10**). |
-| **Cost per sellable kg (\(C\))** | Bulk cost divided by sellable kg — basis for markup/margin (**FR-PC-10**, **§11.1.2**). |
+| **Sellable quantity (kg)** | \(Q \times (1 - \text{spoilageRate})\) when preset spoilage applies to SRP (**FR-PC-10**). **REDN Farm per-piece acquisition entry:** **\(Q_{\text{sell}} = Q\)** (spoilage **not** applied in SRP — **§5.1.1**). |
+| **Bulk cost per sellable kg (\(C_{\text{bulk}}\))** | \(B / Q_{\text{sell}}\) — amortized purchase cost per kg of sellable inventory (**FR-PC-10**). |
+| **Unit cost before channel policy (\(C\))** | **\(C_{\text{bulk}} + A\)** — required additional per kg (e.g. hauling) is added **before** markup/margin (**FR-PC-14**, **INV-US-05**, **§11.1.2**). |
+| **Per-piece lot entry** | Assistant supplies **total cost**, **total piece count**, and **pieces per kg** \(n\) (user input / **Estimated Qty per Kg**); system sets **\(Q = P_{\text{tot}}/n\)** and runs the preset pipeline with **\(Q_{\text{sell}} = Q\)** for SRP (**§5.1.1**, **CLARIF-01**). **CLARIF B** = **\(Q \times A_{\text{spec}}\)** (lot hauling); **per-piece** share **\(B/P_{\text{tot}}\)** (**§4.3.1**). |
 | **Mobile-first** | UI designed for phone-sized viewports first; desktop/tablet layouts extend the same features (**NFR-07**, §9). |
 | **Item key** | v1 identifier for **in use now** exclusivity: normalized `itemName` (**§11.1.3**). |
 | **Basket Label** | Optional assistant-entered string on **save** to tag the simulation row (**FR-PC-35**); stored as **`basketLabel`** on the revision (**§8.1**). Not a sales channel. |
@@ -656,7 +717,7 @@ Architects MUST document in the **architecture spec** (see **§14**):
 | 0.9.14-draft | 2026-03-31 | **FR-PC-37 Price freshness indicator:** optional `freshnessWarningDays` per category scope in presets; stale active items show age badge on active page. **§11.1.8** schema example updated. **§15.1** visual note added. |
 | 0.9.15-draft | 2026-03-31 | **FR-PC-26 Actual spoilage recording:** assistants may patch `actualSpoilageKg` on a revision post-sale; **§8.1** schema updated; **US-7** extended — management sees preset vs actual spoilage per item. |
 | 0.9.16-draft | 2026-03-31 | **FR-PC-34b Price history timeline:** management lineage detail shows combined table + chart of per-channel SRP across all revisions over time. **US-5** extended. **§15.2** visual note added. |
-| 0.9.17-draft | 2026-03-31 | **FR-PC-17 Gross margin and markup display:** management-session-only per-channel gross margin % and markup % derived from \(C + A + \text{channelFees}\) vs SRP; shown in calculator and history detail. **FR-PC-32** extended. **§15.2** visual note added. |
+| 0.9.17-draft | 2026-03-31 | **FR-PC-17 Gross margin and markup display:** management-session-only per-channel gross margin % and markup % derived from bulk cost per sellable kg + \(A\) + channel fees vs SRP; shown in calculator and history detail. **FR-PC-32** extended. **§15.2** visual note added. |
 | 0.9.18-draft | 2026-03-31 | **FR-PC-54 Preset version history and restore:** append-only `preset-history.ndjson` changelog; management UI shows history list with Restore action (creates new entry, never overwrites). **§8.1** `presetRef` formalized as `savedAt` timestamp. **§8.2** storage note added. **§15.2** visual note added. |
 | 0.9.19-draft | 2026-03-31 | **NFR-13 + FR-PC-38 Active price change notifications:** optional `NOTIFICATION_WEBHOOK_URL` env var; server fires non-blocking POST on every "in use now" change; compatible with Slack, Viber, Telegram, Messenger. **§14 deliverable #8** updated. |
 | 0.9.20-draft | 2026-03-31 | **§8.1 field length constraints:** max lengths for `itemName` (120), `basketLabel` (80), `notes` (1,000), `updatedBy` (60). |
@@ -667,6 +728,12 @@ Architects MUST document in the **architecture spec** (see **§14**):
 | 0.9.25-draft | 2026-03-31 | **§9.3 Error states:** all errors persist until explicitly acknowledged; per-scenario table (field validation, save failure, preset load failure, auth failure, spoilage patch failure) with presentation and dismissal rules. |
 | 0.9.26-draft | 2026-03-31 | **NFR-06 + §11.1.6 remote access:** management is remote (mobile data / home network); assistants are on-site. LAN-only assumption removed; HTTPS required; VPN or second factor strongly recommended for management routes. |
 | 0.9.27-draft | 2026-03-31 | **US-1c acceptance criteria:** prefixed with conditional note — criteria are not §14 exit criteria until US-1c is formally promoted from "suggested" to normative. |
+| 0.9.28-draft | 2026-04-02 | **Pipeline alignment (INV-US-05):** **\(A\)** is added to **\(C_{\text{bulk}}\)** **before** channel markup/margin — **FR-PC-10**, **FR-PC-11**, **FR-PC-14**, **§4.3**, **US-6** formula, **§7.2**, **§11.1.2**, **§11.1.9**, **§8.1** example JSON + **§10** verification row; **FR-PC-17** \(T\) uses **\(C_{\text{bulk}} + A\)**; glossary split **\(C_{\text{bulk}}\)** vs **\(C\)**. |
+| 0.9.29-draft | 2026-04-05 | **§5.1.1 Per-piece lot entry:** derive **\(Q\)** from total pieces ÷ pieces per kg; preset **\(A\)** and markup pipeline unchanged; **§4.3** + **§7.3** + glossary cross-links. |
+| 0.9.30-draft | 2026-04-03 | **§4.3.1 CLARIF-01:** management narrative from **`docs/pricing_clarif.md`** — preset table (hauling, markups, spoilage, categories), by-weight and by-piece SRP steps, **notation mapping** (CLARIF **A** vs spec **\(C_{\text{bulk}}\)** / **\(A\)**), spoilage-aware alignment for per-piece bulk term; **§5.1.1** cross-link. |
+| 0.9.31-draft | 2026-04-03 | **CLARIF-01 update (`pricing_clarif.md`):** per-piece path — **Estimated Qty per Kg** from user input; **spoilage = 0** for per-piece SRP (not in calculation). **§4.3**, **§4.3.1**, **§5.1.1**, **FR-PC-10/11**, **§11.2** #2, **§12** glossary; REDN Farm vs calculator utilities note in **§5.1.1**. |
+| 0.9.32-draft | 2026-04-05 | **CLARIF per-piece B:** **B** = (**total_quantity** / **Estimated Qty per Kg**) × **additional costs** = **\(Q \times A_{\text{spec}}\)** (lot hauling PHP); **§4.3.1** table + **(A + B/P_tot)** for per-piece SRP; **§5.1.1** cross-link; **`pricing_clarif.md`** per-piece **SRP** line uses **(A + B/total_quantity)**. **BUG-PRC-03** closed: source CLARIF dimension mix removed; optional spreadsheet QA / FR-PC-14 regression remains informal. |
+| 0.9.33-draft | 2026-04-03 | **CLARIF spoilage (by-weight):** **`pricing_clarif.md`** line 10 — **rate** (e.g. **25%** of acquired weight) **or** **actual unsellable kg** (e.g. **2 kg**). **§4.3**, **§4.3.1**, **US-8**, **FR-PC-10** updated; **BUG-PRC-04** opened for implementation. |
 
 ---
 
@@ -710,7 +777,7 @@ Normative **behavior** stays in **§5–§9**; this section is the **visual / UX
 
 - **Settings / presets:** Gated route; **PIN** never echoed in UI after submit (**NFR-09**). Preset editor is **JSON** or structured form per implementation; invalid JSON shows a clear error, no silent fail.
 - **Preset history and restore (FR-PC-54):** Settings page includes a preset changelog list (newest first) with `savedAt`, `savedBy`, and key values summary. Each entry has a **Restore** action that loads the snapshot into the editor as a draft — management confirms before it is committed as a new entry. Restore never deletes history.
-- **Gross margin and markup (FR-PC-17):** Per-channel breakdown shows two additional read-only lines — **gross margin %** and **gross markup %** — computed from \(T = C + A + \text{channelFeeTotal}\) vs SRP. Displayed in the calculator (live) and history detail (from stored values). **Management session only** — not visible to assistants.
+- **Gross margin and markup (FR-PC-17):** Per-channel breakdown shows two additional read-only lines — **gross margin %** and **gross markup %** — computed from \(T = C_{\text{bulk}} + A + \text{channelFeeTotal}\) vs SRP. Displayed in the calculator (live) and history detail (from stored values). **Management session only** — not visible to assistants.
 - **Price history timeline (FR-PC-34b):** In the lineage detail view, a **table + chart** combination shows per-channel per-kg SRP across all revisions. Table lists revision index, date, basket label, per-channel SRPs, and in-use status. Chart is a multi-line plot (one line per channel) with date on x-axis and SRP on y-axis. Both are visible on the same screen; on narrow viewports the chart may stack below the table. Management-only view — not shown to assistants.
 - **Preset impact preview (FR-PC-53):** After editing presets and before the final save, the UI shows the impact table inline — item name, channel, current SRP → new SRP, delta. A **Confirm save** and **Cancel** action are clearly distinguished. If no active items exist, show "No active simulations affected" and allow save directly. The preview re-runs automatically if management edits the draft further before confirming.
 - **Same history affordances** as assistant for read-only review where shared (**US-5**); editing presets does not mutate saved revision files (**FR-PC-15**).

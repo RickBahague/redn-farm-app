@@ -8,9 +8,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import java.time.format.DateTimeFormatter
-import java.util.*
 import com.redn.farm.data.model.FarmOperation
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun FarmOperationCard(
@@ -19,7 +20,9 @@ fun FarmOperationCard(
     onDeleteClick: () -> Unit,
     onPrintClick: () -> Unit = {},
 ) {
-    val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm")
+    val dateFormatter = remember {
+        DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm").withZone(ZoneId.systemDefault())
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth()
@@ -69,7 +72,7 @@ fun FarmOperationCard(
                         )
                     }
                     Text(
-                        text = "Date: ${operation.operation_date.format(dateFormatter)}",
+                        text = "Date: ${dateFormatter.format(Instant.ofEpochMilli(operation.operation_date))}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

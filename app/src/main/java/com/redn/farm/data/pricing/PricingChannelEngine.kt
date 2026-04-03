@@ -4,13 +4,17 @@ import kotlin.math.ceil
 import kotlin.math.round
 
 /**
- * Shared per-channel SRP math (FR-PC-14, PricingReference §5.2).
+ * Shared per-channel SRP math (INV-US-05 pipeline in USER_STORIES.md; fractional tiers §5.2).
  * Used by [PresetPreviewCalculator] and [SrpCalculator].
  */
 object PricingChannelEngine {
 
     private const val EPS = 1e-9
 
+    /**
+     * INV-US-05: `C = costPerSellableKg + additionalCostPerKg` (i.e. B/Q_sell + A),
+     * then `priceAfterCore = C × (1 + markup)` (or margin path on `C`), then per-channel fees, then rounding.
+     */
     fun channelSrpPerKg(
         costPerSellableKg: Double,
         additionalCostPerKg: Double,
@@ -18,13 +22,14 @@ object PricingChannelEngine {
     ): Double {
         val markup = cfg.markupPercent
         val margin = cfg.marginPercent
+        val c = costPerSellableKg + additionalCostPerKg
         val priceAfterCore = when {
-            markup != null -> costPerSellableKg * (1.0 + markup / 100.0)
+            markup != null -> c * (1.0 + markup / 100.0)
             margin != null && margin in (EPS)..(100.0 - EPS) ->
-                costPerSellableKg / (1.0 - margin / 100.0)
-            else -> costPerSellableKg
+                c / (1.0 - margin / 100.0)
+            else -> c
         }
-        var running = priceAfterCore + additionalCostPerKg
+        var running = priceAfterCore
         for (fee in cfg.fees) {
             running += when (fee.type.lowercase()) {
                 "pct" -> running * (fee.amount / 100.0)
@@ -44,8 +49,8 @@ object PricingChannelEngine {
     }
 
     /** US-6 / FR-PC-14: per-piece always ceil to whole PHP, independent of kg rounding. */
-    fun perPieceSrp(srpPerKg: Double, pieceCount: Int): Double {
-        require(pieceCount > 0)
+    fun perPieceSrp(srpPerKg: Double, pieceCount: Double): Double {
+        require(pieceCount > 0.0)
         return ceil((srpPerKg / pieceCount) - EPS)
     }
 

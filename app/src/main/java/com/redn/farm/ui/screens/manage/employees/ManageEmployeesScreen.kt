@@ -1,50 +1,53 @@
 package com.redn.farm.ui.screens.manage.employees
 
-import android.app.Application
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Employee
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManageEmployeesScreen(
     onNavigateBack: () -> Unit,
     onNavigateToPayments: (Int, String) -> Unit,
-    viewModel: ManageEmployeesViewModel = viewModel(
-        factory = ManageEmployeesViewModel.Factory(LocalContext.current.applicationContext as Application)
-    )
+    onNavigateToEmployeeForm: (String) -> Unit,
+    viewModel: ManageEmployeesViewModel = hiltViewModel()
 ) {
-    var showAddDialog by remember { mutableStateOf(false) }
-    var showEditDialog by remember { mutableStateOf<Employee?>(null) }
     var showDeleteDialog by remember { mutableStateOf<Employee?>(null) }
     
     val employees by viewModel.employees.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val dateFormatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()) }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) {
+        viewModel.userMessage.collectLatest { snackbarHostState.showSnackbar(it) }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Manage Employees") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showAddDialog = true }) {
+                    IconButton(onClick = { onNavigateToEmployeeForm("new") }) {
                         Icon(Icons.Default.Add, "Add Employee")
                     }
                 }
@@ -106,7 +109,7 @@ fun ManageEmployeesScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Button(
-                            onClick = { showAddDialog = true },
+                            onClick = { onNavigateToEmployeeForm("new") },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Add employee")
@@ -122,7 +125,9 @@ fun ManageEmployeesScreen(
                         EmployeeCard(
                             employee = employee,
                             dateFormatter = dateFormatter,
-                            onEditClick = { showEditDialog = employee },
+                            onEditClick = {
+                                onNavigateToEmployeeForm(employee.employee_id.toString())
+                            },
                             onDeleteClick = { showDeleteDialog = employee },
                             onPaymentClick = {
                                 onNavigateToPayments(employee.employee_id, employee.fullName)
@@ -132,33 +137,6 @@ fun ManageEmployeesScreen(
                 }
             }
         }
-    }
-
-    if (showAddDialog) {
-        EmployeeDialog(
-            onDismiss = { showAddDialog = false },
-            onConfirm = { firstname, lastname, contact ->
-                viewModel.addEmployee(firstname, lastname, contact)
-                showAddDialog = false
-            }
-        )
-    }
-
-    showEditDialog?.let { employee ->
-        EmployeeDialog(
-            employee = employee,
-            onDismiss = { showEditDialog = null },
-            onConfirm = { firstname, lastname, contact ->
-                viewModel.updateEmployee(
-                    employee.copy(
-                        firstname = firstname,
-                        lastname = lastname,
-                        contact = contact
-                    )
-                )
-                showEditDialog = null
-            }
-        )
     }
 
     showDeleteDialog?.let { employee ->
@@ -263,65 +241,4 @@ private fun EmployeeCard(
             }
         }
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun EmployeeDialog(
-    employee: Employee? = null,
-    onDismiss: () -> Unit,
-    onConfirm: (String, String, String) -> Unit
-) {
-    var firstname by remember { mutableStateOf(employee?.firstname ?: "") }
-    var lastname by remember { mutableStateOf(employee?.lastname ?: "") }
-    var contact by remember { mutableStateOf(employee?.contact ?: "") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (employee == null) "Add Employee" else "Edit Employee") },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = firstname,
-                    onValueChange = { firstname = it },
-                    label = { Text("First Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = lastname,
-                    onValueChange = { lastname = it },
-                    label = { Text("Last Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = contact,
-                    onValueChange = { contact = it },
-                    label = { Text("Contact") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (firstname.isNotBlank() && lastname.isNotBlank()) {
-                        onConfirm(firstname, lastname, contact)
-                    }
-                },
-                enabled = firstname.isNotBlank() && lastname.isNotBlank()
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
 } 

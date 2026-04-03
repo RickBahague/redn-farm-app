@@ -13,7 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Customer
 import com.redn.farm.data.model.Order
 import com.redn.farm.data.model.OrderItem
@@ -44,7 +44,7 @@ fun OrderDetailScreen(
     orderId: Int,
     onNavigateBack: () -> Unit,
     onNavigateToEdit: () -> Unit,
-    viewModel: OrderHistoryViewModel = viewModel(factory = OrderHistoryViewModel.Factory)
+    viewModel: OrderHistoryViewModel = hiltViewModel()
 ) {
     var order by remember { mutableStateOf<Order?>(null) }
     var orderItems by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
@@ -198,7 +198,7 @@ fun OrderDetailScreen(
                         Column(Modifier.padding(12.dp)) {
                             Text(item.product_name, style = MaterialTheme.typography.titleSmall)
                             Text(
-                                "${item.quantity} ${if (item.is_per_kg) "kg" else "pcs"} × ${CurrencyFormatter.format(item.price_per_unit)}",
+                                "${item.quantity} ${if (item.is_per_kg) "kg" else "pcs"} × ${CurrencyFormatter.format(item.price_per_unit)}${if (item.is_per_kg) "/kg" else "/pc"}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Text(

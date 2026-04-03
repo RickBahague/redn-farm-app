@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.redn.farm.data.pricing.PricingPresetGson
 import com.redn.farm.utils.CurrencyFormatter
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -74,6 +75,16 @@ fun PresetDetailScreen(
             Text("Loading…", modifier = Modifier.padding(padding).padding(16.dp))
             return@Scaffold
         }
+        val haulingFeesParsed = remember(p.hauling_fees_json) {
+            runCatching { PricingPresetGson.haulingFeesFromJson(p.hauling_fees_json) }.getOrNull()
+        }
+        val channelsParsed = remember(p.channels_json) {
+            runCatching { PricingPresetGson.channelsFromJson(p.channels_json) }.getOrNull()
+        }
+        val categoriesParsed = remember(p.categories_json) {
+            runCatching { PricingPresetGson.categoriesFromJson(p.categories_json) }.getOrNull()
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -101,12 +112,21 @@ fun PresetDetailScreen(
                 } · Hauling weight: ${p.hauling_weight_kg} kg",
                 style = MaterialTheme.typography.bodyMedium
             )
-            Text("Hauling fees JSON", style = MaterialTheme.typography.labelLarge)
-            Text(p.hauling_fees_json, style = MaterialTheme.typography.bodySmall)
-            Text("Channels JSON", style = MaterialTheme.typography.labelLarge)
-            Text(p.channels_json, style = MaterialTheme.typography.bodySmall)
-            Text("Categories JSON", style = MaterialTheme.typography.labelLarge)
-            Text(p.categories_json, style = MaterialTheme.typography.bodySmall)
+            if (haulingFeesParsed != null) {
+                PresetDetailHaulingFeesSection(fees = haulingFeesParsed)
+            } else {
+                PresetDetailJsonFallback("Hauling fees", p.hauling_fees_json)
+            }
+            if (channelsParsed != null) {
+                PresetDetailChannelsSection(channels = channelsParsed)
+            } else {
+                PresetDetailJsonFallback("Channels", p.channels_json)
+            }
+            if (categoriesParsed != null) {
+                PresetDetailCategoriesSection(categories = categoriesParsed)
+            } else {
+                PresetDetailJsonFallback("Categories", p.categories_json)
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

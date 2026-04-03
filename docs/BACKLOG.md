@@ -124,10 +124,8 @@ The route `database_migration` is defined in the `Screen` sealed class and regis
 
 ---
 
-### [ ] DI-04 · `Converters.kt` is dead code
-`data/local/util/Converters.kt` defines `@TypeConverter` methods for `LocalDate`, `LocalDateTime` (as ISO string), and `FarmOperationType`. It is **not** listed in the `@TypeConverters(...)` annotation on `FarmDatabase`, so Room never uses it. The active converters are `DateTimeConverter` (in `data/local/converters/`) and `EnumConverters`.
-
-**Fix:** Delete `data/local/util/Converters.kt`.
+### [x] DI-04 · `Converters.kt` is dead code
+`data/local/util/Converters.kt` was unused by **`FarmDatabase`**. **Fix applied:** file deleted (**BUG-ARC-09**). Active converters remain under **`data/local/converters/`**.
 
 ---
 

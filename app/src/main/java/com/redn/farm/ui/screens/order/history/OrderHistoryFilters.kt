@@ -1,204 +1,197 @@
 package com.redn.farm.ui.screens.order.history
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
-import java.time.ZoneId
+import com.redn.farm.utils.MillisDateRange
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrderHistoryFilters(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
-    dateRange: Pair<LocalDateTime?, LocalDateTime?>,
-    onDateRangeSelected: (Pair<LocalDateTime?, LocalDateTime?>) -> Unit,
+    dateRange: Pair<Long?, Long?>,
+    onDateRangeSelected: (Pair<Long?, Long?>) -> Unit,
     onShowSummary: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    var showStartDatePicker by remember { mutableStateOf(false) }
-    var showEndDatePicker by remember { mutableStateOf(false) }
-    
-    val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy")
+    var showFromPicker by remember { mutableStateOf(false) }
+    var showToPicker by remember { mutableStateOf(false) }
+
+    val dateFormatter = remember {
+        DateTimeFormatter.ofPattern("MMM dd, yyyy").withZone(ZoneId.systemDefault())
+    }
 
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // Search field
         OutlinedTextField(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
             label = { Text("Search") },
-            leadingIcon = { Icon(Icons.Default.Search, "Search") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
                     IconButton(onClick = { onSearchQueryChange("") }) {
-                        Icon(Icons.Default.Clear, "Clear search")
+                        Icon(Icons.Default.Clear, contentDescription = "Clear search")
                     }
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true
+            singleLine = true,
         )
 
-        // Date Range Filters
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // From Date
             OutlinedCard(
-                onClick = { showStartDatePicker = true },
-                modifier = Modifier.weight(1f)
+                onClick = { showFromPicker = true },
+                modifier = Modifier.weight(1f),
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(16.dp),
                 ) {
                     Text(
                         text = "From",
-                        style = MaterialTheme.typography.labelMedium
+                        style = MaterialTheme.typography.labelMedium,
                     )
                     Text(
-                        text = dateRange.first?.format(dateFormatter) ?: "Select Date",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = dateRange.first?.let { dateFormatter.format(Instant.ofEpochMilli(it)) } ?: "Any",
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             }
-
-            // To Date
             OutlinedCard(
-                onClick = { showEndDatePicker = true },
-                modifier = Modifier.weight(1f)
+                onClick = { showToPicker = true },
+                modifier = Modifier.weight(1f),
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(16.dp),
                 ) {
                     Text(
                         text = "To",
-                        style = MaterialTheme.typography.labelMedium
+                        style = MaterialTheme.typography.labelMedium,
                     )
                     Text(
-                        text = dateRange.second?.format(dateFormatter) ?: "Select Date",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = dateRange.second?.let { dateFormatter.format(Instant.ofEpochMilli(it)) } ?: "Any",
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             }
         }
 
-        // Action Buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(
                 onClick = {
                     onSearchQueryChange("")
                     onDateRangeSelected(null to null)
-                }
+                },
             ) {
                 Text("Clear Filters")
             }
-            
-            TextButton(
-                onClick = onShowSummary
-            ) {
+
+            TextButton(onClick = onShowSummary) {
                 Text("Show Summary")
             }
         }
     }
 
-    // Start Date Picker Dialog
-    if (showStartDatePicker) {
-        val currentStartDate = dateRange.first ?: LocalDateTime.now()
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = currentStartDate
-                .atZone(ZoneId.systemDefault())
-                .toInstant()
-                .toEpochMilli()
+    if (showFromPicker) {
+        val fromMillis = dateRange.first ?: System.currentTimeMillis()
+        val fromState = rememberDatePickerState(
+            initialSelectedDateMillis = fromMillis,
+            initialDisplayedMonthMillis = fromMillis,
         )
-        
         DatePickerDialog(
-            onDismissRequest = { showStartDatePicker = false },
+            onDismissRequest = { showFromPicker = false },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        datePickerState.selectedDateMillis?.let { millis ->
-                            val selectedDate = LocalDateTime.ofInstant(
-                                Instant.ofEpochMilli(millis),
-                                ZoneId.systemDefault()
-                            ).withHour(0).withMinute(0).withSecond(0)
-                            onDateRangeSelected(selectedDate to dateRange.second)
+                        fromState.selectedDateMillis?.let { ms ->
+                            onDateRangeSelected(MillisDateRange.startOfDayMillis(ms) to dateRange.second)
                         }
-                        showStartDatePicker = false
-                    }
+                        showFromPicker = false
+                    },
+                    enabled = fromState.selectedDateMillis != null,
                 ) {
                     Text("OK")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showStartDatePicker = false }) {
+                TextButton(onClick = { showFromPicker = false }) {
                     Text("Cancel")
                 }
-            }
+            },
         ) {
-            DatePicker(
-                state = datePickerState,
-                showModeToggle = false
-            )
+            DatePicker(state = fromState, showModeToggle = false)
         }
     }
 
-    // End Date Picker Dialog
-    if (showEndDatePicker) {
-        val currentEndDate = dateRange.second ?: LocalDateTime.now()
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = currentEndDate
-                .atZone(ZoneId.systemDefault())
-                .toInstant()
-                .toEpochMilli()
+    if (showToPicker) {
+        val toMillis = dateRange.second ?: dateRange.first ?: System.currentTimeMillis()
+        val toState = rememberDatePickerState(
+            initialSelectedDateMillis = toMillis,
+            initialDisplayedMonthMillis = toMillis,
         )
-
         DatePickerDialog(
-            onDismissRequest = { showEndDatePicker = false },
+            onDismissRequest = { showToPicker = false },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        datePickerState.selectedDateMillis?.let { millis ->
-                            val selectedDate = LocalDateTime.ofInstant(
-                                Instant.ofEpochMilli(millis),
-                                ZoneId.systemDefault()
-                            ).withHour(23).withMinute(59).withSecond(59)
-                            onDateRangeSelected(dateRange.first to selectedDate)
+                        toState.selectedDateMillis?.let { ms ->
+                            onDateRangeSelected(dateRange.first to MillisDateRange.endOfDayMillis(ms))
                         }
-                        showEndDatePicker = false
-                    }
+                        showToPicker = false
+                    },
+                    enabled = toState.selectedDateMillis != null,
                 ) {
                     Text("OK")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showEndDatePicker = false }) {
+                TextButton(onClick = { showToPicker = false }) {
                     Text("Cancel")
                 }
-            }
+            },
         ) {
-            DatePicker(
-                state = datePickerState,
-                showModeToggle = false
-            )
+            DatePicker(state = toState, showModeToggle = false)
         }
     }
-} 
+}

@@ -100,7 +100,7 @@ Users are created in `FarmDatabase`'s `onOpen` / `onCreate` callback if they don
 
 ## 6. Database Design
 
-### `FarmDatabase` (Room, version 3)
+### `FarmDatabase` (Room, version 6)
 
 Located at `data/local/FarmDatabase.kt`. Singleton accessed via `FarmDatabase.getDatabase(context)`. A `clearInstance()` method exists for reinitialization scenarios.
 
@@ -143,7 +143,7 @@ users (user_id INT PK, autoincrement; unique index on username)
 | `employees` | `employee_id`, `firstname`, `lastname`, `contact`, `date_created/updated` |
 | `employee_payments` | `payment_id`, `employee_id`, `amount`, `cash_advance_amount?`, `liquidated_amount?`, `date_paid`, `signature`, `received_date?` |
 | `farm_operations` | `operation_id`, `operation_type` (enum), `operation_date`, `details`, `area`, `weather_condition`, `personnel`, `product_id?`, `product_name` |
-| `acquisitions` | `acquisition_id`, `product_id`, `product_name`, `quantity`, `price_per_unit`, `total_amount`, `is_per_kg`, `date_acquired`, `location` (enum) |
+| `acquisitions` | `acquisition_id`, `product_id`, `product_name`, `quantity`, `price_per_unit`, `total_amount`, `is_per_kg`, `piece_count?` (pieces per kg), preset/SRP snapshot fields, `date_acquired`, `location` (enum) — see **USER_STORIES.md** INV-US-01 / INV-US-05; **PricingReference.md** §4.3 / §4.3.1 / §5.1.1 |
 | `remittances` | `remittance_id`, `amount`, `date`, `remarks`, `date_updated` |
 | `users` | `user_id`, `username` (unique), `password_hash`, `full_name`, `role`, `is_active` |
 
@@ -245,7 +245,7 @@ All ViewModels use `StateFlow` exposed as `asStateFlow()`, collected in Composab
 - Optional link to a product (`product_id` nullable, SET NULL on delete)
 
 ### Acquisitions
-- Records incoming inventory with source location (enum), price per unit, and whether measured by kg or piece
+- Records incoming inventory with source location (enum), price per unit, **`is_per_kg`**, optional **`piece_count`** (pieces per kg — CLARIF **Estimated Qty per Kg**). **Per kg:** **`quantity`** is kg; preset spoilage applies in SRP. **Per piece:** **`quantity`** is total pieces; engine derives kg **`quantity / piece_count`**; **CLARIF-01:** spoilage **not** applied in per-piece SRP (**`Q_sell = Q`** — **PricingReference.md** §5.1.1); preset **`spoilage_rate`** remains on the snapshot for audit. **Additional cost per kg** applies on the derived mass basis (**INV-US-05**, **§4.3.1**).
 
 ### Export / Data Management
 `ExportScreen` / `ExportViewModel` provides per-table CSV export and per-table truncation (data wipe). It also has buttons to generate sample data (`DatabasePopulator`).
@@ -303,6 +303,6 @@ The Sunmi printer connection is managed as a coroutine-suspended bind (`suspendC
 
 3. **`DatabaseInitializer` vs. seed assets**: `DatabaseInitializer` has its own hardcoded seed data (overriding any JSON assets). The JSON files in `assets/data/` are parsed as models (`ProductList`, `CustomerList`) but `DatabaseInitializer.populateDatabase()` does not read them.
 
-4. **`Converters.kt`** in `data/local/util/` exists alongside `converters/DateTimeConverter.kt` and `converters/EnumConverters.kt` — appears to be an unused or legacy file.
+4. ~~**`Converters.kt`**~~ — removed; it was never registered on **`FarmDatabase`** (**DI-04** / **BUG-ARC-09**). Active Room converters live under **`data/local/converters/`**.
 
-5. **Date/time storage inconsistency**: Some entities store dates as `Long` (epoch millis), others store `LocalDateTime` (converted via `DateTimeConverter` as epoch seconds). This causes subtle conversion differences across the codebase.
+5. **Date/time storage inconsistency**: Domain paths for farm ops, order-history filters, and acquire flows now standardize on **epoch millis** where models cross layers; some entities or UI helpers may still differ — see **`BUG-ARC-09`** and **`BACKLOG.md`** **DI-05**.

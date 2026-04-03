@@ -18,6 +18,8 @@ import com.redn.farm.data.model.FarmOperation
 import com.redn.farm.ui.screens.farmops.FarmOperationCard
 import com.redn.farm.ui.screens.farmops.FarmOperationFilters
 import com.redn.farm.ui.screens.farmops.FarmOperationsViewModel
+import java.time.Instant
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -131,7 +133,9 @@ fun FarmOperationHistoryScreen(
 
 @Composable
 private fun FarmOperationHistoryCard(operation: FarmOperation) {
-    val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm")
+    val dateFormatter = remember {
+        DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm").withZone(ZoneId.systemDefault())
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth()
@@ -169,12 +173,12 @@ private fun FarmOperationHistoryCard(operation: FarmOperation) {
                 )
             }
             Text(
-                text = "Operation Date: ${operation.operation_date.format(dateFormatter)}",
+                text = "Operation Date: ${dateFormatter.format(Instant.ofEpochMilli(operation.operation_date))}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "Last Updated: ${operation.date_updated.format(dateFormatter)}",
+                text = "Last Updated: ${dateFormatter.format(Instant.ofEpochMilli(operation.date_updated))}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

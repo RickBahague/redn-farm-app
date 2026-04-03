@@ -33,7 +33,8 @@ data class AcquisitionEntity(
     val price_per_unit: Double,
     val total_amount: Double,
     val is_per_kg: Boolean,
-    val piece_count: Int? = null,           // INV-US-01: pieces per kg
+    /** INV-US-01: pieces per kg (may be fractional). */
+    val piece_count: Double? = null,
     val date_acquired: Long,                // user-entered acquisition date
     val created_at: Long = System.currentTimeMillis(), // INV-US-06: tiebreaker, never updated
     val location: AcquisitionLocation,
@@ -43,6 +44,8 @@ data class AcquisitionEntity(
 
     // Preset snapshot at save time — immutable audit trail
     val spoilage_rate: Double? = null,
+    /** CLARIF / BUG-PRC-04: absolute unsellable kg when entered; null = rate-only path. */
+    val spoilage_kg: Double? = null,
     val additional_cost_per_kg: Double? = null,
     val hauling_weight_kg: Double? = null,
     val hauling_fees_json: String? = null,  // JSON: [{label, amount}, ...]
@@ -67,5 +70,8 @@ data class AcquisitionEntity(
     // Computed SRPs per piece (null when piece_count is null)
     val srp_online_per_piece: Double? = null,
     val srp_reseller_per_piece: Double? = null,
-    val srp_offline_per_piece: Double? = null
+    val srp_offline_per_piece: Double? = null,
+
+    /** 1 = customer SRP/kg per channel was set manually on the form (MGT-US-07). */
+    val srp_custom_override: Boolean = false,
 )

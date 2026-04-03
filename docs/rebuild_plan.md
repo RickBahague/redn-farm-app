@@ -39,7 +39,7 @@
   - File: `data/local/entity/OrderEntity.kt`
 
 - [x] **P0-4** Update `Acquisition` entity — add all new columns
-  - `piece_count: Int?`, `created_at: Long`, `preset_ref: String?`
+  - `piece_count: Double?`, `created_at: Long`, `preset_ref: String?`
   - Snapshot fields: `spoilage_rate?`, `additional_cost_per_kg?`, `hauling_weight_kg?`, `hauling_fees_json?`, `channels_snapshot_json?`
   - 15 SRP columns (all `Double?`)
   - Added indices: `preset_ref`, `date_acquired`
@@ -273,7 +273,8 @@ Phase 6 (after Phase 1)
 |----------|---------|
 | [USER_STORIES.md](./USER_STORIES.md) | Full acceptance criteria for every story ID |
 | [schema_evolution.sql](./schema_evolution.sql) | Canonical DB schema; VERSION 4 is the rebuild target |
-| [PricingReference.md](./PricingReference.md) | SRP formula, rounding rules, channel markup defaults |
+| [PricingReference.md](./PricingReference.md) | SRP pipeline (**INV-US-05** / **FR-PC-14**): **\(C_{\text{bulk}} = B/Q_{\text{sell}}\)**, **\(C = C_{\text{bulk}} + A\)**, *then* markup/margin, optional channel fees, rounding; **§5.1.1** / **[`pricing_clarif.md`](./pricing_clarif.md)** — **by-weight** spoilage: **rate** or **absolute kg** (line 10; **BUG-PRC-04**); per-piece: CLARIF **B** = **`Q × A_spec`** (lot hauling); **SRP** **(A + B/total_quantity)** × markup; **§4.3.1**; cross-ref **USER_STORIES.md** INV-US-01 / INV-US-05 |
+| [INV_ACQUISITION_SRP_TRACKER.md](./INV_ACQUISITION_SRP_TRACKER.md) | Implementation checklist for **INV-US-01–06**, **INV-US-05** formula, **ORD-US-08** active price list |
 | `data/local/FarmDatabase.kt` | Room DB class — version, migrations, entity list |
 | `di/DatabaseModule.kt` | Hilt DAO providers |
 | `navigation/NavGraph.kt` | All routes — add new screens here |

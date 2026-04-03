@@ -6,7 +6,6 @@ import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.ProductPrice
 import com.redn.farm.data.model.Acquisition
 import com.redn.farm.data.model.AcquisitionLocation
-import java.time.LocalDateTime
 import kotlin.random.Random
 
 object SampleDataGenerator {
@@ -100,7 +99,7 @@ object SampleDataGenerator {
             product_id = productId,
             per_kg_price = if (isPerKg) generatePrice() else null,
             per_piece_price = if (!isPerKg) generatePrice() else null,
-            date_created = LocalDateTime.now()
+            date_created = System.currentTimeMillis()
         )
 
         return ProductWithPrice(product, price)
@@ -136,8 +135,8 @@ object SampleDataGenerator {
             city = city,
             province = province,
             postal_code = postalCode,
-            date_created = LocalDateTime.now(),
-            date_updated = LocalDateTime.now()
+            date_created = System.currentTimeMillis(),
+            date_updated = System.currentTimeMillis()
         )
     }
 

@@ -20,10 +20,10 @@ import com.redn.farm.utils.buildAcquisitionBatchReport
 import com.redn.farm.utils.buildAcquisitionReceivingSlip
 import com.redn.farm.utils.CurrencyFormatter
 import com.redn.farm.utils.PrinterUtils
-import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextOverflow
 import java.time.ZoneId
 import java.time.Instant
@@ -243,11 +243,12 @@ private fun AcquisitionCard(
     onPrint: () -> Unit,
 ) {
     var srpExpanded by remember { mutableStateOf(false) }
-    val dateFormatter = remember { DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm", Locale.getDefault()) }
+    val dateFormatter = remember {
+        DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm", Locale.getDefault())
+            .withZone(ZoneId.systemDefault())
+    }
     val formattedDate = remember(acquisition.date_acquired) {
-        val instant = Instant.ofEpochMilli(acquisition.date_acquired)
-        val dateTime = LocalDateTime.ofInstant(instant, ZoneId.systemDefault())
-        dateFormatter.format(dateTime)
+        dateFormatter.format(Instant.ofEpochMilli(acquisition.date_acquired))
     }
 
     Card(
@@ -281,17 +282,24 @@ private fun AcquisitionCard(
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        val srpLine = when {
-                            !acquisition.is_per_kg && acquisition.srp_online_per_piece != null ->
-                                "SRP online: ${CurrencyFormatter.format(acquisition.srp_online_per_piece)}/pc"
-                            acquisition.srp_online_per_kg != null ->
-                                "SRP online: ${CurrencyFormatter.format(acquisition.srp_online_per_kg)}/kg"
-                            else -> null
-                        }
-                        if (srpLine != null) {
+                        //val srpLine = when {
+                        //    !acquisition.is_per_kg && acquisition.srp_online_per_piece != null ->
+                        //        "SRP online: ${CurrencyFormatter.format(acquisition.srp_online_per_piece)}/pc"
+                        //    acquisition.srp_online_per_kg != null ->
+                        //        "SRP online: ${CurrencyFormatter.format(acquisition.srp_online_per_kg)}/kg"
+                        //    else -> null
+                        //}
+                        //if (srpLine != null) {
+                        //    Text(
+                        //        text = srpLine,
+                        //        style = MaterialTheme.typography.bodySmall
+                        //    )
+                        //}
+                        if (acquisition.srp_custom_override) {
                             Text(
-                                text = srpLine,
-                                style = MaterialTheme.typography.bodySmall
+                                text = "Custom customer SRP per channel",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary
                             )
                         }
                         if (acquisition.hasSrpDetail()) {
@@ -314,46 +322,7 @@ private fun AcquisitionCard(
                                 )
                             }
                             AnimatedVisibility(visible = srpExpanded) {
-                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    acquisition.srp_online_per_kg?.let {
-                                        Text("Online ${CurrencyFormatter.format(it)}/kg", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    acquisition.srp_reseller_per_kg?.let {
-                                        Text("Reseller ${CurrencyFormatter.format(it)}/kg", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    acquisition.srp_offline_per_kg?.let {
-                                        Text("Store ${CurrencyFormatter.format(it)}/kg", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    Text(
-                                        "Online packs: 500g ${acquisition.srp_online_500g?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
-                                            "250g ${acquisition.srp_online_250g?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
-                                            "100g ${acquisition.srp_online_100g?.let { CurrencyFormatter.format(it) } ?: "—"}",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                    Text(
-                                        "Reseller packs: 500g ${acquisition.srp_reseller_500g?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
-                                            "250g ${acquisition.srp_reseller_250g?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
-                                            "100g ${acquisition.srp_reseller_100g?.let { CurrencyFormatter.format(it) } ?: "—"}",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                    Text(
-                                        "Store packs: 500g ${acquisition.srp_offline_500g?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
-                                            "250g ${acquisition.srp_offline_250g?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
-                                            "100g ${acquisition.srp_offline_100g?.let { CurrencyFormatter.format(it) } ?: "—"}",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                    val op = acquisition.srp_online_per_piece
-                                    val rp = acquisition.srp_reseller_per_piece
-                                    val fp = acquisition.srp_offline_per_piece
-                                    if (op != null || rp != null || fp != null) {
-                                        Text(
-                                            "Per piece — online ${op?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
-                                                "reseller ${rp?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
-                                                "store ${fp?.let { CurrencyFormatter.format(it) } ?: "—"}",
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                    }
-                                }
+                                AcquisitionSrpExpandedDetail(acquisition = acquisition)
                             }
                         }
                         Row(
@@ -412,6 +381,144 @@ private fun AcquisitionCard(
         }
     }
 }
+
+/** BUG-ACQ-04: per-channel blocks, labeled pack tiers, aligned price rows (not inline “·” paragraphs). */
+@Composable
+private fun AcquisitionSrpExpandedDetail(acquisition: Acquisition) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (acquisition.hasChannelSrpDetailOnline()) {
+            AcquisitionSrpChannelBlock(
+                title = "Online",
+                perKg = acquisition.srp_online_per_kg,
+                g500 = acquisition.srp_online_500g,
+                g250 = acquisition.srp_online_250g,
+                g100 = acquisition.srp_online_100g,
+                perPiece = acquisition.srp_online_per_piece,
+                isPerKg = acquisition.is_per_kg,
+            )
+        }
+        if (acquisition.hasChannelSrpDetailReseller()) {
+            AcquisitionSrpChannelBlock(
+                title = "Reseller",
+                perKg = acquisition.srp_reseller_per_kg,
+                g500 = acquisition.srp_reseller_500g,
+                g250 = acquisition.srp_reseller_250g,
+                g100 = acquisition.srp_reseller_100g,
+                perPiece = acquisition.srp_reseller_per_piece,
+                isPerKg = acquisition.is_per_kg,
+            )
+        }
+        if (acquisition.hasChannelSrpDetailOffline()) {
+            AcquisitionSrpChannelBlock(
+                title = "Store",
+                perKg = acquisition.srp_offline_per_kg,
+                g500 = acquisition.srp_offline_500g,
+                g250 = acquisition.srp_offline_250g,
+                g100 = acquisition.srp_offline_100g,
+                perPiece = acquisition.srp_offline_per_piece,
+                isPerKg = acquisition.is_per_kg,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AcquisitionSrpChannelBlock(
+    title: String,
+    perKg: Double?,
+    g500: Double?,
+    g250: Double?,
+    g100: Double?,
+    perPiece: Double?,
+    isPerKg: Boolean,
+) {
+    val hasPacks = isPerKg && (g500 != null || g250 != null || g100 != null)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            if (isPerKg) {
+                perKg?.let {
+                    AcquisitionSrpLabeledPriceRow(
+                        label = "Per kg",
+                        valueText = "${CurrencyFormatter.format(it)}/kg",
+                    )
+                }
+            }
+            if (hasPacks) {
+                Text(
+                    text = "Packs",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                AcquisitionSrpLabeledPriceRow(label = "500 g", amount = g500)
+                AcquisitionSrpLabeledPriceRow(label = "250 g", amount = g250)
+                AcquisitionSrpLabeledPriceRow(label = "100 g", amount = g100)
+            }
+            perPiece?.let {
+                AcquisitionSrpLabeledPriceRow(
+                    label = "Per piece",
+                    valueText = CurrencyFormatter.format(it),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AcquisitionSrpLabeledPriceRow(label: String, amount: Double?) {
+    AcquisitionSrpLabeledPriceRow(
+        label = label,
+        valueText = amount?.let { CurrencyFormatter.format(it) } ?: "—",
+    )
+}
+
+@Composable
+private fun AcquisitionSrpLabeledPriceRow(label: String, valueText: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = valueText,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+private fun Acquisition.hasChannelSrpDetailOnline(): Boolean =
+    srp_online_per_kg != null || srp_online_500g != null || srp_online_250g != null ||
+        srp_online_100g != null || srp_online_per_piece != null
+
+private fun Acquisition.hasChannelSrpDetailReseller(): Boolean =
+    srp_reseller_per_kg != null || srp_reseller_500g != null || srp_reseller_250g != null ||
+        srp_reseller_100g != null || srp_reseller_per_piece != null
+
+private fun Acquisition.hasChannelSrpDetailOffline(): Boolean =
+    srp_offline_per_kg != null || srp_offline_500g != null || srp_offline_250g != null ||
+        srp_offline_100g != null || srp_offline_per_piece != null
 
 private fun Acquisition.hasSrpDetail(): Boolean =
     srp_online_per_kg != null || srp_reseller_per_kg != null || srp_offline_per_kg != null ||

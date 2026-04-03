@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Customer
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -18,7 +19,7 @@ import com.redn.farm.data.model.Customer
 fun CustomerSelectionDialog(
     onDismiss: () -> Unit,
     onCustomerSelected: (Customer) -> Unit,
-    viewModel: TakeOrderViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = TakeOrderViewModel.Factory)
+    viewModel: TakeOrderViewModel = hiltViewModel()
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
     val customers by viewModel.customers.collectAsState()

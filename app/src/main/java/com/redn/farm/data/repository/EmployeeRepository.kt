@@ -5,8 +5,11 @@ import com.redn.farm.data.local.entity.EmployeeEntity
 import com.redn.farm.data.model.Employee
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class EmployeeRepository(
+@Singleton
+class EmployeeRepository @Inject constructor(
     private val employeeDao: EmployeeDao
 ) {
     fun getAllEmployees(): Flow<List<Employee>> {

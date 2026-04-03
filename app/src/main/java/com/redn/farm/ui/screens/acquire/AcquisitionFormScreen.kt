@@ -69,19 +69,39 @@ import com.redn.farm.data.model.Product
 import com.redn.farm.data.repository.AcquisitionDraftPricingPreview
 import com.redn.farm.ui.components.NumericPadBottomSheet
 import com.redn.farm.utils.CurrencyFormatter
+import com.redn.farm.utils.MillisDateRange
+import kotlin.math.abs
 import java.time.Instant
-import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.delay
 
-private enum class AcquisitionNumericPadTarget { QUANTITY, PRICE_PER_UNIT, TOTAL_AMOUNT }
+private enum class AcquisitionNumericPadTarget {
+    QUANTITY,
+    PRICE_PER_UNIT,
+    TOTAL_AMOUNT,
+    SPOILAGE_KG,
+    CUSTOM_SRP_ONLINE,
+    CUSTOM_SRP_RESELLER,
+    CUSTOM_SRP_OFFLINE,
+}
 
 /**
  * BUG-ACQ-02: quantity required; then either **total** or **price/unit** (or both).
  * If **total** is given and positive, unit price is **total / quantity** (total wins over a stale price field).
  */
+private fun formatSrpField(d: Double): String =
+    if (d % 1.0 == 0.0) d.toLong().toString() else d.toString()
+
+/** BUG-PRC-04: optional absolute unsellable kg (per-kg only). Blank → use preset rate. */
+private fun parseOptionalSpoilageKg(isPerKg: Boolean, spoilageKgStr: String): Double? {
+    if (!isPerKg) return null
+    val s = spoilageKgStr.trim()
+    if (s.isEmpty()) return null
+    return s.toDoubleOrNull()
+}
+
 private fun resolveAcquisitionQuantityPriceTotal(
     quantityStr: String,
     pricePerUnitStr: String,
@@ -133,8 +153,11 @@ fun AcquisitionFormScreen(
     var isPerKg by remember(acquisitionIdKey) { mutableStateOf(true) }
     var totalAmount by remember(acquisitionIdKey) { mutableStateOf("") }
     var pieceCountStr by remember(acquisitionIdKey) { mutableStateOf("") }
+    var spoilageKgStr by remember(acquisitionIdKey) { mutableStateOf("") }
     var location by remember(acquisitionIdKey) { mutableStateOf(AcquisitionLocation.FARM) }
-    var selectedDate by remember(acquisitionIdKey) { mutableStateOf(LocalDateTime.now()) }
+    var selectedDayMillis by remember(acquisitionIdKey) {
+        mutableStateOf(MillisDateRange.startOfDayMillis(System.currentTimeMillis()))
+    }
 
     var showDatePicker by remember { mutableStateOf(false) }
     var showProductSheet by remember { mutableStateOf(false) }
@@ -143,6 +166,11 @@ fun AcquisitionFormScreen(
     var pricingPreview by remember { mutableStateOf<AcquisitionDraftPricingPreview?>(null) }
     var previewLoading by remember { mutableStateOf(false) }
     var srpPreviewExpanded by remember { mutableStateOf(false) }
+
+    var useCustomCustomerSrp by remember(acquisitionIdKey) { mutableStateOf(false) }
+    var customSrpOnline by remember(acquisitionIdKey) { mutableStateOf("") }
+    var customSrpReseller by remember(acquisitionIdKey) { mutableStateOf("") }
+    var customSrpOffline by remember(acquisitionIdKey) { mutableStateOf("") }
 
     var numericPadTarget by remember { mutableStateOf<AcquisitionNumericPadTarget?>(null) }
     val focusManager = LocalFocusManager.current
@@ -163,10 +191,14 @@ fun AcquisitionFormScreen(
         totalAmount = acq.total_amount.toString()
         pieceCountStr = acq.piece_count?.toString().orEmpty()
         location = acq.location
-        selectedDate = LocalDateTime.ofInstant(
-            Instant.ofEpochMilli(acq.date_acquired),
-            ZoneId.systemDefault(),
-        )
+        selectedDayMillis = MillisDateRange.startOfDayMillis(acq.date_acquired)
+        useCustomCustomerSrp = acq.srp_custom_override
+        if (acq.srp_custom_override) {
+            acq.srp_online_per_kg?.let { customSrpOnline = formatSrpField(it) }
+            acq.srp_reseller_per_kg?.let { customSrpReseller = formatSrpField(it) }
+            acq.srp_offline_per_kg?.let { customSrpOffline = formatSrpField(it) }
+        }
+        spoilageKgStr = acq.spoilage_kg?.toString().orEmpty()
     }
 
     val dateFormatter = remember { DateTimeFormatter.ofPattern("MMM dd, yyyy", Locale.getDefault()) }
@@ -184,21 +216,33 @@ fun AcquisitionFormScreen(
         AcquisitionNumericPadTarget.QUANTITY -> "Quantity"
         AcquisitionNumericPadTarget.PRICE_PER_UNIT -> "Price/Unit"
         AcquisitionNumericPadTarget.TOTAL_AMOUNT -> "Total Amount"
+        AcquisitionNumericPadTarget.SPOILAGE_KG -> "Unsellable kg (optional)"
+        AcquisitionNumericPadTarget.CUSTOM_SRP_ONLINE -> "Online SRP/kg"
+        AcquisitionNumericPadTarget.CUSTOM_SRP_RESELLER -> "Reseller SRP/kg"
+        AcquisitionNumericPadTarget.CUSTOM_SRP_OFFLINE -> "Store SRP/kg"
         null -> ""
     }
     val padValue = when (numericPadTarget) {
         AcquisitionNumericPadTarget.QUANTITY -> quantity
         AcquisitionNumericPadTarget.PRICE_PER_UNIT -> pricePerUnit
         AcquisitionNumericPadTarget.TOTAL_AMOUNT -> totalAmount
+        AcquisitionNumericPadTarget.SPOILAGE_KG -> spoilageKgStr
+        AcquisitionNumericPadTarget.CUSTOM_SRP_ONLINE -> customSrpOnline
+        AcquisitionNumericPadTarget.CUSTOM_SRP_RESELLER -> customSrpReseller
+        AcquisitionNumericPadTarget.CUSTOM_SRP_OFFLINE -> customSrpOffline
         null -> ""
     }
     val padMaxDecimals = when (numericPadTarget) {
-        AcquisitionNumericPadTarget.QUANTITY -> 3
+        AcquisitionNumericPadTarget.QUANTITY, AcquisitionNumericPadTarget.SPOILAGE_KG -> 3
         AcquisitionNumericPadTarget.PRICE_PER_UNIT, AcquisitionNumericPadTarget.TOTAL_AMOUNT -> 2
+        AcquisitionNumericPadTarget.CUSTOM_SRP_ONLINE,
+        AcquisitionNumericPadTarget.CUSTOM_SRP_RESELLER,
+        AcquisitionNumericPadTarget.CUSTOM_SRP_OFFLINE,
+        -> 2
         null -> 2
     }
 
-    val previewDateMillis = selectedDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val previewDateMillis = selectedDayMillis
 
     LaunchedEffect(quantity, pricePerUnit, totalAmount) {
         val q = quantity.toDoubleOrNull()
@@ -219,6 +263,11 @@ fun AcquisitionFormScreen(
         previewDateMillis,
         location,
         existing?.acquisition_id,
+        useCustomCustomerSrp,
+        customSrpOnline,
+        customSrpReseller,
+        customSrpOffline,
+        spoilageKgStr,
     ) {
         previewLoading = true
         delay(280)
@@ -230,12 +279,15 @@ fun AcquisitionFormScreen(
             return@LaunchedEffect
         }
         val (q, ppu, total) = resolved
-        val pc = if (isPerKg) null else pieceCountStr.toIntOrNull()
+        val pc = if (isPerKg) null else pieceCountStr.toDoubleOrNull()
         if (!isPerKg && pc == null) {
             pricingPreview = null
             previewLoading = false
             return@LaunchedEffect
         }
+        val co = customSrpOnline.toDoubleOrNull()
+        val cr = customSrpReseller.toDoubleOrNull()
+        val cf = customSrpOffline.toDoubleOrNull()
         val draft = Acquisition(
             acquisition_id = existing?.acquisition_id ?: 0,
             product_id = product.product_id,
@@ -247,21 +299,52 @@ fun AcquisitionFormScreen(
             piece_count = pc,
             date_acquired = previewDateMillis,
             location = location,
+            spoilage_kg = parseOptionalSpoilageKg(isPerKg, spoilageKgStr),
+            srp_custom_override = useCustomCustomerSrp,
+            srp_online_per_kg = if (useCustomCustomerSrp) co else null,
+            srp_reseller_per_kg = if (useCustomCustomerSrp) cr else null,
+            srp_offline_per_kg = if (useCustomCustomerSrp) cf else null,
         )
         pricingPreview = viewModel.previewDraftPricing(draft)
         previewLoading = false
     }
 
+    val customSrpValid = !useCustomCustomerSrp ||
+        (
+            (customSrpOnline.toDoubleOrNull() ?: 0.0) > 0 &&
+                (customSrpReseller.toDoubleOrNull() ?: 0.0) > 0 &&
+                (customSrpOffline.toDoubleOrNull() ?: 0.0) > 0
+            )
+
+    val qtyKgForSpoilage = quantity.toDoubleOrNull()?.takeIf { isPerKg && it > 0 }
+    val spoilageKgParsed = parseOptionalSpoilageKg(isPerKg, spoilageKgStr)
+    val spoilageKgStrHasDigits = spoilageKgStr.isNotBlank()
+    val spoilageKgValid = when {
+        !isPerKg -> true
+        !spoilageKgStrHasDigits -> true
+        spoilageKgParsed == null -> false
+        qtyKgForSpoilage == null -> false
+        spoilageKgParsed < 0 -> false
+        spoilageKgParsed >= qtyKgForSpoilage -> false
+        else -> true
+    }
+
     val canSave = selectedProduct != null &&
         resolveAcquisitionQuantityPriceTotal(quantity, pricePerUnit, totalAmount) != null &&
-        (isPerKg || pieceCountStr.isNotEmpty())
+        (isPerKg || pieceCountStr.isNotEmpty()) &&
+        customSrpValid &&
+        spoilageKgValid
 
     fun performSave() {
         val product = selectedProduct ?: return
-        val dateMillis = selectedDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val pieceCount = if (isPerKg) null else pieceCountStr.toIntOrNull()
+        val dateMillis = selectedDayMillis
+        val pieceCount = if (isPerKg) null else pieceCountStr.toDoubleOrNull()
         val resolved = resolveAcquisitionQuantityPriceTotal(quantity, pricePerUnit, totalAmount) ?: return
         val (q, ppu, total) = resolved
+        val sk = parseOptionalSpoilageKg(isPerKg, spoilageKgStr)
+        val co = customSrpOnline.toDoubleOrNull()
+        val cr = customSrpReseller.toDoubleOrNull()
+        val cf = customSrpOffline.toDoubleOrNull()
         val saved = existing?.copy(
             product_id = product.product_id,
             product_name = product.product_name,
@@ -272,6 +355,11 @@ fun AcquisitionFormScreen(
             piece_count = pieceCount,
             date_acquired = dateMillis,
             location = location,
+            spoilage_kg = sk,
+            srp_custom_override = useCustomCustomerSrp,
+            srp_online_per_kg = if (useCustomCustomerSrp) co else null,
+            srp_reseller_per_kg = if (useCustomCustomerSrp) cr else null,
+            srp_offline_per_kg = if (useCustomCustomerSrp) cf else null,
         ) ?: Acquisition(
             product_id = product.product_id,
             product_name = product.product_name,
@@ -282,6 +370,11 @@ fun AcquisitionFormScreen(
             piece_count = pieceCount,
             date_acquired = dateMillis,
             location = location,
+            spoilage_kg = sk,
+            srp_custom_override = useCustomCustomerSrp,
+            srp_online_per_kg = if (useCustomCustomerSrp) co else null,
+            srp_reseller_per_kg = if (useCustomCustomerSrp) cr else null,
+            srp_offline_per_kg = if (useCustomCustomerSrp) cf else null,
         )
         if (existing != null) viewModel.updateAcquisition(saved) else viewModel.addAcquisition(saved)
         onNavigateBack()
@@ -289,10 +382,7 @@ fun AcquisitionFormScreen(
 
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = selectedDate
-                .atZone(ZoneId.systemDefault())
-                .toInstant()
-                .toEpochMilli(),
+            initialSelectedDateMillis = selectedDayMillis,
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
@@ -300,10 +390,7 @@ fun AcquisitionFormScreen(
                 TextButton(
                     onClick = {
                         datePickerState.selectedDateMillis?.let { millis ->
-                            selectedDate = LocalDateTime.ofInstant(
-                                Instant.ofEpochMilli(millis),
-                                ZoneId.systemDefault(),
-                            )
+                            selectedDayMillis = MillisDateRange.startOfDayMillis(millis)
                         }
                         showDatePicker = false
                     },
@@ -432,6 +519,18 @@ fun AcquisitionFormScreen(
                         pricePerUnit = ""
                     }
                 }
+                AcquisitionNumericPadTarget.SPOILAGE_KG -> {
+                    spoilageKgStr = newValue
+                }
+                AcquisitionNumericPadTarget.CUSTOM_SRP_ONLINE -> {
+                    customSrpOnline = newValue
+                }
+                AcquisitionNumericPadTarget.CUSTOM_SRP_RESELLER -> {
+                    customSrpReseller = newValue
+                }
+                AcquisitionNumericPadTarget.CUSTOM_SRP_OFFLINE -> {
+                    customSrpOffline = newValue
+                }
                 null -> Unit
             }
         },
@@ -508,7 +607,12 @@ fun AcquisitionFormScreen(
             ) {
                 Column(Modifier.padding(12.dp)) {
                     Text("Date", style = MaterialTheme.typography.labelMedium)
-                    Text(dateFormatter.format(selectedDate), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        dateFormatter.format(
+                            Instant.ofEpochMilli(selectedDayMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+                        ),
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
             }
 
@@ -563,29 +667,6 @@ fun AcquisitionFormScreen(
                     focusManager.clearFocus()
                 }
             }
-            OutlinedTextField(
-                value = pricePerUnit,
-                onValueChange = {},
-                label = { Text("Price/Unit") },
-                supportingText = {
-                    Text("Optional if total is set — computed as total ÷ quantity")
-                },
-                prefix = { Text("₱") },
-                readOnly = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                interactionSource = ppuInteraction,
-                trailingIcon = {
-                    IconButton(onClick = {
-                        numericPadTarget = AcquisitionNumericPadTarget.PRICE_PER_UNIT
-                        focusManager.clearFocus()
-                    }) {
-                        Icon(Icons.Filled.Dialpad, contentDescription = "Open numeric pad")
-                    }
-                },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
             val totalInteraction = remember { MutableInteractionSource() }
             val totalPressed by totalInteraction.collectIsPressedAsState()
             LaunchedEffect(totalPressed) {
@@ -614,6 +695,81 @@ fun AcquisitionFormScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            OutlinedTextField(
+                value = pricePerUnit,
+                onValueChange = {},
+                label = { Text("Price/Unit") },
+                supportingText = {
+                    Text("Optional if total is set — computed as total ÷ quantity")
+                },
+                prefix = { Text("₱") },
+                readOnly = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                interactionSource = ppuInteraction,
+                trailingIcon = {
+                    IconButton(onClick = {
+                        numericPadTarget = AcquisitionNumericPadTarget.PRICE_PER_UNIT
+                        focusManager.clearFocus()
+                    }) {
+                        Icon(Icons.Filled.Dialpad, contentDescription = "Open numeric pad")
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Custom customer SRP / channel",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        "Override preset online · reseller · store SRP/kg for this line",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = useCustomCustomerSrp,
+                    onCheckedChange = { useCustomCustomerSrp = it },
+                )
+            }
+
+            AnimatedVisibility(visible = useCustomCustomerSrp) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CustomSrpPadField(
+                        label = "Online SRP/kg",
+                        value = customSrpOnline,
+                        onOpenPad = {
+                            numericPadTarget = AcquisitionNumericPadTarget.CUSTOM_SRP_ONLINE
+                            focusManager.clearFocus()
+                        },
+                    )
+                    CustomSrpPadField(
+                        label = "Reseller SRP/kg",
+                        value = customSrpReseller,
+                        onOpenPad = {
+                            numericPadTarget = AcquisitionNumericPadTarget.CUSTOM_SRP_RESELLER
+                            focusManager.clearFocus()
+                        },
+                    )
+                    CustomSrpPadField(
+                        label = "Store (offline) SRP/kg",
+                        value = customSrpOffline,
+                        onOpenPad = {
+                            numericPadTarget = AcquisitionNumericPadTarget.CUSTOM_SRP_OFFLINE
+                            focusManager.clearFocus()
+                        },
+                    )
+                }
+            }
+
             AcquisitionDraftPreviewPanel(
                 loading = previewLoading,
                 preview = pricingPreview,
@@ -622,6 +778,7 @@ fun AcquisitionFormScreen(
                 pieceCountStr = pieceCountStr,
                 expanded = srpPreviewExpanded,
                 onExpandedChange = { srpPreviewExpanded = it },
+                isCustomOverride = useCustomCustomerSrp,
             )
 
             Row(
@@ -637,15 +794,50 @@ fun AcquisitionFormScreen(
                 )
                 Switch(
                     checked = isPerKg,
-                    onCheckedChange = { isPerKg = it },
+                    onCheckedChange = { checked ->
+                        isPerKg = checked
+                        if (!checked) spoilageKgStr = ""
+                    },
                     modifier = Modifier.height(32.dp),
+                )
+            }
+            AnimatedVisibility(visible = isPerKg) {
+                val spoilInteraction = remember { MutableInteractionSource() }
+                val spoilPressed by spoilInteraction.collectIsPressedAsState()
+                LaunchedEffect(spoilPressed) {
+                    if (spoilPressed) {
+                        numericPadTarget = AcquisitionNumericPadTarget.SPOILAGE_KG
+                        focusManager.clearFocus()
+                    }
+                }
+                OutlinedTextField(
+                    value = spoilageKgStr,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Unsellable kg (optional)") },
+                    supportingText = {
+                        Text("Leave empty to use preset spoilage rate. Applies when unit is per kg.")
+                    },
+                    interactionSource = spoilInteraction,
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            numericPadTarget = AcquisitionNumericPadTarget.SPOILAGE_KG
+                            focusManager.clearFocus()
+                        }) {
+                            Icon(Icons.Filled.Dialpad, contentDescription = "Open numeric pad")
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             AnimatedVisibility(visible = !isPerKg) {
                 OutlinedTextField(
                     value = pieceCountStr,
                     onValueChange = { s ->
-                        if (s.isEmpty() || s.all { it.isDigit() }) {
+                        val decimalRegex = Regex("^\\d*(\\.\\d*)?$")
+                        val ok = s.isEmpty() || (s != "." && s.matches(decimalRegex))
+                        if (ok) {
                             pieceCountStr = s
                         }
                     },
@@ -653,13 +845,45 @@ fun AcquisitionFormScreen(
                     supportingText = {
                         Text("Used to convert total piece count into kg for pricing")
                     },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
     }
+}
+
+@Composable
+private fun CustomSrpPadField(
+    label: String,
+    value: String,
+    onOpenPad: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            onOpenPad()
+            focusManager.clearFocus()
+        }
+    }
+    OutlinedTextField(
+        value = value,
+        onValueChange = {},
+        label = { Text(label) },
+        prefix = { Text("₱") },
+        readOnly = true,
+        interactionSource = interaction,
+        trailingIcon = {
+            IconButton(onClick = onOpenPad) {
+                Icon(Icons.Filled.Dialpad, contentDescription = "Open numeric pad")
+            }
+        },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
@@ -671,6 +895,7 @@ private fun AcquisitionDraftPreviewPanel(
     pieceCountStr: String?,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
+    isCustomOverride: Boolean,
 ) {
     fun fmt(v: Double) = CurrencyFormatter.format(v)
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
@@ -695,7 +920,11 @@ private fun AcquisitionDraftPreviewPanel(
                         modifier = Modifier.size(20.dp),
                     )
                     Text(
-                        text = "SRP Preview${if (presetName.isNullOrBlank()) "" else " (Preset: $presetName)"}",
+                        text = buildString {
+                            append("SRP Preview")
+                            if (!presetName.isNullOrBlank()) append(" (Preset: $presetName)")
+                            if (isCustomOverride) append(" · Custom / channel")
+                        },
                         style = MaterialTheme.typography.labelMedium,
                     )
                 }
@@ -725,35 +954,67 @@ private fun AcquisitionDraftPreviewPanel(
                         )
                         preview is AcquisitionDraftPricingPreview.Ok -> {
                             val o = preview.output
+                            val spoilPct = o.spoilageRate * 100.0
+                            val spoilPctStr = if (abs(spoilPct - spoilPct.toInt()) < 1e-6) {
+                                "${spoilPct.toInt()}"
+                            } else {
+                                "%.1f".format(spoilPct)
+                            }
+                            val spoilLine = when {
+                                !isPerKg -> "spoilage not applied (per piece)"
+                                o.spoilageAbsoluteKg == null ->
+                                    "spoilage $spoilPctStr% (preset rate)"
+                                else ->
+                                    "unsellable ${"%.2f".format(o.spoilageAbsoluteKg)} kg (~$spoilPctStr% of bulk)"
+                            }
 
                             Text(
-                                text = "Sellable ${"%.2f".format(o.sellableQuantityKg)} kg · cost/kg ${fmt(o.costPerSellableKg)}",
+                                text = buildString {
+                                    append("Q ${"%.2f".format(o.bulkQuantityKg)} kg · ")
+                                    append(spoilLine)
+                                    append(" · sellable ${"%.2f".format(o.sellableQuantityKg)} kg")
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = "C_bulk ${fmt(o.costPerSellableKg)}/kg + A ${fmt(o.additionalCostPerKg)}/kg = C ${fmt(o.coreCostPerKg)}/kg",
                                 style = MaterialTheme.typography.bodySmall,
                             )
 
-                            Text(
-                                text = "Online: ${fmt(o.srpOnlinePerKg)}/kg · ${fmt(o.srpOnline500g)}/500g · ${fmt(o.srpOnline250g)}/250g",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            Text(
-                                text = "Reseller: ${fmt(o.srpResellerPerKg)}/kg · ${fmt(o.srpReseller500g)}/500g · ${fmt(o.srpReseller250g)}/250g",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            Text(
-                                text = "Offline: ${fmt(o.srpOfflinePerKg)}/kg · ${fmt(o.srpOffline500g)}/500g · ${fmt(o.srpOffline250g)}/250g",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
+                            if (isPerKg) {
+                                Text(
+                                    text = "Online: ${fmt(o.srpOnlinePerKg)}/kg · ${fmt(o.srpOnline500g)}/500g · ${fmt(o.srpOnline250g)}/250g · ${fmt(o.srpOnline100g)}/100g",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Text(
+                                    text = "Reseller: ${fmt(o.srpResellerPerKg)}/kg · ${fmt(o.srpReseller500g)}/500g · ${fmt(o.srpReseller250g)}/250g · ${fmt(o.srpReseller100g)}/100g",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Text(
+                                    text = "Offline: ${fmt(o.srpOfflinePerKg)}/kg · ${fmt(o.srpOffline500g)}/500g · ${fmt(o.srpOffline250g)}/250g · ${fmt(o.srpOffline100g)}/100g",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            } else {
+                                val pcPerKg = pieceCountStr?.toDoubleOrNull()
+                                Text(
+                                    text = "Online: ${o.srpOnlinePerPiece?.let { fmt(it) } ?: "—"}/pc · ref ${fmt(o.srpOnlinePerKg)}/kg",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Text(
+                                    text = "Reseller: ${o.srpResellerPerPiece?.let { fmt(it) } ?: "—"}/pc · ref ${fmt(o.srpResellerPerKg)}/kg",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Text(
+                                    text = "Offline: ${o.srpOfflinePerPiece?.let { fmt(it) } ?: "—"}/pc · ref ${fmt(o.srpOfflinePerKg)}/kg",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
 
-                            if (!isPerKg) {
-                                val pcPerKg = pieceCountStr?.toIntOrNull()
-                                val op = o.srpOnlinePerPiece
-                                val rp = o.srpResellerPerPiece
-                                val fp = o.srpOfflinePerPiece
-                                if (op != null && rp != null && fp != null) {
+                                if (pcPerKg != null && pcPerKg > 0) {
                                     Text(
-                                        text = "Per piece: Online ${fmt(op)} · Reseller ${fmt(rp)} · Store ${fmt(fp)}" +
-                                            if (pcPerKg != null && pcPerKg > 0) " (${pcPerKg} pcs/kg)" else "",
+                                        text = "Pieces per kg: ${pieceCountStr} pcs/kg",
                                         style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                             }

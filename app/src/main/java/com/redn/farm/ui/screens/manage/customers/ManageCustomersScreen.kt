@@ -11,7 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Customer
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.ui.platform.LocalConfiguration
@@ -22,7 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 fun ManageCustomersScreen(
     onNavigateBack: () -> Unit,
     onNavigateToCustomerForm: (String) -> Unit,
-    viewModel: ManageCustomersViewModel = viewModel(factory = ManageCustomersViewModel.Factory)
+    viewModel: ManageCustomersViewModel = hiltViewModel()
 ) {
     var showDeleteConfirmation by remember { mutableStateOf<Customer?>(null) }
     

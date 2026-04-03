@@ -6,8 +6,6 @@ package com.redn.farm.data.pricing
  */
 object PresetPreviewCalculator {
 
-    data class ChannelResult(val channelKey: String, val srpPerKg: Double)
-
     private const val EPS = 1e-9
 
     fun derivedAdditionalCostPerKg(
@@ -19,27 +17,35 @@ object PresetPreviewCalculator {
         return sum / haulingWeightKg
     }
 
+    data class ChannelDetailedResult(
+        val channelKey: String,
+        val srpPerKg: Double,
+        val coreCostPerKg: Double // "C" = costPerSellableKg + additionalCostPerKg
+    )
+
     fun previewSrpsPerKg(
         bulkCost: Double,
         bulkQuantityKg: Double,
         spoilageRate: Double,
         additionalCostPerKg: Double,
         channels: ChannelsConfiguration
-    ): List<ChannelResult> {
+    ): List<ChannelDetailedResult> {
         require(bulkCost > 0 && bulkQuantityKg > 0)
         require(spoilageRate in 0.0..1.0 - EPS)
         val sellable = bulkQuantityKg * (1.0 - spoilageRate)
         require(sellable > EPS)
         val costPerSellableKg = bulkCost / sellable
+        val coreC = costPerSellableKg + additionalCostPerKg
 
         return listOf(
             "online" to channels.online,
             "reseller" to channels.reseller,
             "offline" to channels.offline
         ).map { (key, cfg) ->
-            ChannelResult(
-                key,
-                PricingChannelEngine.channelSrpPerKg(costPerSellableKg, additionalCostPerKg, cfg)
+            ChannelDetailedResult(
+                channelKey = key,
+                srpPerKg = PricingChannelEngine.channelSrpPerKg(costPerSellableKg, additionalCostPerKg, cfg),
+                coreCostPerKg = coreC
             )
         }
     }
