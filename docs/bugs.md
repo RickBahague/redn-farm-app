@@ -306,19 +306,93 @@ Canonical product text is now **gross + cash advance** with **liquidated exclude
 
 ---
 
+## BUG-PRD-03 — Product form: after save, return to Manage Products
+
+### Report
+- **Screen:** Manage Products → **Add product** / **Edit product** (`ProductFormScreen`).
+- **Expected:** After a successful **save** (add or edit), the app should return to the **Manage Products** list screen (same destination as tapping back from the form).
+- **Observed (if applicable):** User can remain on the form until a success **Snackbar** finishes, because `SnackbarHostState.showSnackbar()` is **suspend** and runs **before** `navigateUp()` in the same coroutine — so navigation is delayed until the snackbar is dismissed or times out.
+
+### Fix *(implemented)*
+- On success: call **`onNavigateBack()`** immediately after `insertProduct` / `updateProduct` (do not **await** a success snackbar on the form first). Optional feedback on the list can be added later via a shared `ViewModel` message if product wants a toast after pop.
+
+### Files
+- `app/src/main/java/com/redn/farm/ui/screens/manage/products/ProductFormScreen.kt`
+
+### Verification
+- Add product → Save → lands on **Manage Products** without waiting on an on-form snackbar.
+- Edit product → Save → same.
+- `./gradlew assembleDebug` ✅
+
+---
+
+## BUG-PRC-02 — Preset editor: after save, go to Preset History
+
+### Report
+- **Screen:** Settings → **Pricing presets** → **New preset** / **Preset editor** (`PricingPresetEditorScreen`).
+- **Expected:** After a successful **save** (new inactive preset), the app should open **Preset History** so the user sees the saved preset in the list.
+- **Observed (prior fix):** User stayed on the editor; success feedback used **`SnackbarHostState.showSnackbar()`** in a `LaunchedEffect(saveMessage)`, which also delayed any follow-up navigation if tied to the same flow.
+
+### Fix *(implemented)*
+- On success: **`clearSaveMessage()`** then **`onSaveSuccessNavigateToPresetHistory()`** (no success snackbar on the editor — avoids suspend-before-navigate and matches “land on history”).
+- **`NavGraph`:** `navigate(Screen.PresetHistory.route) { popUpTo(Screen.PricingPresetsHome.route) { inclusive = false }; launchSingleTop = true }` so the back stack returns to **Pricing presets home** under history (back from history → home).
+
+### Files
+- `app/src/main/java/com/redn/farm/ui/screens/pricing/PricingPresetEditorScreen.kt`
+- `app/src/main/java/com/redn/farm/navigation/NavGraph.kt`
+
+### Verification
+- Create/save a new preset from the editor → lands on **Preset History**.
+- Errors still show a snackbar on the editor (validation / save failure).
+- `./gradlew assembleDebug` ✅
+
+---
+
+## BUG-RMT-01 — Remittance: add/edit as full-screen form (not `AlertDialog`)
+
+### Report
+- **Screen:** **Remittances** (`RemittanceScreen`).
+- **Current:** **Add** and **Edit** use a private **`RemittanceDialog`** built as **`AlertDialog`** (amount, inline date picker, remarks, Save/Cancel). Delete already uses a confirm dialog; list/print behavior lives on the main screen.
+- **Expected:** Add/edit should use a **full-screen form** (e.g. dedicated composable with **`Scaffold`**, top app bar, scrollable body, primary **Save** in app bar and/or bottom bar), consistent with **Manage Products** (`ProductFormScreen`), **pricing preset editor**, **employee payment form**, and the direction in **`docs/user_review_screens_stories.md`** (full-screen routes for non-trivial forms).
+
+### Why
+- Aligns navigation and layout with the rest of the app on small POS / Sunmi-class devices.
+- Avoids cramming **`DatePicker`** + fields into a dialog **`heightIn`**; improves thumb reach and visual hierarchy.
+- Optional follow-on (**URS-08**): wire **amount** to the shared **numeric pad** instead of decimal IME.
+
+### Fix *(not implemented yet)*
+- Introduce a route such as `remittance_form/{remittanceId}` with `new` (or equivalent) for add; **`NavGraph`** + back stack from **`Screen.Remittance`**.
+- Move form UI out of **`AlertDialog`** into **`RemittanceFormScreen`** (or inline full-screen in the same file initially). Reuse **`RemittanceViewModel`** scoped to the remittance list **`NavBackStackEntry`** (mirror **`ProductFormScreen`** + **`ManageProductsViewModel`**). **`RemittanceViewModel`** is **`ViewModelProvider.Factory`**-based today (not Hilt) — either keep **`viewModel(..., owner = parentEntry)`** or migrate the VM to Hilt for consistency.
+- Preserve: delete confirm, print slip, search/list on the main remittance screen.
+
+### Files *(expected touch list)*
+- `app/src/main/java/com/redn/farm/ui/screens/remittance/RemittanceScreen.kt`
+- `app/src/main/java/com/redn/farm/navigation/NavGraph.kt`
+- New: e.g. `RemittanceFormScreen.kt` (if split out)
+
+### Verification
+- Add remittance → full-screen form → save → returns to list; edit flow same.
+- No stacked modal-on-modal for date (inline date on the full screen is fine).
+- `./gradlew assembleDebug` ✅ *(after implementation)*
+
+---
+
 ## Completion tracker
 
 | Bug ID | Title | Status | Notes |
 |--------|-------|--------|-------|
+| BUG-RMT-01 | Remittance add/edit → full-screen form | `[ ]` | Today: `RemittanceDialog` `AlertDialog`; align with `ProductForm` / preset editor pattern |
 | BUG-ACQ-01 | Acquire numeric inputs not responding | `[x]` | Verified on device; numeric pad is a bottom-aligned Dialog above AlertDialog |
 | BUG-ACQ-02 | Acquire: optional unit price when total given; derive price/qty | `[x]` | `resolveAcquisitionQuantityPriceTotal`; pad + preview + save |
 | BUG-ACQ-03 | Acquire dialog: stacked fields; date+location same row | `[x]` | Full-width qty/price; switch row; max height 600dp |
 | BUG-PRD-01 | Take Order: add product — IME/pad under dialog | `[x]` | imePadding + quantity pad trigger; verify on device |
 | BUG-PRD-02 | Manage Products: reload default vs delete confusion | `[x]` | Reload-default removed; per-product delete kept; verified |
+| BUG-PRD-03 | Product form: after save, return to Manage Products | `[x]` | Navigate immediately after save; no pre-navigation snackbar wait |
 | BUG-SYS-01 | Orphan `reinitializeDatabase()` in DatabaseInitializer | `[x]` | Method removed; seed only via `onCreate`; verified |
 | BUG-ORD-01 | Take Order: Place order visibility / app bar | `[x]` | Top: compact “Order” + SRP + History; thin bottom total bar |
 | BUG-ORD-02 | Order: finalize only when paid + delivered | `[x]` | `isOrderFinalized`; verified on device |
 | BUG-PRC-01 | Preset history: delete inactive only | `[x]` | DAO + repo + history/detail UI; active protected |
+| BUG-PRC-02 | Preset editor: after save → Preset History | `[x]` | `onSaveSuccessNavigateToPresetHistory`; popUpTo pricing presets home |
 | BUG-EMP-01 | Employee payment net pay: gross + advance; liquidated not in net | `[x]` | `netPayAmount()`, `PaymentFormScreen`, `PaymentCard`, unit tests |
 | BUG-EMP-02 | Employee payment: signature optional; draft save without signing | `[x]` | Save without signature; print voucher still requires signature |
 | BUG-EMP-03 | Employee payment: Finalize requires signature; finalized not editable | `[x]` | `is_finalized` (v5 schema, no incremental migration yet); Finalize; repo guards |
@@ -331,4 +405,7 @@ Canonical product text is now **gross + cash advance** with **liquidated exclude
 |------|--------|
 | 2026-04-03 | **BUG-ACQ-02** implemented: optional price/unit when total set; `AcquireProduceScreen.kt`. |
 | 2026-04-03 | **BUG-ACQ-03** implemented: acquisition dialog stacked qty/price rows; date+location paired; `heightIn` 600dp. |
+| 2026-04-02 | **BUG-PRD-03** logged + fix: product form pops to Manage Products immediately after save (`ProductFormScreen.kt`). |
+| 2026-04-02 | **BUG-PRC-02** logged + fix: preset editor navigates to Preset History after successful save (`PricingPresetEditorScreen.kt`, `NavGraph.kt`). |
+| 2026-04-02 | **BUG-RMT-01** logged: remittance add/edit should move from `AlertDialog` to full-screen form (`RemittanceScreen.kt` / nav TBD). |
 

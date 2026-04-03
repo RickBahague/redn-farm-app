@@ -23,7 +23,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.ProductPrice
@@ -33,8 +32,6 @@ import java.time.LocalDateTime
 import com.redn.farm.utils.CurrencyFormatter
 import androidx.compose.foundation.clickable
 import java.time.format.DateTimeFormatter
-import android.app.Application
-import androidx.lifecycle.ViewModelProvider
 import com.redn.farm.data.model.ProductFilters
 import com.redn.farm.ui.components.NumericPadBottomSheet
 
@@ -44,6 +41,7 @@ private enum class FallbackPadTarget { PER_KG, PER_PIECE }
 @Composable
 fun ManageProductsScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToProductForm: (String) -> Unit,
     viewModel: ManageProductsViewModel = hiltViewModel()
 ) {
     val scope = rememberCoroutineScope()
@@ -51,8 +49,6 @@ fun ManageProductsScreen(
     val products by viewModel.products.collectAsState()
     val productPrices by viewModel.productPrices.collectAsState()
     val canMutate by viewModel.canMutateProducts.collectAsState()
-    var showAddDialog by remember { mutableStateOf(false) }
-    var showEditDialog by remember { mutableStateOf<Product?>(null) }
     var pendingDelete by remember { mutableStateOf<Product?>(null) }
     var fallbackPriceTarget by remember { mutableStateOf<Product?>(null) }
     var showFilters by remember { mutableStateOf(false) }
@@ -90,7 +86,7 @@ fun ManageProductsScreen(
                         )
                     }
                     if (canMutate) {
-                        IconButton(onClick = { showAddDialog = true }) {
+                        IconButton(onClick = { onNavigateToProductForm("new") }) {
                             Icon(Icons.Default.Add, "Add Product")
                         }
                     }
@@ -112,7 +108,7 @@ fun ManageProductsScreen(
                         product = product,
                         productPrice = price,
                         canMutate = canMutate,
-                        onEditClick = { showEditDialog = product },
+                        onEditClick = { onNavigateToProductForm(product.product_id) },
                         onDeleteClick = { pendingDelete = product },
                         onSetFallbackPriceClick = { fallbackPriceTarget = product }
                     )
@@ -162,24 +158,6 @@ fun ManageProductsScreen(
             )
         }
 
-        showEditDialog?.let { product ->
-            EditProductDialog(
-                product = product,
-                onDismiss = { showEditDialog = null },
-                onSave = { updatedProduct ->
-                    scope.launch {
-                        try {
-                            viewModel.updateProduct(updatedProduct)
-                            showEditDialog = null
-                        } catch (e: Exception) {
-                            // Handle error
-                            Log.e("ManageProductsScreen", "Error updating product", e)
-                        }
-                    }
-                }
-            )
-        }
-
         fallbackPriceTarget?.let { product ->
             val current = productPrices.find { it.product_id == product.product_id }
             SetFallbackPriceSheet(
@@ -206,27 +184,6 @@ fun ManageProductsScreen(
                             )
                         } finally {
                             fallbackPriceTarget = null
-                        }
-                    }
-                }
-            )
-        }
-
-        if (showAddDialog && canMutate) {
-            AddProductDialog(
-                onDismiss = { showAddDialog = false },
-                onSave = { product ->
-                    scope.launch {
-                        try {
-                            // Generate a unique product ID
-                            val productId = "P${System.currentTimeMillis()}_${(1000..9999).random()}"
-                            
-                            // Insert the product with the generated ID
-                            viewModel.insertProduct(product.copy(product_id = productId))
-                            
-                            showAddDialog = false
-                        } catch (e: Exception) {
-                            Log.e("ManageProductsScreen", "Error adding product", e)
                         }
                     }
                 }
@@ -476,145 +433,6 @@ private fun SetFallbackPriceSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditProductDialog(
-    product: Product,
-    onDismiss: () -> Unit,
-    onSave: (Product) -> Unit
-) {
-    var name by remember { mutableStateOf(product.product_name) }
-    var description by remember { mutableStateOf(product.product_description) }
-    var unitType by remember {
-        mutableStateOf(product.unit_type.ifBlank { "kg" })
-    }
-    var category by remember { mutableStateOf(product.category.orEmpty()) }
-    var defaultPieceCountStr by remember { mutableStateOf(product.defaultPieceCount?.toString().orEmpty()) }
-    var isActive by remember { mutableStateOf(product.is_active) }
-    val needsPieceCount = unitType.equals("piece", ignoreCase = true) ||
-        unitType.equals("both", ignoreCase = true)
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit Product") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 520.dp)
-                    .verticalScroll(rememberScrollState())
-                    .imePadding(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // Product Details
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Product Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("Description") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    maxLines = 2
-                )
-
-                // Unit type picker
-                Text(
-                    text = "Unit Type",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = unitType.equals("kg", ignoreCase = true),
-                        onClick = { unitType = "kg" },
-                        label = { Text("kg") }
-                    )
-                    FilterChip(
-                        selected = unitType.equals("piece", ignoreCase = true),
-                        onClick = { unitType = "piece" },
-                        label = { Text("piece") }
-                    )
-                    FilterChip(
-                        selected = unitType.equals("both", ignoreCase = true),
-                        onClick = { unitType = "both" },
-                        label = { Text("both") }
-                    )
-                }
-
-                OutlinedTextField(
-                    value = category,
-                    onValueChange = { category = it },
-                    label = { Text("Category (optional)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (needsPieceCount) {
-                    OutlinedTextField(
-                        value = defaultPieceCountStr,
-                        onValueChange = { s ->
-                            if (s.isEmpty() || s.all { it.isDigit() }) {
-                                defaultPieceCountStr = s
-                            }
-                        },
-                        label = { Text("Default piece count (pcs/kg)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Active", style = MaterialTheme.typography.titleSmall)
-                    Switch(checked = isActive, onCheckedChange = { isActive = it })
-                }
-            }
-        },
-        confirmButton = {
-            val parsedDefaultPieces = defaultPieceCountStr.toIntOrNull()
-            TextButton(
-                onClick = {
-                    val defaultPieceCount = if (needsPieceCount) parsedDefaultPieces else null
-                    val updatedProduct = product.copy(
-                        product_name = name,
-                        product_description = description,
-                        unit_type = unitType,
-                        is_active = isActive,
-                        category = category.trim().ifEmpty { null },
-                        defaultPieceCount = defaultPieceCount
-                    )
-                    onSave(updatedProduct)
-                },
-                enabled = name.isNotEmpty() &&
-                    unitType.isNotBlank() &&
-                    (!needsPieceCount || parsedDefaultPieces != null)
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
 fun EditPriceDialog(
     product: Product,
     currentPrice: ProductPrice?,
@@ -779,133 +597,6 @@ private fun PriceHistoryCard(prices: List<ProductPrice>) {
             }
         }
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AddProductDialog(
-    onDismiss: () -> Unit,
-    onSave: (Product) -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var unitType by remember { mutableStateOf("kg") }
-    var category by remember { mutableStateOf("") }
-    var defaultPieceCountStr by remember { mutableStateOf("") }
-    val needsPieceCount = unitType.equals("piece", ignoreCase = true) ||
-        unitType.equals("both", ignoreCase = true)
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add New Product") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 520.dp)
-                    .verticalScroll(rememberScrollState())
-                    .imePadding(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // Product Details
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Product Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("Description") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    maxLines = 2
-                )
-
-                // Unit type picker
-                Text(
-                    text = "Unit Type",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = unitType.equals("kg", ignoreCase = true),
-                        onClick = { unitType = "kg" },
-                        label = { Text("kg") }
-                    )
-                    FilterChip(
-                        selected = unitType.equals("piece", ignoreCase = true),
-                        onClick = { unitType = "piece" },
-                        label = { Text("piece") }
-                    )
-                    FilterChip(
-                        selected = unitType.equals("both", ignoreCase = true),
-                        onClick = { unitType = "both" },
-                        label = { Text("both") }
-                    )
-                }
-
-                // Optional category
-                OutlinedTextField(
-                    value = category,
-                    onValueChange = { category = it },
-                    label = { Text("Category (optional)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // Default piece count (pcs/kg) only when unit type includes pieces
-                if (needsPieceCount) {
-                    OutlinedTextField(
-                        value = defaultPieceCountStr,
-                        onValueChange = { s ->
-                            if (s.isEmpty() || s.all { it.isDigit() }) {
-                                defaultPieceCountStr = s
-                            }
-                        },
-                        label = { Text("Default piece count (pcs/kg)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            val parsedDefaultPieces = defaultPieceCountStr.toIntOrNull()
-            TextButton(
-                onClick = {
-                    val defaultPieceCount = if (needsPieceCount) parsedDefaultPieces else null
-                    val newProduct = Product(
-                        product_id = "", // Empty string for new product
-                        product_name = name,
-                        product_description = description,
-                        unit_type = unitType,
-                        is_active = true,
-                        category = category.trim().ifEmpty { null },
-                        defaultPieceCount = defaultPieceCount
-                    )
-                    onSave(newProduct)
-                },
-                enabled = name.isNotEmpty() &&
-                    unitType.isNotBlank() &&
-                    (!needsPieceCount || parsedDefaultPieces != null)
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -23,9 +23,6 @@ import com.redn.farm.data.model.Remittance
 import com.redn.farm.utils.CurrencyFormatter
 import java.text.SimpleDateFormat
 import java.util.*
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
 import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,10 +35,7 @@ fun RemittanceScreen(
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf<Remittance?>(null) }
-    var amount by remember { mutableStateOf("") }
-    var remarks by remember { mutableStateOf("") }
-    var showDatePicker by remember { mutableStateOf(false) }
-    var selectedDate by remember { mutableStateOf(System.currentTimeMillis()) }
+    var pendingDeleteRemittance by remember { mutableStateOf<Remittance?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     
     val remittances by viewModel.remittances.collectAsState()
@@ -185,9 +179,6 @@ fun RemittanceScreen(
                                     IconButton(
                                         onClick = {
                                             showEditDialog = remittance
-                                            amount = remittance.amount.toString()
-                                            remarks = remittance.remarks
-                                            selectedDate = remittance.date
                                         }
                                     ) {
                                         Icon(
@@ -198,7 +189,7 @@ fun RemittanceScreen(
                                     }
                                     // Delete button
                                     IconButton(
-                                        onClick = { viewModel.deleteRemittance(remittance) }
+                                        onClick = { pendingDeleteRemittance = remittance }
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Delete,
@@ -245,14 +236,47 @@ fun RemittanceScreen(
         }
     }
 
+    pendingDeleteRemittance?.let { remittance ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteRemittance = null },
+            title = { Text("Delete remittance?") },
+            text = {
+                Text(
+                    "Remove this remittance of ${CurrencyFormatter.format(remittance.amount)} " +
+                        "on ${dateFormatter.format(Date(remittance.date))}? This cannot be undone."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteRemittance(remittance)
+                        pendingDeleteRemittance = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteRemittance = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     // Add Dialog
     if (showAddDialog) {
+        val addInitialDate = remember(showAddDialog) { System.currentTimeMillis() }
         RemittanceDialog(
             onDismiss = { showAddDialog = false },
             onConfirm = { amountValue, remarksValue, dateValue ->
                 viewModel.addRemittance(amountValue, remarksValue, dateValue)
             },
-            title = "Add Remittance"
+            title = "Add Remittance",
+            initialDate = addInitialDate
         )
     }
 
@@ -288,113 +312,77 @@ private fun RemittanceDialog(
     initialRemarks: String = "",
     initialDate: Long = System.currentTimeMillis()
 ) {
-    var amount by remember { mutableStateOf(initialAmount) }
-    var remarks by remember { mutableStateOf(initialRemarks) }
-    var selectedDate by remember { mutableStateOf(initialDate) }
-    var showDatePicker by remember { mutableStateOf(false) }
-    var isAmountError by remember { mutableStateOf(false) }
-    val dateFormatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()) }
+    key(initialDate, initialAmount, initialRemarks, title) {
+        var amount by remember { mutableStateOf(initialAmount) }
+        var remarks by remember { mutableStateOf(initialRemarks) }
+        var isAmountError by remember { mutableStateOf(false) }
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialDate)
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = amount,
-                    onValueChange = { newValue ->
-                        // Only allow numbers and decimal point
-                        if (newValue.isEmpty() || newValue.matches(Regex("^\\d*\\.?\\d*$"))) {
-                            amount = newValue
-                            isAmountError = false
-                        }
-                    },
-                    label = { Text("Amount") },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Decimal,
-                        imeAction = ImeAction.Next
-                    ),
-                    isError = isAmountError,
-                    supportingText = if (isAmountError) {
-                        { Text("Please enter a valid amount") }
-                    } else null,
-                    singleLine = true
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // Date Selection
-                OutlinedCard(
-                    onClick = { showDatePicker = true },
-                    modifier = Modifier.fillMaxWidth()
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(title) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Date",
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                        Text(
-                            text = dateFormatter.format(Date(selectedDate)),
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
+                    OutlinedTextField(
+                        value = amount,
+                        onValueChange = { newValue ->
+                            if (newValue.isEmpty() || newValue.matches(Regex("^\\d*\\.?\\d*$"))) {
+                                amount = newValue
+                                isAmountError = false
+                            }
+                        },
+                        label = { Text("Amount") },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal,
+                            imeAction = ImeAction.Next
+                        ),
+                        isError = isAmountError,
+                        supportingText = if (isAmountError) {
+                            { Text("Please enter a valid amount") }
+                        } else null,
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    DatePicker(
+                        state = datePickerState,
+                        showModeToggle = false,
+                        title = { Text("Date") }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = remarks,
+                        onValueChange = { remarks = it },
+                        label = { Text("Remarks") },
+                        singleLine = true
+                    )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                OutlinedTextField(
-                    value = remarks,
-                    onValueChange = { remarks = it },
-                    label = { Text("Remarks") },
-                    singleLine = true
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val amountValue = amount.toDoubleOrNull()
-                    if (amountValue != null && amountValue > 0) {
-                        onConfirm(amountValue, remarks, selectedDate)
-                        onDismiss()
-                    } else {
-                        isAmountError = true
-                    }
-                },
-                enabled = amount.isNotEmpty()
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-
-    if (showDatePicker) {
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showDatePicker = false
-                    }
+                        val amountValue = amount.toDoubleOrNull()
+                        val millis = datePickerState.selectedDateMillis ?: initialDate
+                        if (amountValue != null && amountValue > 0) {
+                            onConfirm(amountValue, remarks, millis)
+                            onDismiss()
+                        } else {
+                            isAmountError = true
+                        }
+                    },
+                    enabled = amount.isNotEmpty()
                 ) {
-                    Text("OK")
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
                 }
             }
-        ) {
-            DatePicker(
-                state = rememberDatePickerState(
-                    initialSelectedDateMillis = selectedDate
-                ),
-                showModeToggle = false,
-                title = { Text("Select Date") }
-            )
-        }
+        )
     }
-} 
+}

@@ -16,7 +16,6 @@ import com.redn.farm.utils.buildFarmOperationLog
 import kotlinx.coroutines.launch
 import com.redn.farm.data.model.FarmOperation
 import com.redn.farm.ui.screens.farmops.FarmOperationCard
-import com.redn.farm.ui.screens.farmops.FarmOperationDialog
 import com.redn.farm.ui.screens.farmops.FarmOperationFilters
 import com.redn.farm.ui.screens.farmops.FarmOperationsViewModel
 import java.time.format.DateTimeFormatter
@@ -25,14 +24,13 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun FarmOperationHistoryScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToOperationForm: (String) -> Unit,
     viewModel: FarmOperationsViewModel = hiltViewModel()
 ) {
     var showFilters by remember { mutableStateOf(false) }
-    var showEditDialog by remember { mutableStateOf<FarmOperation?>(null) }
     var showDeleteDialog by remember { mutableStateOf<FarmOperation?>(null) }
 
     val operations by viewModel.operations.collectAsState()
-    val products by viewModel.products.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -86,7 +84,7 @@ fun FarmOperationHistoryScreen(
                 items(operations) { operation ->
                     FarmOperationCard(
                         operation = operation,
-                        onEditClick = { showEditDialog = operation },
+                        onEditClick = { onNavigateToOperationForm(operation.operation_id.toString()) },
                         onDeleteClick = { showDeleteDialog = operation },
                         onPrintClick = {
                             scope.launch {
@@ -103,19 +101,6 @@ fun FarmOperationHistoryScreen(
                     )
                 }
             }
-        }
-
-        // Edit Dialog
-        showEditDialog?.let { operation ->
-            FarmOperationDialog(
-                operation = operation,
-                products = products,
-                onDismiss = { showEditDialog = null },
-                onSave = { updatedOperation ->
-                    viewModel.updateOperation(updatedOperation)
-                    showEditDialog = null
-                }
-            )
         }
 
         // Delete confirmation dialog

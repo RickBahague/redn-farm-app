@@ -49,7 +49,6 @@ fun OrderDetailScreen(
     var order by remember { mutableStateOf<Order?>(null) }
     var orderItems by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
     var customer by remember { mutableStateOf<Customer?>(null) }
-    var showPaymentConfirm by remember { mutableStateOf<Boolean?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -151,7 +150,20 @@ fun OrderDetailScreen(
                         Text("Paid")
                         Switch(
                             checked = o.is_paid,
-                            onCheckedChange = { showPaymentConfirm = it }
+                            onCheckedChange = { newPaid ->
+                                val previous = o.is_paid
+                                viewModel.updatePaymentStatus(orderId, newPaid)
+                                scope.launch {
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = if (newPaid) "Marked as paid" else "Marked as unpaid",
+                                        actionLabel = "Undo",
+                                        duration = SnackbarDuration.Short,
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        viewModel.updatePaymentStatus(orderId, previous)
+                                    }
+                                }
+                            }
                         )
                     }
                     Row(
@@ -163,7 +175,18 @@ fun OrderDetailScreen(
                         Switch(
                             checked = o.is_delivered,
                             onCheckedChange = { newDel ->
+                                val previous = o.is_delivered
                                 viewModel.updateOrderDeliveryStatus(orderId, newDel)
+                                scope.launch {
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = if (newDel) "Marked as delivered" else "Marked as not delivered",
+                                        actionLabel = "Undo",
+                                        duration = SnackbarDuration.Short,
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        viewModel.updateOrderDeliveryStatus(orderId, previous)
+                                    }
+                                }
                             }
                         )
                     }
@@ -232,31 +255,4 @@ fun OrderDetailScreen(
         }
     }
 
-    showPaymentConfirm?.let { newPaid ->
-        AlertDialog(
-            onDismissRequest = { showPaymentConfirm = null },
-            title = { Text("Confirm payment change") },
-            text = {
-                Text(
-                    if (newPaid) "Mark this order as paid?"
-                    else "Mark this order as unpaid?"
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.updatePaymentStatus(orderId, newPaid)
-                        showPaymentConfirm = null
-                    }
-                ) {
-                    Text("Confirm")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPaymentConfirm = null }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
 }

@@ -15,10 +15,12 @@ import com.redn.farm.ui.screens.order.history.OrderHistoryScreen
 import com.redn.farm.ui.screens.order.history.EditOrderScreen
 import com.redn.farm.ui.screens.order.history.OrderDetailScreen
 import com.redn.farm.ui.screens.acquire.AcquireProduceScreen
+import com.redn.farm.ui.screens.acquire.AcquisitionFormScreen
 import com.redn.farm.ui.screens.remittance.RemittanceScreen
 import com.redn.farm.ui.screens.manage.employees.ManageEmployeesScreen
 import com.redn.farm.ui.screens.manage.employees.payment.EmployeePaymentScreen
 import com.redn.farm.ui.screens.manage.employees.payment.PaymentFormScreen
+import com.redn.farm.ui.screens.farmops.FarmOperationFormScreen
 import com.redn.farm.ui.screens.farmops.FarmOperationsScreen
 import com.redn.farm.ui.screens.farmops.history.FarmOperationHistoryScreen
 import com.redn.farm.ui.screens.export.ExportScreen
@@ -34,15 +36,27 @@ import com.redn.farm.ui.screens.settings.SettingsScreen
 import com.redn.farm.ui.screens.profile.ProfileScreen
 import com.redn.farm.ui.screens.profile.ChangePasswordScreen
 import com.redn.farm.ui.screens.profile.UserManagementScreen
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.redn.farm.security.Rbac
+import com.redn.farm.ui.screens.manage.customers.CustomerFormScreen
+import com.redn.farm.ui.screens.manage.customers.ManageCustomersViewModel
+import com.redn.farm.ui.screens.manage.products.ProductFormScreen
 
 sealed class Screen(val route: String) {
     object Login : Screen("login")
     object DatabaseMigration : Screen("database_migration")
     object Main : Screen("main")
     object Products : Screen("products")
+    object ProductForm : Screen("product_form/{productId}") {
+        fun createRoute(productId: String) = "product_form/$productId"
+    }
     object Customers : Screen("customers")
+    object CustomerForm : Screen("customer_form/{customerId}") {
+        fun createRoute(customerId: String) = "customer_form/$customerId"
+    }
     object Orders : Screen("orders")
     object OrderHistory : Screen("order_history")
     object ActiveSrps : Screen("active_srps")
@@ -53,6 +67,9 @@ sealed class Screen(val route: String) {
         fun createRoute(orderId: Int) = "edit_order/$orderId"
     }
     object Acquire : Screen("acquire")
+    object AcquisitionForm : Screen("acquisition_form/{acquisitionId}") {
+        fun createRoute(acquisitionId: String) = "acquisition_form/$acquisitionId"
+    }
     object Remittance : Screen("remittance")
     object Employees : Screen("employees")
     object EmployeePayments : Screen("employee_payments/{employeeId}/{employeeName}") {
@@ -64,6 +81,9 @@ sealed class Screen(val route: String) {
             "employee_payment_form/$employeeId/${employeeName.replace(" ", "_")}/$paymentId"
     }
     object FarmOps : Screen("farm_ops")
+    object FarmOperationForm : Screen("farm_op_form/{operationId}") {
+        fun createRoute(operationId: String) = "farm_op_form/$operationId"
+    }
     object FarmOpsHistory : Screen("farm_ops_history")
     object Export : Screen("export")
     object About : Screen("about")
@@ -160,14 +180,59 @@ fun NavGraph(
                 ManageProductsScreen(
                     onNavigateBack = {
                         navController.popBackStack()
+                    },
+                    onNavigateToProductForm = { productId ->
+                        navController.navigate(Screen.ProductForm.createRoute(productId))
                     }
+                )
+            }
+        }
+        composable(
+            route = Screen.ProductForm.route,
+            arguments = listOf(
+                navArgument("productId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            val pid = entry.arguments?.getString("productId") ?: return@composable
+            val productsListEntry = remember(entry) {
+                navController.getBackStackEntry(Screen.Products.route)
+            }
+            RequireRole(navController, Rbac.ROLES_PRODUCTS) {
+                ProductFormScreen(
+                    productId = pid,
+                    onNavigateBack = { navController.navigateUp() },
+                    viewModel = hiltViewModel(productsListEntry)
                 )
             }
         }
         composable(Screen.Customers.route) {
             RequireRole(navController, Rbac.ROLES_CUSTOMERS) {
                 ManageCustomersScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToCustomerForm = { customerId ->
+                        navController.navigate(Screen.CustomerForm.createRoute(customerId))
+                    }
+                )
+            }
+        }
+        composable(
+            route = Screen.CustomerForm.route,
+            arguments = listOf(
+                navArgument("customerId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            val cid = entry.arguments?.getString("customerId") ?: return@composable
+            val customersListEntry = remember(entry) {
+                navController.getBackStackEntry(Screen.Customers.route)
+            }
+            RequireRole(navController, Rbac.ROLES_CUSTOMERS) {
+                CustomerFormScreen(
+                    customerId = cid,
+                    onNavigateBack = { navController.navigateUp() },
+                    viewModel = viewModel(
+                        viewModelStoreOwner = customersListEntry,
+                        factory = ManageCustomersViewModel.Factory
+                    )
                 )
             }
         }
@@ -247,7 +312,28 @@ fun NavGraph(
         composable(Screen.Acquire.route) {
             RequireRole(navController, Rbac.ROLES_ACQUIRE) {
                 AcquireProduceScreen(
-                    onNavigateBack = { navController.navigateUp() }
+                    onNavigateBack = { navController.navigateUp() },
+                    onNavigateToAcquisitionForm = { acquisitionId ->
+                        navController.navigate(Screen.AcquisitionForm.createRoute(acquisitionId))
+                    }
+                )
+            }
+        }
+        composable(
+            route = Screen.AcquisitionForm.route,
+            arguments = listOf(
+                navArgument("acquisitionId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            val acquisitionIdKey = entry.arguments?.getString("acquisitionId") ?: return@composable
+            val acquireListEntry = remember(entry) {
+                navController.getBackStackEntry(Screen.Acquire.route)
+            }
+            RequireRole(navController, Rbac.ROLES_ACQUIRE) {
+                AcquisitionFormScreen(
+                    acquisitionIdKey = acquisitionIdKey,
+                    onNavigateBack = { navController.navigateUp() },
+                    viewModel = hiltViewModel(acquireListEntry)
                 )
             }
         }
@@ -315,14 +401,38 @@ fun NavGraph(
         composable(Screen.FarmOps.route) {
             RequireRole(navController, Rbac.ROLES_FARM_OPS) {
                 FarmOperationsScreen(
-                    onNavigateBack = { navController.navigateUp() }
+                    onNavigateBack = { navController.navigateUp() },
+                    onNavigateToOperationForm = { operationId ->
+                        navController.navigate(Screen.FarmOperationForm.createRoute(operationId))
+                    }
+                )
+            }
+        }
+        composable(
+            route = Screen.FarmOperationForm.route,
+            arguments = listOf(
+                navArgument("operationId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            val oid = entry.arguments?.getString("operationId") ?: return@composable
+            val farmOpsListEntry = remember(entry) {
+                navController.getBackStackEntry(Screen.FarmOps.route)
+            }
+            RequireRole(navController, Rbac.ROLES_FARM_OPS) {
+                FarmOperationFormScreen(
+                    operationIdKey = oid,
+                    onNavigateBack = { navController.navigateUp() },
+                    viewModel = hiltViewModel(farmOpsListEntry)
                 )
             }
         }
         composable(Screen.FarmOpsHistory.route) {
             RequireRole(navController, Rbac.ROLES_FARM_OPS) {
                 FarmOperationHistoryScreen(
-                    onNavigateBack = { navController.navigateUp() }
+                    onNavigateBack = { navController.navigateUp() },
+                    onNavigateToOperationForm = { operationId ->
+                        navController.navigate(Screen.FarmOperationForm.createRoute(operationId))
+                    }
                 )
             }
         }
@@ -400,7 +510,13 @@ fun NavGraph(
         ) {
             RequireRole(navController, Rbac.ROLES_SETTINGS_AND_PRICING) {
                 PricingPresetEditorScreen(
-                    onNavigateBack = { navController.navigateUp() }
+                    onNavigateBack = { navController.navigateUp() },
+                    onSaveSuccessNavigateToPresetHistory = {
+                        navController.navigate(Screen.PresetHistory.route) {
+                            popUpTo(Screen.PricingPresetsHome.route) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    }
                 )
             }
         }

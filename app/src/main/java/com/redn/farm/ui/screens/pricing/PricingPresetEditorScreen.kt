@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -26,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -56,6 +58,7 @@ private val roundingOptions = listOf(
 @Composable
 fun PricingPresetEditorScreen(
     onNavigateBack: () -> Unit,
+    onSaveSuccessNavigateToPresetHistory: () -> Unit,
     viewModel: PricingPresetEditorViewModel = hiltViewModel()
 ) {
     val form by viewModel.form.collectAsState()
@@ -65,8 +68,8 @@ fun PricingPresetEditorScreen(
 
     LaunchedEffect(saveMessage) {
         saveMessage?.let {
-            snackbar.showSnackbar(it)
             viewModel.clearSaveMessage()
+            onSaveSuccessNavigateToPresetHistory()
         }
     }
     LaunchedEffect(error) {
@@ -92,6 +95,24 @@ fun PricingPresetEditorScreen(
                     }
                 }
             )
+        },
+        bottomBar = {
+            Surface(tonalElevation = 3.dp) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .navigationBarsPadding(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { viewModel.save() }
+                    ) {
+                        Text("Save preset")
+                    }
+                }
+            }
         }
     ) { padding ->
         Column(
