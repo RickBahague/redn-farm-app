@@ -260,11 +260,59 @@ Canonical product text is now **gross + cash advance** with **liquidated exclude
 
 ---
 
+## BUG-ACQ-02 — Add acquisition: price/unit optional when total is given
+
+### Report
+- **Screen:** Inventory (Acquire Produce) → **Add** / **Edit acquisition** dialog.
+- **Requirement:** **Price per unit** should be **optional** when the user provides **total amount** (and quantity). In that case, **price per unit** is computed as **`total_amount / quantity`** (respect per-kg vs per-piece mode as today).
+- **Preset / SRP pricing:** Unchanged — preset-driven SRP preview and stored preset snapshot behaviour stay as they are; this rule is only about how **cost** fields (quantity, unit price, total) relate on save.
+
+### Fix *(implemented)*
+- **`resolveAcquisitionQuantityPriceTotal`:** If **total** is positive, use **`price_per_unit = total ÷ quantity`** (total wins). Else if **price/unit** is positive, **`total = quantity × price`** (existing flow).
+- **`AcquisitionDialog`:** Save enabled when quantity + (total **or** price) resolve; save passes resolved **`q` / `ppu` / `total`** to **`Acquisition`**. SRP **`LaunchedEffect`** uses the same resolution (preset logic unchanged).
+- **Numeric pad:** Changing **total** fills **price** when quantity set; changing **quantity** recomputes **price** when total set, else recomputes **total** when price set.
+- **Copy:** Price field **supportingText** + SRP empty-state hint updated.
+
+### Files
+- `app/src/main/java/com/redn/farm/ui/screens/acquire/AcquireProduceScreen.kt` (`AcquisitionDialog` + helper)
+
+### Verification
+- Enter quantity + total only → save succeeds; stored **`price_per_unit`** matches total ÷ quantity; reopen/edit shows consistent numbers.
+- Enter quantity + unit price (existing flow) → unchanged.
+- Preset / SRP path unchanged vs current app.
+- `./gradlew assembleDebug` ✅
+
+---
+
+## BUG-ACQ-03 — Add/Edit acquisition dialog: one field per row (except date + location)
+
+### Report
+- **Screen:** Inventory (Acquire Produce) → **Add** / **Edit acquisition** dialog (`AcquisitionDialog` in `AcquireProduceScreen.kt`).
+- **Requirement:** Lay out **each input on its own row** (full width) for readability and touch targets on handheld POS — **quantity**, **price/unit**, **total**, **unit switch**, **pieces per kg** (when shown), **product** card, **SRP preview** block, etc.
+- **Exception:** Keep **date** and **location** in the **same row** as today (side-by-side).
+
+### Fix *(implemented)*
+- **Quantity** and **Price/Unit** are separate **full-width** `OutlinedTextField`s (no shared `Row`).
+- **Date + location** unchanged in one `Row`.
+- **Unit switch** row uses **`fillMaxWidth()`** + **`SpaceBetween`** for a clear full-width control row.
+- Dialog body **`heightIn(max = 600.dp)`** (was 520) to fit the taller stack.
+
+### Files
+- `app/src/main/java/com/redn/farm/ui/screens/acquire/AcquireProduceScreen.kt` (`AcquisitionDialog`)
+
+### Verification
+- Add acquisition: each cost field occupies a full line; date + location still share one row; save and numeric pad unchanged.
+- `./gradlew assembleDebug` ✅
+
+---
+
 ## Completion tracker
 
 | Bug ID | Title | Status | Notes |
 |--------|-------|--------|-------|
 | BUG-ACQ-01 | Acquire numeric inputs not responding | `[x]` | Verified on device; numeric pad is a bottom-aligned Dialog above AlertDialog |
+| BUG-ACQ-02 | Acquire: optional unit price when total given; derive price/qty | `[x]` | `resolveAcquisitionQuantityPriceTotal`; pad + preview + save |
+| BUG-ACQ-03 | Acquire dialog: stacked fields; date+location same row | `[x]` | Full-width qty/price; switch row; max height 600dp |
 | BUG-PRD-01 | Take Order: add product — IME/pad under dialog | `[x]` | imePadding + quantity pad trigger; verify on device |
 | BUG-PRD-02 | Manage Products: reload default vs delete confusion | `[x]` | Reload-default removed; per-product delete kept; verified |
 | BUG-SYS-01 | Orphan `reinitializeDatabase()` in DatabaseInitializer | `[x]` | Method removed; seed only via `onCreate`; verified |
@@ -274,4 +322,13 @@ Canonical product text is now **gross + cash advance** with **liquidated exclude
 | BUG-EMP-01 | Employee payment net pay: gross + advance; liquidated not in net | `[x]` | `netPayAmount()`, `PaymentFormScreen`, `PaymentCard`, unit tests |
 | BUG-EMP-02 | Employee payment: signature optional; draft save without signing | `[x]` | Save without signature; print voucher still requires signature |
 | BUG-EMP-03 | Employee payment: Finalize requires signature; finalized not editable | `[x]` | `is_finalized` (v5 schema, no incremental migration yet); Finalize; repo guards |
+
+---
+
+## Changelog
+
+| Date | Change |
+|------|--------|
+| 2026-04-03 | **BUG-ACQ-02** implemented: optional price/unit when total set; `AcquireProduceScreen.kt`. |
+| 2026-04-03 | **BUG-ACQ-03** implemented: acquisition dialog stacked qty/price rows; date+location paired; `heightIn` 600dp. |
 

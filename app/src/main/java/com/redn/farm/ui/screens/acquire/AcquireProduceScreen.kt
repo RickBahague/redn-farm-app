@@ -45,6 +45,26 @@ import com.redn.farm.ui.components.NumericPadBottomSheet
 
 private enum class AcquisitionNumericPadTarget { QUANTITY, PRICE_PER_UNIT, TOTAL_AMOUNT }
 
+/**
+ * BUG-ACQ-02: quantity required; then either **total** or **price/unit** (or both).
+ * If **total** is given and positive, unit price is **total / quantity** (total wins over a stale price field).
+ */
+private fun resolveAcquisitionQuantityPriceTotal(
+    quantityStr: String,
+    pricePerUnitStr: String,
+    totalAmountStr: String,
+): Triple<Double, Double, Double>? {
+    val q = quantityStr.toDoubleOrNull() ?: return null
+    if (q <= 0) return null
+    val pRaw = pricePerUnitStr.toDoubleOrNull()
+    val tRaw = totalAmountStr.toDoubleOrNull()
+    return when {
+        tRaw != null && tRaw > 0 -> Triple(q, tRaw / q, tRaw)
+        pRaw != null && pRaw > 0 -> Triple(q, pRaw, q * pRaw)
+        else -> null
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AcquireProduceScreen(
@@ -380,10 +400,11 @@ private fun AcquisitionDialog(
         }
 
         val previewDateMillis = selectedDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        LaunchedEffect(quantity, pricePerUnit) {
+        LaunchedEffect(quantity, pricePerUnit, totalAmount) {
             val q = quantity.toDoubleOrNull()
             val p = pricePerUnit.toDoubleOrNull()
-            if (q != null && p != null && q > 0 && p > 0) {
+            val t = totalAmount.toDoubleOrNull()
+            if (q != null && q > 0 && ((p != null && p > 0) || (t != null && t > 0))) {
                 srpPreviewExpanded = true
             }
         }
@@ -401,14 +422,13 @@ private fun AcquisitionDialog(
             previewLoading = true
             delay(280)
             val product = selectedProduct
-            val q = quantity.toDoubleOrNull()
-            val ppu = pricePerUnit.toDoubleOrNull()
-            val total = totalAmount.toDoubleOrNull()
-            if (product == null || q == null || ppu == null || total == null || q <= 0 || total <= 0) {
+            val resolved = resolveAcquisitionQuantityPriceTotal(quantity, pricePerUnit, totalAmount)
+            if (product == null || resolved == null) {
                 pricingPreview = null
                 previewLoading = false
                 return@LaunchedEffect
             }
+            val (q, ppu, total) = resolved
             val pc = if (isPerKg) null else pieceCountStr.toIntOrNull()
             if (!isPerKg && pc == null) {
                 pricingPreview = null
@@ -438,7 +458,7 @@ private fun AcquisitionDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 520.dp)
+                    .heightIn(max = 600.dp)
                     .verticalScroll(rememberScrollState())
                     .padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -523,67 +543,63 @@ private fun AcquisitionDialog(
                     }
                 }
 
-                // Quantity and Price Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val qtyInteraction = remember { MutableInteractionSource() }
-                    val qtyPressed by qtyInteraction.collectIsPressedAsState()
-                    LaunchedEffect(qtyPressed) {
-                        if (qtyPressed) {
+                val qtyInteraction = remember { MutableInteractionSource() }
+                val qtyPressed by qtyInteraction.collectIsPressedAsState()
+                LaunchedEffect(qtyPressed) {
+                    if (qtyPressed) {
+                        numericPadTarget = AcquisitionNumericPadTarget.QUANTITY
+                        focusManager.clearFocus()
+                    }
+                }
+                OutlinedTextField(
+                    value = quantity,
+                    onValueChange = {},
+                    label = { Text("Quantity") },
+                    readOnly = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    interactionSource = qtyInteraction,
+                    trailingIcon = {
+                        IconButton(onClick = {
                             numericPadTarget = AcquisitionNumericPadTarget.QUANTITY
                             focusManager.clearFocus()
+                        }) {
+                            Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
                         }
-                    }
-                    OutlinedTextField(
-                        value = quantity,
-                        onValueChange = {},
-                        label = { Text("Quantity") },
-                        readOnly = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        interactionSource = qtyInteraction,
-                        trailingIcon = {
-                            IconButton(onClick = {
-                                numericPadTarget = AcquisitionNumericPadTarget.QUANTITY
-                                focusManager.clearFocus()
-                            }) {
-                                Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
-                            }
-                        },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-                    val ppuInteraction = remember { MutableInteractionSource() }
-                    val ppuPressed by ppuInteraction.collectIsPressedAsState()
-                    LaunchedEffect(ppuPressed) {
-                        if (ppuPressed) {
+                val ppuInteraction = remember { MutableInteractionSource() }
+                val ppuPressed by ppuInteraction.collectIsPressedAsState()
+                LaunchedEffect(ppuPressed) {
+                    if (ppuPressed) {
+                        numericPadTarget = AcquisitionNumericPadTarget.PRICE_PER_UNIT
+                        focusManager.clearFocus()
+                    }
+                }
+                OutlinedTextField(
+                    value = pricePerUnit,
+                    onValueChange = {},
+                    label = { Text("Price/Unit") },
+                    supportingText = {
+                        Text("Optional if total is set — computed as total ÷ quantity")
+                    },
+                    prefix = { Text("₱") },
+                    readOnly = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    interactionSource = ppuInteraction,
+                    trailingIcon = {
+                        IconButton(onClick = {
                             numericPadTarget = AcquisitionNumericPadTarget.PRICE_PER_UNIT
                             focusManager.clearFocus()
+                        }) {
+                            Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
                         }
-                    }
-                    OutlinedTextField(
-                        value = pricePerUnit,
-                        onValueChange = {},
-                        label = { Text("Price/Unit") },
-                        prefix = { Text("₱") },
-                        readOnly = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        interactionSource = ppuInteraction,
-                        trailingIcon = {
-                            IconButton(onClick = {
-                                numericPadTarget = AcquisitionNumericPadTarget.PRICE_PER_UNIT
-                                focusManager.clearFocus()
-                            }) {
-                                Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
-                            }
-                        },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 // Total Amount
                 val totalInteraction = remember { MutableInteractionSource() }
@@ -623,9 +639,11 @@ private fun AcquisitionDialog(
                     onExpandedChange = { srpPreviewExpanded = it }
                 )
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 8.dp)
                 ) {
                     Text(
                         text = if (isPerKg) "Unit - Per kg" else "Unit - Per pc",
@@ -663,12 +681,18 @@ private fun AcquisitionDialog(
                             val dateMillis =
                                 selectedDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
                             val pieceCount = if (isPerKg) null else pieceCountStr.toIntOrNull()
+                            val resolved = resolveAcquisitionQuantityPriceTotal(
+                                quantity,
+                                pricePerUnit,
+                                totalAmount,
+                            ) ?: return@let
+                            val (q, ppu, total) = resolved
                             val saved = acquisitionToEdit?.copy(
                                 product_id = product.product_id,
                                 product_name = product.product_name,
-                                quantity = quantity.toDoubleOrNull() ?: 0.0,
-                                price_per_unit = pricePerUnit.toDoubleOrNull() ?: 0.0,
-                                total_amount = totalAmount.toDoubleOrNull() ?: 0.0,
+                                quantity = q,
+                                price_per_unit = ppu,
+                                total_amount = total,
                                 is_per_kg = isPerKg,
                                 piece_count = pieceCount,
                                 date_acquired = dateMillis,
@@ -676,9 +700,9 @@ private fun AcquisitionDialog(
                             ) ?: Acquisition(
                                 product_id = product.product_id,
                                 product_name = product.product_name,
-                                quantity = quantity.toDoubleOrNull() ?: 0.0,
-                                price_per_unit = pricePerUnit.toDoubleOrNull() ?: 0.0,
-                                total_amount = totalAmount.toDoubleOrNull() ?: 0.0,
+                                quantity = q,
+                                price_per_unit = ppu,
+                                total_amount = total,
                                 is_per_kg = isPerKg,
                                 piece_count = pieceCount,
                                 date_acquired = dateMillis,
@@ -688,9 +712,11 @@ private fun AcquisitionDialog(
                         }
                     },
                     enabled = selectedProduct != null &&
-                        quantity.isNotEmpty() &&
-                        pricePerUnit.isNotEmpty() &&
-                        totalAmount.isNotEmpty() &&
+                        resolveAcquisitionQuantityPriceTotal(
+                            quantity,
+                            pricePerUnit,
+                            totalAmount,
+                        ) != null &&
                         (isPerKg || pieceCountStr.isNotEmpty())
                 ) {
                     Text("Save")
@@ -712,25 +738,41 @@ private fun AcquisitionDialog(
                     AcquisitionNumericPadTarget.QUANTITY -> {
                         quantity = newValue
                         val q = newValue.toDoubleOrNull()
+                        val t = totalAmount.toDoubleOrNull()
                         val p = pricePerUnit.toDoubleOrNull()
-                        if (!newValue.isBlank() && q != null && p != null) {
-                            totalAmount = (q * p).toString()
-                        } else {
-                            totalAmount = ""
+                        when {
+                            !newValue.isBlank() && q != null && q > 0 && t != null && t > 0 -> {
+                                pricePerUnit = (t / q).toString()
+                            }
+                            !newValue.isBlank() && q != null && p != null && p > 0 -> {
+                                totalAmount = (q * p).toString()
+                            }
+                            else -> {
+                                if (newValue.isBlank() || q == null || q <= 0) {
+                                    totalAmount = ""
+                                }
+                            }
                         }
                     }
                     AcquisitionNumericPadTarget.PRICE_PER_UNIT -> {
                         pricePerUnit = newValue
                         val q = quantity.toDoubleOrNull()
                         val p = newValue.toDoubleOrNull()
-                        if (!newValue.isBlank() && q != null && p != null) {
+                        if (!newValue.isBlank() && q != null && p != null && p > 0) {
                             totalAmount = (q * p).toString()
-                        } else {
+                        } else if (newValue.isBlank()) {
                             totalAmount = ""
                         }
                     }
                     AcquisitionNumericPadTarget.TOTAL_AMOUNT -> {
                         totalAmount = newValue
+                        val q = quantity.toDoubleOrNull()
+                        val t = newValue.toDoubleOrNull()
+                        if (!newValue.isBlank() && q != null && q > 0 && t != null && t > 0) {
+                            pricePerUnit = (t / q).toString()
+                        } else if (newValue.isBlank()) {
+                            pricePerUnit = ""
+                        }
                     }
                     null -> Unit
                 }
@@ -820,7 +862,7 @@ private fun AcquisitionDraftPreviewPanel(
                     when {
                         loading -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         preview == null -> Text(
-                            text = "Enter quantity and price to preview SRPs.",
+                            text = "Enter quantity and total (or price/unit) to preview SRPs.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
