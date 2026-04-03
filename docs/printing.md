@@ -119,12 +119,13 @@ Gross Est: PHP 28,450.00
 
 ---
 
-### CUR-03 — Recommended slips (PRN-01–07) — **implemented**
+### CUR-03 — Recommended slips (PRN-01–08) — **implemented**
 
 | ID | Screen / trigger | Main files |
 |----|------------------|------------|
 | PRN-01 | `PaymentFormScreen` → **Print Voucher** (bottom bar; requires gross + signature) | `PaymentFormScreen.kt`, `buildEmployeePaymentVoucher` |
 | PRN-02 | `AcquireProduceScreen` → acquisition card **Print** icon | `AcquireProduceScreen.kt`, `buildAcquisitionReceivingSlip` |
+| PRN-08 | `AcquireProduceScreen` → app bar **ListAlt** = print **filtered acquisition report** | `AcquireProduceScreen.kt`, `buildAcquisitionBatchReport` |
 | PRN-03 | `RemittanceScreen` → row **Print** icon | `RemittanceScreen.kt`, `buildRemittanceSlip` |
 | PRN-04 | `ActiveSrpsScreen` → app bar **Print** (current channel; snackbar if no SRP rows) | `ActiveSrpsScreen.kt`, `buildSrpPriceList` |
 | PRN-05 | `FarmOperationsScreen` + `FarmOperationHistoryScreen` → card **Print** icon | `FarmOperationCard.kt`, `buildFarmOperationLog` |
@@ -211,6 +212,60 @@ Received by: ___________________
 - SRP section only printed when `preset_ref` is non-null (acquisition was computed)
 - Show `—` for SRP fields that are null (null spoilage/no preset)
 - "Received by" line provides a physical sign-off slot
+- For a **full run of acquisitions** matching the same filters as the list (search, location, date range), see **PRN-08 — Acquisition batch report**
+
+---
+
+### PRN-08 — Acquisition batch report (filtered / full list)
+**Priority:** P1  
+**Screen:** `AcquireProduceScreen`  
+**Trigger (implemented):** Top app bar **`IconButton`** with **`ListAlt`** (“Print filtered acquisition report”) — prints **every acquisition row currently shown** using the same filtered list as the grid (`searchQuery`, `selectedLocation`, `selectedDateRange`). Empty list → snackbar *"Nothing to print — adjust filters."* Payload over **16k chars** → *"List too long — narrow filters."*  
+**Who uses it:** Purchasing or ops prints one thermal document covering **all** matching receipts for the day, supplier, or search (e.g. audit, handoff to accounting, physical binder).
+
+**Purpose:** Same **detail family** as **PRN-02** (per line: id, dates, product, location, qty, unit price, line total, optional SRP snapshot), repeated for **each** filtered acquisition, plus a **report header** and **roll-ups** so it works as a batch / full acquisition report.
+
+**Suggested content format (32-char thermal):**
+
+```
+================================
+  REDN GREENS FRESH
+  ACQUISITION REPORT
+================================
+Printed : 2026-04-03 14:05
+Filter  : Loc SUPPLIER · Search
+          "tomato"
+Date    : Apr 1 – Apr 3, 2026
+--------------------------------
+Records  : 12
+TOTAL   : PHP 84,250.00
+================================
+--- Line 1 / 12 ---
+Acq ID : 0042
+Date   : 2026-04-03
+Product: Tomatoes
+Qty    : 100.00 kg
+Total  : P 3000.00 (from total_amount)
+Location: SUPPLIER
+--------------------------------
+--- Line 2 / 12 ---
+Acq ID : 0041
+...
+================================
+END OF REPORT
+Verified by: _________________
+================================
+```
+
+**Formatting rules:**
+- **Header block:** Document title **ACQUISITION REPORT** (or **BATCH RECEIVING REPORT**). **Printed** = device local date-time. **Filter** = human-readable summary of active filters (truncate/wrap at 30 cols with continuation prefix `>` or indent; if no search, omit that line). **Date** = acquisition date-range filter if set, else *"All dates"* or omit.
+- **Roll-up:** **Lines** = count of acquisitions in the filtered set. **TOTAL** = `sum(total_amount)` over those rows.
+- **Per acquisition:** Repeat a **mini slip** patterned on PRN-02: `--- Line i / N ---` divider, then Acq ID, `date_acquired` (ISO or short), `product_name` (truncate ~18 chars; wrap name on second line if needed), `location` enum label, `quantity` + `kg`/`pcs`, `price_per_unit` with `/kg` or `/pc`, **Line** = `total_amount`. **Preset** line only if `preset_ref != null`; **SRP** = one compressed line if any per-kg SRPs exist (e.g. `SRP On : 137/kg · Res 127 · Off 132`), else `—`. Omit pack-tier SRP lines in v1 to save paper; optional v2 expand per PRN-02.
+- **Long jobs:** If the string exceeds practical length, split into **multiple print jobs** (cut between acquisitions) or warn *"List too long — narrow filters"* (product decision).
+- **Footer:** Single **Verified by** for the whole batch (not per line).
+
+**Implementation notes:**
+- Reuse `ThermalPrintBuilders` helpers (`thermalDividerHeavy`, `formatThermalLine`, `buildAcquisitionReceivingSlip` field logic extracted or shared) to avoid drift from PRN-02.
+- Data source = the **same** `List<Acquisition>` (or Flow snapshot) used to render the filtered grid after filters apply.
 
 ---
 
@@ -371,6 +426,7 @@ The current `printMessage()` sends a single raw string with centre-alignment app
 | PRN-05 | Farm Operations Log | P2 | `[x]` |
 | PRN-06 | Employee Period Summary | P2 | `[x]` |
 | PRN-07 | Order Quick Reprint (history card) | P2 | `[x]` |
+| PRN-08 | Acquisition batch report (filtered list) | P1 | `[x]` |
 
 ### `PrinterUtils` enhancements
 
@@ -382,7 +438,7 @@ The current `printMessage()` sends a single raw string with centre-alignment app
 | PU-04 | Error feedback — snackbars on new print entry points + order detail | P1 | `[~]` |
 | PU-05 | Printer connection state in ViewModel (optional) | P2 | `[ ]` |
 
-*Last checklist update: 2026-04-03 — PRN-01–07 shipped in code; PU-03/PU-05 backlog.*
+*Last checklist update: 2026-04-03 — PRN-01–08 shipped (`buildAcquisitionBatchReport`, app bar ListAlt on Acquire); PU-03/PU-05 backlog.*
 
 ### PU-01 — Left-align support
 

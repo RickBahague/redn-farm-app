@@ -158,6 +158,140 @@ private fun AcquisitionLocation.printLabel(): String = when (this) {
     AcquisitionLocation.OTHER -> "OTHER"
 }
 
+/** PRN-08 — max single print payload; split / narrow filters if exceeded. */
+const val ACQUISITION_BATCH_REPORT_MAX_CHARS = 16_000
+
+private val batchPrintedAtFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.getDefault())
+
+/**
+ * PRN-08 — filtered acquisition batch report (same rows as `AcquireProduceScreen` list).
+ * @return `null` if body would exceed [ACQUISITION_BATCH_REPORT_MAX_CHARS].
+ */
+fun buildAcquisitionBatchReport(
+    acquisitions: List<Acquisition>,
+    searchQuery: String,
+    locationFilter: AcquisitionLocation?,
+    dateRange: Pair<LocalDateTime?, LocalDateTime?>,
+    printedAtMillis: Long = System.currentTimeMillis(),
+): String? {
+    if (acquisitions.isEmpty()) return null
+    val printedAt = LocalDateTime.ofInstant(
+        Instant.ofEpochMilli(printedAtMillis),
+        ZoneId.systemDefault(),
+    )
+    val n = acquisitions.size
+    val grandTotal = acquisitions.sumOf { it.total_amount }
+
+    val filterSummary = buildString {
+        val parts = mutableListOf<String>()
+        if (locationFilter != null) parts.add("Loc ${locationFilter.printLabel()}")
+        if (searchQuery.isNotBlank()) parts.add("\"${searchQuery.trim().take(24)}\"")
+        append(if (parts.isEmpty()) "All" else parts.joinToString(" · "))
+    }
+
+    val body = buildString {
+        appendLine(thermalDividerHeavy())
+        appendLine(centerThermalLine("REDN GREENS FRESH"))
+        appendLine(centerThermalLine("ACQUISITION REPORT"))
+        appendLine(thermalDividerHeavy())
+        appendLine(formatThermalLine("Printed :", printedAt.format(batchPrintedAtFormatter)))
+        appendLine("Filter  :")
+        wrapThermalWords(filterSummary, THERMAL_LINE_WIDTH - 2).forEach { line ->
+            appendLine("> ${line.take(THERMAL_LINE_WIDTH - 2)}".take(THERMAL_LINE_WIDTH))
+        }
+        appendLine(formatThermalLine("Date    :", formatAcquisitionBatchDateRange(dateRange)))
+        appendLine(thermalDividerLight())
+        appendLine(formatThermalLine("Records :", n.toString()))
+        appendLine(formatThermalLine("TOTAL   :", CurrencyFormatter.format(grandTotal)))
+        appendLine(thermalDividerHeavy())
+
+        acquisitions.forEachIndexed { index, acq ->
+            appendLine(formatThermalLine("Acq ID (${index + 1}/$n):", acq.acquisition_id.toString().padStart(4, '0')))
+            appendLine(formatThermalLine("Date   :", formatThermalDate(acq.date_acquired)))
+            appendProductLinesForBatch(acq.product_name)
+            val unit = if (acq.is_per_kg) "kg" else "pcs"
+            appendLine(formatThermalLine("Qty    :", "${"%.2f".format(acq.quantity)} $unit"))
+            appendLine(
+                formatThermalLine(
+                    "Price  :",
+                    "${CurrencyFormatter.format(acq.price_per_unit)}/${if (acq.is_per_kg) "kg" else "pc"}",
+                ),
+            )
+            appendLine(formatThermalLine("Total  :", CurrencyFormatter.format(acq.total_amount)))
+            appendLine(formatThermalLine("Location:", acq.location.printLabel()))
+            appendLine(thermalDividerLight())
+        }
+
+        appendLine(thermalDividerHeavy())
+        appendLine(centerThermalLine("END OF REPORT"))
+        appendLine("Verified by: _________________")
+        appendLine(thermalDividerHeavy())
+    }
+
+    return if (body.length > ACQUISITION_BATCH_REPORT_MAX_CHARS) null else body
+}
+
+private fun formatAcquisitionBatchDateRange(range: Pair<LocalDateTime?, LocalDateTime?>): String {
+    val (start, end) = range
+    return when {
+        start == null && end == null -> "All dates"
+        start != null && end != null ->
+            "${start.toLocalDate().format(isoDate)} – ${end.toLocalDate().format(isoDate)}"
+        start != null -> "From ${start.toLocalDate().format(isoDate)}"
+        else -> "Until ${end!!.toLocalDate().format(isoDate)}"
+    }
+}
+
+private fun StringBuilder.appendProductLinesForBatch(productName: String) {
+    val first = productName.take(18)
+    appendLine(formatThermalLine("Product:", first))
+    if (productName.length > 18) {
+        wrapThermalWords(productName.drop(18), THERMAL_LINE_WIDTH - 2).forEach { rest ->
+            appendLine("  ${rest.take(THERMAL_LINE_WIDTH - 2)}")
+        }
+    }
+}
+
+private fun compressedAcquisitionSrpPerKg(acq: Acquisition): String {
+    fun short(v: Double?) = v?.let { "%.0f".format(it) } ?: "—"
+    val on = short(acq.srp_online_per_kg)
+    val r = short(acq.srp_reseller_per_kg)
+    val o = short(acq.srp_offline_per_kg)
+    if (on == "—" && r == "—" && o == "—") return "—"
+    return "On $on · R $r · O $o".take(THERMAL_LINE_WIDTH)
+}
+
+/** Word-wrap for plain thermal lines (no indent). */
+private fun wrapThermalWords(text: String, maxWidth: Int): List<String> {
+    if (text.isBlank()) return listOf("—")
+    val words = text.split(Regex("\\s+"))
+    val lines = mutableListOf<String>()
+    var current = ""
+    for (w in words) {
+        val candidate = if (current.isEmpty()) w else "$current $w"
+        if (candidate.length <= maxWidth) {
+            current = candidate
+        } else {
+            if (current.isNotEmpty()) {
+                lines.add(current)
+                current = ""
+            }
+            if (w.length > maxWidth) {
+                var rem = w
+                while (rem.isNotEmpty()) {
+                    lines.add(rem.take(maxWidth))
+                    rem = rem.drop(maxWidth)
+                }
+            } else {
+                current = w
+            }
+        }
+    }
+    if (current.isNotEmpty()) lines.add(current)
+    return lines
+}
+
 fun buildRemittanceSlip(remittance: Remittance): String = buildString {
     appendLine(thermalDividerHeavy())
     appendLine(centerThermalLine("REDN GREENS FRESH"))

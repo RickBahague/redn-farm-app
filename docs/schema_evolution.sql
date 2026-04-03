@@ -6,7 +6,7 @@
 --   • Each version block contains the FULL CREATE TABLE statements
 --     for that version — not diffs.
 --   • Append new versions at the bottom; never edit past versions.
---   • Version numbers must match FarmDatabase.kt @Database(version = N).
+--   • Version numbers must match FarmDatabase.kt @Database(version = N) (currently 5).
 --   • Verify v4+ CREATE statements against Room's generated schema JSON
 --     (build/generated/source/kapt/.../FarmDatabase_Impl.java) per SYS-US-04.
 -- ============================================================
@@ -347,3 +347,14 @@ CREATE TABLE IF NOT EXISTS `preset_activation_log` (
     `preset_id_activated`   TEXT    NOT NULL,
     `preset_id_deactivated` TEXT                            -- null on very first activation
 );
+
+-- ============================================================
+-- VERSION 5  (BUG-EMP-03 — employee payment finalize / lock)
+-- ============================================================
+-- Build phase: no incremental Room migration. Schema is v5 in code; new DBs get full DDL from
+-- Room `onCreate`. Existing installs hit `fallbackToDestructiveMigration()` until a migration
+-- is added (data loss on upgrade path — acceptable during build).
+--
+-- `employee_payments` columns (v5):
+--   payment_id, employee_id, amount, cash_advance_amount, liquidated_amount,
+--   date_paid, signature, received_date, is_finalized

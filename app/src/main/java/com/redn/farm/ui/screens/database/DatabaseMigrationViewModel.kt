@@ -177,7 +177,8 @@ class DatabaseMigrationViewModel(application: Application) : AndroidViewModel(ap
                         liquidated_amount = paymentWithEmployee.payment.liquidated_amount,
                         date_paid = paymentWithEmployee.payment.date_paid,
                         signature = paymentWithEmployee.payment.signature,
-                        received_date = paymentWithEmployee.payment.received_date
+                        received_date = paymentWithEmployee.payment.received_date,
+                        is_finalized = paymentWithEmployee.payment.is_finalized,
                     )
                 },
                 farmOperations = db.farmOperationDao().getAllOperations().first().map { entity ->

@@ -216,6 +216,50 @@ Canonical product text is now **gross + cash advance** with **liquidated exclude
 
 ---
 
+## BUG-EMP-02 — Employee payment: signature optional; save draft without signing
+
+### Report
+- **Screens:** Add / edit employee payment (`PaymentFormScreen` / payment dialog flow).
+- **Requirement:** **Signature is optional** while the user is entering or updating a payment. The entry **must be saveable** without capturing a signature (draft / work-in-progress).
+
+### Fix *(implemented)*
+- **`PaymentFormScreen`:** Removed signature check before **Save**; empty signature is persisted as `""`.
+- **Copy:** Section label clarifies signature is optional for save; **Print Voucher** still requires gross + signature (snackbar unchanged).
+
+### Files
+- `app/src/main/java/com/redn/farm/ui/screens/manage/employees/payment/PaymentFormScreen.kt`
+
+### Verification
+- Add or edit a payment with all required monetary/period fields but **no** signature → save succeeds; reopen shows saved values; signature still empty until provided.
+- `./gradlew assembleDebug` ✅
+
+---
+
+## BUG-EMP-03 — Employee payment: Finalize requires signature; finalized record not editable
+
+### Report
+- **Screens:** Add / edit employee payment.
+- **Requirement:**
+  - There must be a distinct **Finalize** (or equivalent) action **in addition to** ordinary save/draft behavior (**BUG-EMP-02**).
+  - **Finalize** must **require** a captured **signature** before the payment can be committed as final; if signature is missing, block finalize with clear messaging.
+  - Once a payment is **finalized**, it **cannot be edited** (read-only in UI and/or enforced in persistence layer as appropriate).
+
+### Fix *(implemented)*
+- **`employee_payments.is_finalized`** (Room schema **version 5**): no incremental migration yet — build phase uses **`fallbackToDestructiveMigration()`** / fresh DB; new installs get column via Room `onCreate`.
+- **`PaymentFormScreen`:** **Save** keeps **`is_finalized = false`**; **Finalize** requires signature, sets **`is_finalized = true`**; finalized rows open as **View payment** (read-only fields, **Back** + **Print Voucher** only).
+- **`EmployeePaymentRepository`:** **`updatePayment`** / **`deletePayment`** no-op when row is already finalized.
+- **`PaymentCard`:** **Draft** vs **Finalized** label; view icon for finalized; **delete** hidden when finalized.
+- **CSV export** includes **`IsFinalized`** column.
+
+### Files
+- `FarmDatabase.kt`, `EmployeePaymentEntity.kt`, `EmployeePayment.kt`, `EmployeePaymentRepository.kt`, `PaymentFormScreen.kt`, `PaymentCard.kt`, `CsvExportService.kt`, `DatabaseMigrationViewModel.kt`
+
+### Verification
+- Draft: save without signature OK (**BUG-EMP-02**). Finalize without signature → blocked. Finalize with signature → success; list shows **Finalized**; open → read-only, no save/finalize/delete.
+- `./gradlew assembleDebug` ✅
+
+---
+
 ## Completion tracker
 
 | Bug ID | Title | Status | Notes |
@@ -228,4 +272,6 @@ Canonical product text is now **gross + cash advance** with **liquidated exclude
 | BUG-ORD-02 | Order: finalize only when paid + delivered | `[x]` | `isOrderFinalized`; verified on device |
 | BUG-PRC-01 | Preset history: delete inactive only | `[x]` | DAO + repo + history/detail UI; active protected |
 | BUG-EMP-01 | Employee payment net pay: gross + advance; liquidated not in net | `[x]` | `netPayAmount()`, `PaymentFormScreen`, `PaymentCard`, unit tests |
+| BUG-EMP-02 | Employee payment: signature optional; draft save without signing | `[x]` | Save without signature; print voucher still requires signature |
+| BUG-EMP-03 | Employee payment: Finalize requires signature; finalized not editable | `[x]` | `is_finalized` (v5 schema, no incremental migration yet); Finalize; repo guards |
 

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -83,6 +84,7 @@ fun PaymentFormScreen(
     val payments by viewModel.payments.collectAsState(initial = emptyList())
     val existing: EmployeePayment? =
         if (isNew) null else payments.find { it.payment_id == paymentId }
+    val isFinalized = !isNew && existing?.is_finalized == true
 
     var grossWage by remember { mutableStateOf("") }
     var signature by remember { mutableStateOf("") }
@@ -147,7 +149,15 @@ fun PaymentFormScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(if (isNew) "Add payment" else "Edit payment") },
+                title = {
+                    Text(
+                        when {
+                            isFinalized -> "View payment"
+                            isNew -> "Add payment"
+                            else -> "Edit payment"
+                        }
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -165,70 +175,12 @@ fun PaymentFormScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Cancel")
-                    }
-                    Button(
-                        onClick = {
-                            if (!grossValid) {
-                                snackbarScope.launch {
-                                    snackbarHostState.showSnackbar("Enter a gross wage greater than zero.")
-                                }
-                                return@Button
-                            }
-                            if (signature.isBlank()) {
-                                snackbarScope.launch {
-                                    snackbarHostState.showSnackbar("Signature is required (draw or type).")
-                                }
-                                return@Button
-                            }
-                            val g = grossWage.toDoubleOrNull() ?: return@Button
-                            if (isNew) {
-                                viewModel.addPayment(
-                                    EmployeePayment(
-                                        employee_id = employeeId,
-                                        amount = g,
-                                        signature = signature,
-                                        date_paid = datePaid,
-                                        received_date = dateReceived,
-                                        cash_advance_amount = cashAdvanceAmount.toDoubleOrNull(),
-                                        liquidated_amount = liquidatedAmount.toDoubleOrNull()
-                                    )
-                                )
-                            } else {
-                                val base = existing ?: return@Button
-                                viewModel.updatePayment(
-                                    base.copy(
-                                        amount = g,
-                                        signature = signature,
-                                        date_paid = datePaid,
-                                        received_date = dateReceived,
-                                        cash_advance_amount = cashAdvanceAmount.toDoubleOrNull(),
-                                        liquidated_amount = liquidatedAmount.toDoubleOrNull()
-                                    )
-                                )
-                            }
-                            onNavigateBack()
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Save")
-                    }
-                }
-                OutlinedButton(
-                    onClick = {
+                    val printVoucher: () -> Unit = printLambda@{
                         if (!grossValid || signature.isBlank()) {
                             snackbarScope.launch {
                                 snackbarHostState.showSnackbar("Enter gross wage and signature to print.")
                             }
-                            return@OutlinedButton
+                            return@printLambda
                         }
                         snackbarScope.launch {
                             val content = buildEmployeePaymentVoucher(
@@ -245,12 +197,131 @@ fun PaymentFormScreen(
                                 if (ok) "Sent to printer" else "Print failed — check printer"
                             )
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = grossValid && signature.isNotBlank(),
-                ) {
-                    Text("Print Voucher")
-                }
+                    }
+                    if (isFinalized) {
+                        OutlinedButton(
+                            onClick = onNavigateBack,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Back")
+                        }
+                        OutlinedButton(
+                            onClick = printVoucher,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = grossValid && signature.isNotBlank(),
+                        ) {
+                            Text("Print Voucher")
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onNavigateBack,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Cancel")
+                            }
+                            Button(
+                                onClick = {
+                                    if (!grossValid) {
+                                        snackbarScope.launch {
+                                            snackbarHostState.showSnackbar("Enter a gross wage greater than zero.")
+                                        }
+                                        return@Button
+                                    }
+                                    val g = grossWage.toDoubleOrNull() ?: return@Button
+                                    if (isNew) {
+                                        viewModel.addPayment(
+                                            EmployeePayment(
+                                                employee_id = employeeId,
+                                                amount = g,
+                                                signature = signature,
+                                                date_paid = datePaid,
+                                                received_date = dateReceived,
+                                                cash_advance_amount = cashAdvanceAmount.toDoubleOrNull(),
+                                                liquidated_amount = liquidatedAmount.toDoubleOrNull(),
+                                                is_finalized = false,
+                                            )
+                                        )
+                                    } else {
+                                        val base = existing ?: return@Button
+                                        viewModel.updatePayment(
+                                            base.copy(
+                                                amount = g,
+                                                signature = signature,
+                                                date_paid = datePaid,
+                                                received_date = dateReceived,
+                                                cash_advance_amount = cashAdvanceAmount.toDoubleOrNull(),
+                                                liquidated_amount = liquidatedAmount.toDoubleOrNull(),
+                                                is_finalized = false,
+                                            )
+                                        )
+                                    }
+                                    onNavigateBack()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Save")
+                            }
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                if (!grossValid) {
+                                    snackbarScope.launch {
+                                        snackbarHostState.showSnackbar("Enter a gross wage greater than zero.")
+                                    }
+                                    return@FilledTonalButton
+                                }
+                                if (signature.isBlank()) {
+                                    snackbarScope.launch {
+                                        snackbarHostState.showSnackbar("Signature is required to finalize.")
+                                    }
+                                    return@FilledTonalButton
+                                }
+                                val g = grossWage.toDoubleOrNull() ?: return@FilledTonalButton
+                                if (isNew) {
+                                    viewModel.addPayment(
+                                        EmployeePayment(
+                                            employee_id = employeeId,
+                                            amount = g,
+                                            signature = signature,
+                                            date_paid = datePaid,
+                                            received_date = dateReceived,
+                                            cash_advance_amount = cashAdvanceAmount.toDoubleOrNull(),
+                                            liquidated_amount = liquidatedAmount.toDoubleOrNull(),
+                                            is_finalized = true,
+                                        )
+                                    )
+                                } else {
+                                    val base = existing ?: return@FilledTonalButton
+                                    viewModel.updatePayment(
+                                        base.copy(
+                                            amount = g,
+                                            signature = signature,
+                                            date_paid = datePaid,
+                                            received_date = dateReceived,
+                                            cash_advance_amount = cashAdvanceAmount.toDoubleOrNull(),
+                                            liquidated_amount = liquidatedAmount.toDoubleOrNull(),
+                                            is_finalized = true,
+                                        )
+                                    )
+                                }
+                                onNavigateBack()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Finalize")
+                        }
+                        OutlinedButton(
+                            onClick = printVoucher,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = grossValid && signature.isNotBlank(),
+                        ) {
+                            Text("Print Voucher")
+                        }
+                    }
                 }
             }
         }
@@ -274,9 +345,18 @@ fun PaymentFormScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                if (isFinalized) {
+                    Text(
+                        "Finalized — read only",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
                 OutlinedTextField(
                     value = grossWage,
                     onValueChange = { grossWage = it },
+                    readOnly = isFinalized,
                     label = { Text("Gross wage (required)") },
                     supportingText = {
                         if (grossWage.isNotBlank() && !grossValid) {
@@ -292,6 +372,7 @@ fun PaymentFormScreen(
                 OutlinedTextField(
                     value = cashAdvanceAmount,
                     onValueChange = { cashAdvanceAmount = it },
+                    readOnly = isFinalized,
                     label = { Text("Cash advance (optional)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -301,6 +382,7 @@ fun PaymentFormScreen(
                 OutlinedTextField(
                     value = liquidatedAmount,
                     onValueChange = { liquidatedAmount = it },
+                    readOnly = isFinalized,
                     label = { Text("Liquidated (optional)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -316,93 +398,149 @@ fun PaymentFormScreen(
                 )
 
                 Text(
-                    "Signature (required)",
+                    if (isFinalized) "Signature"
+                    else "Signature (optional for save — required to finalize or print voucher)",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = signatureMode == SignatureMode.DRAW,
-                        onClick = {
-                            signatureMode = SignatureMode.DRAW
-                            signature = ""
-                        },
-                        label = { Text("Draw") }
-                    )
-                    FilterChip(
-                        selected = signatureMode == SignatureMode.TYPE,
-                        onClick = {
-                            signatureMode = SignatureMode.TYPE
-                            signature = ""
-                        },
-                        label = { Text("Type") }
-                    )
-                }
-
-                if (signatureMode == SignatureMode.DRAW) {
+                if (isFinalized) {
                     Text(
-                        "Sign here",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    SignatureCanvasField(
-                        modifier = Modifier.fillMaxWidth(),
-                        onSignatureBase64Change = { signature = it }
+                        text = "Signature: ${
+                            if (signature.isNotBlank() && isBase64ish(signature)) {
+                                "Captured (image)"
+                            } else {
+                                signature.ifBlank { "—" }
+                            }
+                        }",
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 } else {
-                    OutlinedTextField(
-                        value = signature,
-                        onValueChange = { signature = it },
-                        label = { Text("Signature") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                OutlinedCard(
-                    onClick = { showDatePaidPicker = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Column {
-                            Text("Date paid (required)", style = MaterialTheme.typography.labelMedium)
-                            Text(
-                                dateFormatter.format(Date(datePaid)),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                        Icon(Icons.Default.CalendarMonth, contentDescription = null)
+                        FilterChip(
+                            selected = signatureMode == SignatureMode.DRAW,
+                            onClick = {
+                                signatureMode = SignatureMode.DRAW
+                                signature = ""
+                            },
+                            label = { Text("Draw") }
+                        )
+                        FilterChip(
+                            selected = signatureMode == SignatureMode.TYPE,
+                            onClick = {
+                                signatureMode = SignatureMode.TYPE
+                                signature = ""
+                            },
+                            label = { Text("Type") }
+                        )
+                    }
+
+                    if (signatureMode == SignatureMode.DRAW) {
+                        Text(
+                            "Sign here",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        SignatureCanvasField(
+                            modifier = Modifier.fillMaxWidth(),
+                            onSignatureBase64Change = { signature = it }
+                        )
+                    } else {
+                        OutlinedTextField(
+                            value = signature,
+                            onValueChange = { signature = it },
+                            label = { Text("Signature (optional)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
 
-                OutlinedCard(
-                    onClick = { showDateReceivedPicker = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Date received (optional)", style = MaterialTheme.typography.labelMedium)
-                            Text(
-                                dateReceived?.let { dateFormatter.format(Date(it)) } ?: "Not set",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
+                if (isFinalized) {
+                    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("Date paid (required)", style = MaterialTheme.typography.labelMedium)
+                                Text(
+                                    dateFormatter.format(Date(datePaid)),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            Icon(Icons.Default.CalendarMonth, contentDescription = null)
                         }
-                        Icon(Icons.Default.CalendarMonth, contentDescription = null)
+                    }
+                } else {
+                    OutlinedCard(
+                        onClick = { showDatePaidPicker = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("Date paid (required)", style = MaterialTheme.typography.labelMedium)
+                                Text(
+                                    dateFormatter.format(Date(datePaid)),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            Icon(Icons.Default.CalendarMonth, contentDescription = null)
+                        }
+                    }
+                }
+
+                if (isFinalized) {
+                    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("Date received (optional)", style = MaterialTheme.typography.labelMedium)
+                                Text(
+                                    dateReceived?.let { dateFormatter.format(Date(it)) } ?: "Not set",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            Icon(Icons.Default.CalendarMonth, contentDescription = null)
+                        }
+                    }
+                } else {
+                    OutlinedCard(
+                        onClick = { showDateReceivedPicker = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("Date received (optional)", style = MaterialTheme.typography.labelMedium)
+                                Text(
+                                    dateReceived?.let { dateFormatter.format(Date(it)) } ?: "Not set",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            Icon(Icons.Default.CalendarMonth, contentDescription = null)
+                        }
                     }
                 }
 

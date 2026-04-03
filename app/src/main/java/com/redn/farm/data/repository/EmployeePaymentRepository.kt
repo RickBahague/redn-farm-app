@@ -21,7 +21,8 @@ class EmployeePaymentRepository(
                     liquidated_amount = payment.payment.liquidated_amount,
                     date_paid = payment.payment.date_paid,
                     signature = payment.payment.signature,
-                    received_date = payment.payment.received_date
+                    received_date = payment.payment.received_date,
+                    is_finalized = payment.payment.is_finalized,
                 )
             }
         }
@@ -37,12 +38,15 @@ class EmployeePaymentRepository(
                 liquidated_amount = payment.liquidated_amount,
                 date_paid = payment.date_paid,
                 signature = payment.signature,
-                received_date = payment.received_date
+                received_date = payment.received_date,
+                is_finalized = payment.is_finalized,
             )
         )
     }
 
     suspend fun updatePayment(payment: EmployeePayment) {
+        val existing = employeePaymentDao.getPayment(payment.payment_id) ?: return
+        if (existing.is_finalized) return
         employeePaymentDao.updatePayment(
             EmployeePaymentEntity(
                 payment_id = payment.payment_id,
@@ -52,13 +56,16 @@ class EmployeePaymentRepository(
                 liquidated_amount = payment.liquidated_amount,
                 date_paid = payment.date_paid,
                 signature = payment.signature,
-                received_date = payment.received_date
+                received_date = payment.received_date,
+                is_finalized = payment.is_finalized,
             )
         )
     }
 
     suspend fun deletePayment(payment: EmployeePayment) {
-        employeePaymentDao.deletePayment(payment.toEntity())
+        val existing = employeePaymentDao.getPayment(payment.payment_id) ?: return
+        if (existing.is_finalized) return
+        employeePaymentDao.deletePayment(existing)
     }
 
     suspend fun truncate() {
@@ -73,7 +80,8 @@ class EmployeePaymentRepository(
         liquidated_amount = liquidated_amount,
         date_paid = date_paid,
         signature = signature,
-        received_date = received_date
+        received_date = received_date,
+        is_finalized = is_finalized,
     )
 
     private fun EmployeePayment.toEntity() = EmployeePaymentEntity(
@@ -84,6 +92,7 @@ class EmployeePaymentRepository(
         liquidated_amount = liquidated_amount,
         date_paid = date_paid,
         signature = signature,
-        received_date = received_date
+        received_date = received_date,
+        is_finalized = is_finalized,
     )
 } 

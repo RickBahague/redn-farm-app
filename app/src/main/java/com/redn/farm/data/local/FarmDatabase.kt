@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
         PricingPresetEntity::class,
         PresetActivationLogEntity::class
     ],
-    version = 4
+    version = 5
 )
 @TypeConverters(DateTimeConverter::class, EnumConverters::class)
 abstract class FarmDatabase : RoomDatabase() {
@@ -94,6 +94,9 @@ abstract class FarmDatabase : RoomDatabase() {
                 """.trimIndent())
             }
         }
+
+        // Version 5 schema includes `employee_payments.is_finalized` (BUG-EMP-03). No incremental
+        // migration yet — build phase: `fallbackToDestructiveMigration()` or fresh install.
 
         fun getDatabase(context: Context): FarmDatabase {
             return INSTANCE ?: synchronized(this) {

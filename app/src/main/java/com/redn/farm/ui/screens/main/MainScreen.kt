@@ -4,8 +4,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
@@ -19,6 +17,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,66 +46,52 @@ fun MainScreen(
     val userRole by viewModel.userRole.collectAsState()
     Scaffold(
         topBar = {
-            Column {
-                Spacer(modifier = Modifier.height(24.dp))
-                CenterAlignedTopAppBar(
-                    title = {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "Yongy & Eyo's FARM",
-                                style = MaterialTheme.typography.headlineSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp
-                                ),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-//                        Text(
-//                            text = AppConfig.FARM_LOCATION,
-//                            style = MaterialTheme.typography.bodyMedium
-//                        )
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = onNavigateToProfile) {
-                            Icon(Icons.Default.Person, contentDescription = "Profile")
-                        }
-                        if (isAdmin) {
-                            IconButton(onClick = onNavigateToSettings) {
-                                Icon(Icons.Default.Settings, contentDescription = "Settings")
-                            }
-                        }
-                        IconButton(onClick = onNavigateToAbout) {
-                            Icon(Icons.Default.Info, contentDescription = "About")
-                        }
-                        IconButton(
-                            onClick = {
-                                viewModel.logout()
-                                onLogout()
-                            }
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
+            TopAppBar(
+                title = { },
+                actions = {
+                    IconButton(onClick = onNavigateToProfile) {
+                        Icon(Icons.Default.Person, contentDescription = "Profile")
+                    }
+                    if (isAdmin) {
+                        IconButton(onClick = onNavigateToSettings) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings")
                         }
                     }
-                )
-            }
+                    IconButton(onClick = onNavigateToAbout) {
+                        Icon(Icons.Default.Info, contentDescription = "About")
+                    }
+                    IconButton(
+                        onClick = {
+                            viewModel.logout()
+                            onLogout()
+                        }
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
+                    }
+                }
+            )
         }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(top = 24.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
+                .padding(top = 8.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // App Name at the top
-//            Text(
-//                text = AppConfig.APP_NAME,
-//                style = MaterialTheme.typography.headlineMedium,
-//                color = MaterialTheme.colorScheme.primary,
-//                modifier = Modifier.padding(bottom = 16.dp)
-//            )
+            Text(
+                text = "Yongy & Eyo's FARM",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 20.dp),
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    lineHeight = 32.sp,
+                ),
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center,
+            )
 
             // Menu tiles (2-column grid)
             val tiles = listOf(
@@ -135,24 +120,28 @@ fun MainScreen(
                         onClick = tile.third,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 100.dp)
+                            .heightIn(min = 110.dp)
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(vertical = 20.dp, horizontal = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            Text(
+                                text = tile.first,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                             Icon(
                                 imageVector = tile.second,
                                 contentDescription = tile.first,
                                 modifier = Modifier.size(40.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = tile.first,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
                             )
                         }
                     }

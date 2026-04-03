@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -38,7 +39,8 @@ fun PaymentCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Payment #${payment.payment_id}",
+                        text = "Payment #${payment.payment_id}" +
+                            if (payment.is_finalized) " · Finalized" else " · Draft",
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
@@ -94,17 +96,19 @@ fun PaymentCard(
                 Row {
                     IconButton(onClick = onEditClick) {
                         Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit payment",
+                            imageVector = if (payment.is_finalized) Icons.Default.Visibility else Icons.Default.Edit,
+                            contentDescription = if (payment.is_finalized) "View payment" else "Edit payment",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
-                    IconButton(onClick = onDeleteClick) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete payment",
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                    if (!payment.is_finalized) {
+                        IconButton(onClick = onDeleteClick) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete payment",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             }

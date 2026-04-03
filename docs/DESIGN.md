@@ -275,7 +275,7 @@ The Sunmi printer connection is managed as a coroutine-suspended bind (`suspendC
 | `CurrencyFormatter` | `utils/` | Formats doubles as currency strings |
 | `DeviceUtils` | `utils/` | Returns `Settings.Secure.ANDROID_ID` as device identifier |
 | `PrinterUtils` | `utils/` | Android print + Sunmi thermal printer (`printMessage`, alignment) |
-| `ThermalPrintBuilders` | `utils/` | 32-column thermal slip strings (payroll, acquisitions, SRP list, etc.) |
+| `ThermalPrintBuilders` | `utils/` | 32-column thermal strings: orders, payroll, single + **batch** acquisition reports, SRP list, etc. |
 | `DatabasePopulator` | `data/util/` | Generates sample customers, products, acquisitions |
 | `SampleDataGenerator` | `data/util/` | (Additional sample data generation utilities) |
 | `DatePicker` | `ui/components/` | Custom date picker Composable |

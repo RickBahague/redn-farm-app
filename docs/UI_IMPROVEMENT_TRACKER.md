@@ -116,6 +116,7 @@ Waves can overlap **only** where dependency graph allows (e.g. Wave 1 + Wave 0 t
 | UI-19 | P2 | `[x]` | B | `MainScreen` tiles filtered via `Rbac.dashboardTileTitles(Rbac.normalizeRole(role))`; `security/Rbac.kt` + `navigation/RbacGate.kt` |
 | UI-20 | P2 | `[x]` | H | `SignatureCanvasField.kt` — Canvas touch tracking + Base64 PNG export; Draw/Type toggle in `PaymentFormScreen.kt` |
 | UI-21 | P2 | `[x]` | B | Active SRPs: channel FilterChip selector + per-row SRPs for selected channel + preset footer |
+| UI-22 | P1 | `[x]` | B | `MainScreen.kt` — inner tile `Column`: label top `TextAlign.Center`, `maxLines = 1` + `Ellipsis`; icon 40dp below; `heightIn(min = 110.dp)` |
 
 ---
 
@@ -135,3 +136,5 @@ Waves can overlap **only** where dependency graph allows (e.g. Wave 1 + Wave 0 t
 | 2026-04-02 | Full codebase review pass: upgraded UI-01–03, 06–13, 15, 19, 20 from `[~]`/`[ ]` to `[x]`. UI-14 upgraded to `[~]` (list screen is full-screen; add/edit dialog is not). UI-16 confirmed `[ ]` (no net pay summary in PaymentDialog). UI-05 remains `[ ]`. |
 | 2026-04-02 | UI-14 + UI-16: `PaymentFormScreen` + nav route `employee_payment_form/{employeeId}/{employeeName}/{paymentId}` (`paymentId` −1 = new); net pay summary card; removed `PaymentDialog.kt`. |
 | 2026-04-02 | Doc realignment: EMP-US-05 net pay = gross + cash advance; liquidated excluded (`BUG-EMP-01`); UI-16 description updated. |
+| 2026-04-03 | Added UI-22: dashboard tile layout — label top-centre, icon below; `Column` replaces `Row`; `maxLines = 1`; P1 / Package B. |
+| 2026-04-03 | UI-22 implemented in `MainScreen.kt` (`[x]`). |

@@ -7,6 +7,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,6 +21,7 @@ import com.redn.farm.data.model.Acquisition
 import com.redn.farm.data.model.AcquisitionLocation
 import com.redn.farm.data.repository.AcquisitionDraftPricingPreview
 import com.redn.farm.data.model.Product
+import com.redn.farm.utils.buildAcquisitionBatchReport
 import com.redn.farm.utils.buildAcquisitionReceivingSlip
 import com.redn.farm.utils.CurrencyFormatter
 import com.redn.farm.utils.PrinterUtils
@@ -100,6 +102,35 @@ fun AcquireProduceScreen(
                         Icon(
                             imageVector = if (showFilters) Icons.Default.FilterList else Icons.Default.FilterAlt,
                             contentDescription = "Filters"
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                if (acquisitions.isEmpty()) {
+                                    snackbarHostState.showSnackbar("Nothing to print — adjust filters.")
+                                    return@launch
+                                }
+                                val content = buildAcquisitionBatchReport(
+                                    acquisitions = acquisitions,
+                                    searchQuery = searchQuery,
+                                    locationFilter = selectedLocation,
+                                    dateRange = selectedDateRange,
+                                )
+                                if (content == null) {
+                                    snackbarHostState.showSnackbar("List too long — narrow filters.")
+                                    return@launch
+                                }
+                                val ok = PrinterUtils.printMessage(context, content, alignment = 0)
+                                snackbarHostState.showSnackbar(
+                                    if (ok) "Sent to printer" else "Print failed"
+                                )
+                            }
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ListAlt,
+                            contentDescription = "Print filtered acquisition report",
                         )
                     }
                     IconButton(onClick = { showAddDialog = true }) {

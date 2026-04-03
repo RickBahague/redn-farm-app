@@ -368,6 +368,61 @@ Footer: "Preset: Q2 2026 Rates · Activated Apr 1, 2026"
 
 ---
 
+### UI-22 — Dashboard tiles: icon below label, full-width single-line label
+**Priority:** P1  
+**Screen:** `MainScreen`  
+**Problem:** Each dashboard tile currently uses a `Row` — 40dp icon on the left, label on the right. At ~190dp tile width the label area is only ~138dp, which is tight enough that longer names ("Remittance", "Farm Ops") risk wrapping to a second line and the tile height becomes uneven. More importantly, the side-by-side layout wastes vertical space: a taller tile would be easier to tap on a handheld POS, and a centred column layout scales better when the role-filtered tile count changes (UI-19).
+
+**Fix:** Replace the inner `Row` with a `Column` — label centred at the top, icon centred below it. The full tile width (~190dp) is now available for the label, guaranteeing single-line display for all current tile names. Tile height increases naturally to give a larger tap target.
+
+```kotlin
+// Before (Row — icon left, label right):
+Row(
+    modifier = Modifier.fillMaxWidth().padding(16.dp),
+    verticalAlignment = Alignment.CenterVertically
+) {
+    Icon(imageVector = tile.second, ..., modifier = Modifier.size(40.dp))
+    Spacer(modifier = Modifier.width(12.dp))
+    Text(text = tile.first, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+}
+
+// After (Column — label top-centre, icon bottom-centre):
+Column(
+    modifier = Modifier
+        .fillMaxWidth()
+        .padding(vertical = 20.dp, horizontal = 8.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(10.dp)
+) {
+    Text(
+        text = tile.first,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        textAlign = TextAlign.Center,
+        maxLines = 1
+    )
+    Icon(imageVector = tile.second, ..., modifier = Modifier.size(40.dp))
+}
+```
+
+```
+┌──────────┬──────────┐
+│  Orders  │Customers │
+│    🛒    │   👥    │
+├──────────┼──────────┤
+│ Inventory│ Farm Ops │
+│    📦    │   🌾    │
+└──────────┴──────────┘
+```
+
+**Notes:**
+- `maxLines = 1` on the `Text` prevents any wrapping — if a future tile name is too long it truncates with ellipsis rather than breaking tile height
+- `TextAlign.Center` keeps the label centred when it is shorter than the tile width
+- `heightIn(min = 100.dp)` on the `OutlinedCard` should be raised to `min = 110.dp` to accommodate the new vertical stack comfortably
+- No change needed to the tile data list, RBAC filter, or navigation callbacks — only the inner composable layout changes
+
+---
+
 ## Implementation Order
 
 | Item | Rebuild Phase | Effort |
@@ -394,3 +449,4 @@ Footer: "Preset: Q2 2026 Rates · Activated Apr 1, 2026"
 | UI-19 Role dashboard | Phase 5 | Medium |
 | UI-20 Drawn signature | Phase 5 | Large |
 | UI-21 Active SRP screen | Phase 4 | Medium |
+| UI-22 Dashboard tile layout (label top, icon bottom) | Phase 1 | Small |

@@ -136,7 +136,7 @@ class CsvExportService(private val context: Context) {
     fun exportEmployeePayments(payments: List<EmployeePayment>, sharedTimestamp: String? = null): File {
         val file = fileFor("employee_payments", sharedTimestamp)
         FileWriter(file).use { writer ->
-            writer.append("PaymentId,EmployeeId,EmployeeName,Amount,CashAdvanceAmount,LiquidatedAmount,DatePaid,ReceivedDate,Signature,DeviceId\n")
+            writer.append("PaymentId,EmployeeId,EmployeeName,Amount,CashAdvanceAmount,LiquidatedAmount,DatePaid,ReceivedDate,Signature,IsFinalized,DeviceId\n")
             val deviceId = DeviceUtils.getDeviceId(context)
             payments.forEach { payment ->
                 writer.append("${payment.payment_id},")
@@ -148,6 +148,7 @@ class CsvExportService(private val context: Context) {
                     .append("${payment.date_paid},")
                     .append("${payment.received_date ?: ""},")
                     .append(csvTextField(payment.signature)).append(",")
+                    .append("${payment.is_finalized},")
                     .append(csvTextField(deviceId))
                     .append("\n")
             }

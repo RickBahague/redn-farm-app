@@ -56,15 +56,17 @@ class AcquireProduceViewModel @Inject constructor(
     ) { acquisitions, query, location, dateRange ->
         acquisitions.filter { acquisition ->
             val matchesSearch = acquisition.product_name.contains(query, ignoreCase = true) ||
-                              acquisition.acquisition_id.toString().contains(query)
-            
+                acquisition.acquisition_id.toString().contains(query)
+
+            val matchesLocation = location == null || acquisition.location == location
+
             val acquisitionDateTime = LocalDateTime.ofInstant(
                 Instant.ofEpochMilli(acquisition.date_acquired),
                 ZoneId.systemDefault()
             )
             val matchesDateRange = isWithinDateRange(acquisitionDateTime, dateRange)
-            
-            matchesSearch && matchesDateRange
+
+            matchesSearch && matchesLocation && matchesDateRange
         }
     }.stateIn(
         scope = viewModelScope,
