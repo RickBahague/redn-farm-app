@@ -1041,10 +1041,43 @@ All per-piece acquisitions already in the DB have inflated SRPs. They will need 
 
 ---
 
+## BUG-PRT-01 — **Print:** snackbar says **“Print failed”** even when printing **succeeds**
+
+### Report
+- **Symptom:** After tapping **Print** (order receipt, acquisition batch, remittance, employee payment, Active SRPs list, farm ops log, etc.), a **Snackbar** shows **failure** text (e.g. **`Print failed`**, **`Print failed — check printer`**) even though the **physical printer produced the slip** or the **system print flow completed** as expected.
+- **Impact:** Staff lose trust in on-screen feedback; they may reprint or assume hardware failure.
+
+### Expected
+- Snackbar (or toast) **matches outcome**: success only after a **reliable** success signal; failure only when the print path **actually** fails.
+- If the platform is **asynchronous** (Sunmi callbacks, **`PrintManager`** job), UI should not treat **`Boolean`** from a **synchronous** wrapper as definitive until the **real** completion path is wired.
+
+### Root cause
+1. **`connectPrinter`:** **`InnerPrinterCallback.onDisconnected`** resumed the continuation with **`null`** before **`onConnected`**, so **`printMessage`** returned **`false`** even when the service connected moments later and printing worked.
+2. **`printMessage`:** Exceptions from **`lineWrap`** / **`cutPaper`** after **`printText`** completed were treated as full failure (**`false`**), so the slip could print and the snackbar still said **failed**.
+3. **`OrderHistoryScreen`:** **`getOrderSnapshotForPrint`** returning **`null`** showed **`Print failed`**, which is a **data** error, not a printer error.
+
+### Fix *(implemented)*
+- **`PrinterUtils.connectPrinter`:** **`withTimeoutOrNull`** (12s); **`resumeOnce`** (atomic) so late callbacks don’t double-resume; **do not resume on `onDisconnected`** for bind outcome; **`onDisconnected`** only clears **`printerService`**.
+- **`PrinterUtils.printMessage`:** After **`printText`**, wrap **`lineWrap`** and **`cutPaper`** in try/catch + **`Log.w`** — still return **`true`** if body printed (cutter/feed failures are non-fatal for user messaging).
+- **`OrderHistoryScreen`:** If snapshot is **`null`**, snackbar **`Could not load order for print`** instead of **`Print failed`**.
+
+### Files
+- `app/src/main/java/com/redn/farm/utils/PrinterUtils.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/order/history/OrderHistoryScreen.kt`
+
+### Verification
+- On **Sunmi** (and non-Sunmi fallback if applicable): print flows that **succeed** never show **failure** snackbars; intentional failures (no printer, no service) still show a **clear** error.
+- `./gradlew :app:compileDebugKotlin` ✅
+
+**Status:** `[x]`
+
+---
+
 ## Completion tracker
 
 | Bug ID | Title | Status | Notes |
 |--------|-------|--------|-------|
+| BUG-PRT-01 | Print: “Print failed” snackbar even when print succeeds | `[x]` | **`connectPrinter`** no resume on **`onDisconnected`**; **`lineWrap`/`cutPaper`** non-fatal; order history snapshot message |
 | BUG-SYS-02 | Logout: direct to Login, no intermediate screen transitions | `[x]` | **`LoginViewModel.logout`** + **`SessionChecker`**: **`popUpTo(graph.id)`** **`inclusive`**; removed duplicate **`NavGraph.onLogout`** |
 | BUG-ORD-05 | Active SRPs: channel chips drive list + expander + print | `[x]` | **`ActiveSrpsCollapsedSummary`** + **`ActiveSrpsSelectedChannelDetail`**; **`ProductActiveSrpRow`** no **`summaryFromPerKg`** |
 | BUG-ORD-04 | Order SRP vs Active SRPs print (resolver alignment); receipts **`/kg`/`/pc`** | `[x]` | **`OrderPricingResolver.srpFromAcquisition`** in **`ActiveSrpsScreen.printPriceList`**; **`ThermalPrintBuilders.buildOrderReceiptText`** + order history screens |
@@ -1087,6 +1120,7 @@ All per-piece acquisitions already in the DB have inflated SRPs. They will need 
 
 | Date | Change |
 |------|--------|
+| 2026-04-06 | **BUG-PRT-01** fixed: **`PrinterUtils.connectPrinter`** (**`withTimeoutOrNull`**, **`resumeOnce`**, no bind failure on **`onDisconnected`**); **`lineWrap`/`cutPaper`** errors after **`printText`** don’t force **`false`**; **`OrderHistoryScreen`** snapshot **`null`** → **Could not load order for print**; tracker **`[x]`**. |
 | 2026-04-06 | **BUG-ARC-09** logged: **`docs/build_framework.md`** §15.2 — **epoch millis everywhere**; remaining **`LocalDateTime`** in domain/repos/UI beyond **BUG-ARC-02**; tracker **`[ ]`**. |
 | 2026-04-06 | **BUG-SYS-02** fixed: single **`LoginViewModel.logout()`** path; **`SessionChecker`** **`popUpTo(navController.graph.id)`** **`inclusive`** + **`launchSingleTop`**; removed **`NavGraph.onLogout`** / **`MainViewModel.logout`**; tracker **`[x]`**. |
 | 2026-04-06 | **BUG-ORD-05** fixed: **Active SRPs** UI filters collapsed + expanded detail to **selected** channel (resolver-aligned); **`ActiveSrpsViewModel`** list no longer drops piece-only rows; tracker **`[x]`**. |

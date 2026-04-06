@@ -1,6 +1,7 @@
 package com.redn.farm.utils
 
 import android.content.Context
+import android.util.Log
 import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
 import android.print.PrintManager
@@ -11,10 +12,15 @@ import com.sunmi.peripheral.printer.InnerPrinterException
 import com.sunmi.peripheral.printer.InnerPrinterManager
 import com.sunmi.peripheral.printer.SunmiPrinterService
 import com.sunmi.peripheral.printer.WoyouConsts
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 object PrinterUtils {
+    private const val TAG = "PrinterUtils"
+    private const val CONNECT_TIMEOUT_MS = 12_000L
+
     private var printerService: SunmiPrinterService? = null
 
     // Standard Android printing using WebView
@@ -102,11 +108,17 @@ object PrinterUtils {
                     setPrinterStyle(WoyouConsts.ENABLE_BOLD, 0)
                 }
 
-                // Add line spacing
-                lineWrap(3, null)
-
-                // Cut paper
-                cutPaper(null)
+                // Feed + cut can throw on some firmware after content already printed; still report success (BUG-PRT-01).
+                try {
+                    lineWrap(3, null)
+                } catch (e: Exception) {
+                    Log.w(TAG, "lineWrap after printText", e)
+                }
+                try {
+                    cutPaper(null)
+                } catch (e: Exception) {
+                    Log.w(TAG, "cutPaper after printText", e)
+                }
 
                 true
             }
@@ -116,43 +128,60 @@ object PrinterUtils {
         }
     }
 
+    /**
+     * Binds Sunmi printer service. Does **not** treat [InnerPrinterCallback.onDisconnected] as bind failure:
+     * a spurious disconnect before [onConnected] used to resume `null` and made [printMessage] return false
+     * even when printing later succeeded (BUG-PRT-01).
+     */
     private suspend fun connectPrinter(context: Context): SunmiPrinterService? =
-        suspendCancellableCoroutine { continuation ->
-            try {
-                // Check if we already have a connection
-                if (printerService != null) {
-                    continuation.resume(printerService)
-                    return@suspendCancellableCoroutine
+        withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
+            suspendCancellableCoroutine { continuation ->
+                val resumed = AtomicBoolean(false)
+                fun resumeOnce(value: SunmiPrinterService?) {
+                    if (!resumed.compareAndSet(false, true)) return
+                    try {
+                        continuation.resume(value)
+                    } catch (_: Exception) {
+                        // Continuation already completed (e.g. timeout) — ignore late callback
+                    }
+                }
+                try {
+                    if (printerService != null) {
+                        resumeOnce(printerService)
+                        return@suspendCancellableCoroutine
+                    }
+
+                    InnerPrinterManager.getInstance().bindService(
+                        context,
+                        object : InnerPrinterCallback() {
+                            override fun onConnected(service: SunmiPrinterService) {
+                                printerService = service
+                                resumeOnce(service)
+                            }
+
+                            override fun onDisconnected() {
+                                printerService = null
+                            }
+                        },
+                    )
+                } catch (e: InnerPrinterException) {
+                    e.printStackTrace()
+                    resumeOnce(null)
                 }
 
-                // Bind to the printer service
-                InnerPrinterManager.getInstance().bindService(context,
-                    object : InnerPrinterCallback() {
-                        override fun onConnected(service: SunmiPrinterService) {
-                            printerService = service
-                            continuation.resume(service)
-                        }
-
-                        override fun onDisconnected() {
-                            printerService = null
-                            continuation.resume(null)
-                        }
-                    })
-            } catch (e: InnerPrinterException) {
-                e.printStackTrace()
-                continuation.resume(null)
-            }
-
-            continuation.invokeOnCancellation {
-                try {
-                    InnerPrinterManager.getInstance().unBindService(context,
-                        object : InnerPrinterCallback() {
-                            override fun onConnected(service: SunmiPrinterService) {}
-                            override fun onDisconnected() {}
-                        })
-                    printerService = null
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                continuation.invokeOnCancellation {
+                    try {
+                        InnerPrinterManager.getInstance().unBindService(
+                            context,
+                            object : InnerPrinterCallback() {
+                                override fun onConnected(service: SunmiPrinterService) {}
+                                override fun onDisconnected() {}
+                            },
+                        )
+                        printerService = null
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             }
         }

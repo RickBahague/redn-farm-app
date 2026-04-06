@@ -150,7 +150,7 @@ fun OrderHistoryScreen(
                                     snackbarHostState.showSnackbar("Printing…")
                                     val (o, items) = viewModel.getOrderSnapshotForPrint(order.order_id)
                                     if (o == null) {
-                                        snackbarHostState.showSnackbar("Print failed")
+                                        snackbarHostState.showSnackbar("Could not load order for print")
                                         return@launch
                                     }
                                     val ok = PrinterUtils.printMessage(
