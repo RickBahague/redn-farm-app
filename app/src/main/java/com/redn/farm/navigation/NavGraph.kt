@@ -477,14 +477,19 @@ fun NavGraph(
             )
         ) { entry ->
             val oid = entry.arguments?.getString("operationId") ?: return@composable
-            val farmOpsListEntry = remember(entry) {
-                navController.getBackStackEntry(Screen.FarmOps.route)
+            // Share VM with farm_ops list when that route is on the stack; else use form entry (e.g. deep link to history + edit).
+            val farmOpsVmOwner = remember(entry) {
+                try {
+                    navController.getBackStackEntry(Screen.FarmOps.route)
+                } catch (_: IllegalArgumentException) {
+                    entry
+                }
             }
             RequireRole(navController, Rbac.ROLES_FARM_OPS) {
                 FarmOperationFormScreen(
                     operationIdKey = oid,
                     onNavigateBack = { navController.navigateUp() },
-                    viewModel = hiltViewModel(farmOpsListEntry)
+                    viewModel = hiltViewModel(farmOpsVmOwner)
                 )
             }
         }

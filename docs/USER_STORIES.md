@@ -1217,6 +1217,287 @@ CREATE TABLE IF NOT EXISTS preset_activation_log ( ... );
 
 ---
 
+## Epic 12 — End of Day Operations
+
+End of Day (EOD) is a formal daily close that creates a permanent snapshot of the business day: total sales, cash position, closing inventory, spoilage, and outstanding receivables. It is a reporting and reconciliation action — it does not lock or delete any existing records. Open (unpaid) orders remain open and carry over to the next day.
+
+**New entity: `day_close`**
+One record per closed business date. Fields: `close_id`, `business_date` (epoch millis, midnight of the day), `closed_by` (username), `closed_at` (epoch millis), `total_orders`, `total_sales_amount`, `total_collected`, `total_outstanding`, `total_acquisition_cost`, `notes`, `is_finalized` (boolean — once finalized, the record is read-only).
+
+**New entity: `day_close_inventory`**
+One row per product per day close. Fields: `close_id`, `product_id`, `product_name`, `total_acquired_all_time`, `total_sold_through_close_date`, `prior_posted_variance` (sum of `variance_qty` from all prior closes for this product), `adjusted_theoretical_remaining` (computed: total_acquired − total_sold − prior_variance), `sold_this_close_date` (qty from today's orders only), `actual_remaining` (entered by user; null if not counted), `variance_qty` (adjusted_theoretical − actual_remaining; null if not counted), `weighted_avg_cost_per_unit`, `variance_cost` (variance_qty × weighted_avg_cost; null if not counted).
+
+---
+
+### EOD-US-01 — Initiate day close
+
+**As** a store assistant or admin, **I want to** start the end-of-day closing process **so that** the day's operations are formally concluded with a summary record.
+
+**Actor:** Store Assistant, Admin
+**Status:** 📋
+
+**Acceptance criteria:**
+1. A **"Close Day"** action is accessible from the main dashboard, visible only to users with `STORE_ASSISTANT` or `ADMIN` role.
+2. Tapping it opens the Day Close screen for the current business date. If a close already exists for today, the screen shows the existing record (read-only if finalized, editable if draft).
+3. The business date displayed is the current calendar date — the user cannot close for a future date. Closing for a past date is allowed only for admins (covers late reconciliation scenarios).
+4. Before presenting the summary, the app computes and displays a warning if any of the following are true:
+   - There are orders created today with `is_paid = false`.
+   - There are acquisitions recorded today with no matching orders (i.e., all acquired stock appears unsold).
+5. The close process has two steps: **Review** (read-only computed summary) → **Confirm** (user finalizes). Finalizing sets `is_finalized = true` and records `closed_at` and `closed_by`.
+6. A finalized day close cannot be edited. Only an admin can un-finalize a close (for correction purposes).
+
+---
+
+### EOD-US-02 — Review daily sales summary
+
+**As** a store assistant, **I want to** see a summary of today's sales before confirming the close **so that** I can verify the numbers are correct.
+
+**Actor:** Store Assistant, Admin
+**Status:** 📋
+
+**Acceptance criteria:**
+1. The sales summary section of the Day Close screen shows:
+   - **Total orders** placed today (count).
+   - **Total sales amount** = sum of `total_amount` across all orders with `order_date` within the business day.
+   - **Paid orders** = count and amount where `is_paid = true`.
+   - **Unpaid / outstanding orders** = count and amount where `is_paid = false`.
+   - **Delivered orders** = count where `is_delivered = true`.
+2. Sales are broken down **by channel**:
+   - Online: order count and total amount.
+   - Reseller: order count and total amount.
+   - Offline: order count and total amount.
+3. Sales are broken down **by product** — top products by revenue for the day, showing product name, total quantity sold, and total revenue.
+4. All amounts are displayed in Philippine Peso format.
+5. The summary is computed on the fly from existing order records — it is not a separate ledger entry. Numbers shown here are the same as what would be shown in Order History filtered to today.
+
+---
+
+### EOD-US-03 — Post closing inventory
+
+**As** a purchasing assistant or admin, **I want to** reconcile total stock on hand against actual remaining quantities at end of day **so that** spoilage, loss, and unsold inventory are formally tracked across all acquisitions, not just today's.
+
+**Actor:** Purchasing Assistant, Admin
+**Status:** 📋
+
+**Background:** Acquisitions do not happen every day. A batch of 80 kg of tomatoes bought on Monday may still be selling on Wednesday and Thursday. The closing inventory must account for the full stock position — all acquisitions ever recorded minus all sales ever recorded — and reconcile that against a physical count at the end of each business day. This gives an accurate picture of what is on hand, regardless of when the stock was purchased.
+
+**Stock balance model:**
+
+The app maintains a running balance per product using two aggregates computed directly from existing records:
+
+- **Total acquired (all time)** = `SUM(acquisitions.quantity)` for that product, all dates.
+- **Total sold (all time, through close date)** = `SUM(order_items.quantity)` for that product, orders up to and including the close date.
+- **Theoretical on hand** = total acquired − total sold.
+- **Cumulative variance (all prior closes)** = total spoilage posted across all previous `day_close_inventory` records for that product.
+- **Adjusted theoretical remaining** = theoretical on hand − cumulative prior variance. This removes already-posted spoilage from the calculation so it is not double-counted.
+
+**Acceptance criteria:**
+1. The inventory section of the Day Close screen lists **every product that has a non-zero adjusted theoretical remaining** — regardless of whether an acquisition happened today. Products with zero theoretical remaining are hidden by default but can be shown via a toggle.
+2. For each product row, the screen displays:
+   - **Total acquired (all time):** cumulative quantity across all acquisitions.
+   - **Total sold (all time through today):** cumulative quantity across all order items.
+   - **Previously posted spoilage:** total variance posted in all prior day closes for this product.
+   - **Adjusted theoretical remaining:** total acquired − total sold − prior spoilage. This is the expected quantity on hand right now.
+   - **Sold today:** quantity sold in today's orders only — shown for reference to understand today's movement.
+   - **Last acquisition:** date, quantity, and cost per unit of the most recent acquisition for this product.
+3. The user enters the **actual remaining quantity** (physical count) for each product. The field defaults to the adjusted theoretical remaining.
+4. **Variance this period** is computed automatically:
+   - `variance = adjusted_theoretical_remaining − actual_remaining`
+   - Positive variance = spoilage / loss (actual is less than expected).
+   - Negative variance = surplus discrepancy — actual is more than expected. This flags a likely missing acquisition record and is highlighted with a warning.
+5. **Variance cost** = `variance × weighted_average_cost_per_unit`, where weighted average cost = `SUM(acquisitions.total_amount) / SUM(acquisitions.quantity)` for that product. Shown per product row and as a section total.
+6. A product with recent acquisitions but no sales yet is shown with `sold_today = 0` and `adjusted_theoretical_remaining = total_acquired − prior_spoilage`. Its full acquisition value remains at risk of spoilage and is highlighted if its most recent acquisition date is older than 3 days (configurable threshold).
+7. The inventory section may be saved in **draft** state (with or without physical counts) and finalized later. Individual product rows marked "not counted" are excluded from the spoilage total.
+8. When the day close is finalized, the entered `actual_remaining` values are written to `day_close_inventory` as the permanent record for this close date. These feed into the "cumulative prior variance" calculation for future closes.
+
+---
+
+### EOD-US-04 — Cash reconciliation
+
+**As** a store assistant, **I want to** reconcile the cash I collected today against what the system shows as paid **so that** any cash discrepancy is identified and recorded.
+
+**Actor:** Store Assistant, Admin
+**Status:** 📋
+
+**Acceptance criteria:**
+1. The cash reconciliation section shows:
+   - **Expected cash from orders** = total amount of today's orders marked `is_paid = true` and channel = `offline` or `reseller` (online orders may be paid via transfer and excluded or separately categorized).
+   - **Total remitted today** = sum of today's remittance records.
+   - **Difference** = expected cash − total remitted. Shown in a distinct color: green if zero or positive (surplus), red if negative (shortage).
+2. The user may enter a **cash-on-hand** figure (actual counted cash) as a free-entry field. If entered, the screen shows: cash-on-hand vs. expected cash, and the shortage/surplus.
+3. Any discrepancy (non-zero difference) must have a **remarks** field filled before the close can be finalized.
+4. Online payment collections (GCash, bank transfer) are shown separately from cash — labeled as "Digital collections" with a count and total amount, but not included in the cash reconciliation math.
+
+---
+
+### EOD-US-05 — View and print end-of-day summary report
+
+**As** an admin, **I want to** print a thermal end-of-day summary slip **so that** I have a physical record of the day's performance for filing.
+
+**Actor:** Admin, Store Assistant
+**Status:** 📋
+
+**Acceptance criteria:**
+1. A **Print EOD Summary** button is available on the Day Close screen (both draft and finalized states).
+2. The printed slip (58mm thermal) includes:
+   - Header: business name, "End of Day Report", date.
+   - **Sales summary:** total orders, total sales, paid amount, outstanding amount.
+   - **Channel breakdown:** online / reseller / offline — order count and amount each.
+   - **Top 5 products by revenue:** product name and total revenue.
+   - **Inventory close:** product name, adjusted theoretical remaining, actual remaining (if counted), variance qty — one line per product. Total variance cost at the bottom.
+   - **Cash reconciliation:** expected cash, cash-on-hand (if entered), difference.
+   - **Total variance cost (spoilage).**
+   - **COGS today** = cost of goods sold based on weighted average acquisition cost.
+   - **Gross margin** = collected revenue − COGS today, with margin %.
+   - Footer: closed by (username), closed at (time).
+3. If the close is not yet finalized, the slip header prints "DRAFT — NOT FINAL".
+4. Print is triggered via the Sunmi built-in printer using `PrinterUtils.printMessage`.
+
+---
+
+### EOD-US-06 — View day close history
+
+**As** an admin, **I want to** view the history of past day closes **so that** I can compare daily performance and access any day's EOD record.
+
+**Actor:** Admin
+**Status:** 📋
+
+**Acceptance criteria:**
+1. A **Day Close History** screen is accessible from the main dashboard (admin only).
+2. The list shows one row per closed date: business date, total sales, total orders, gross margin, closed by, closed at.
+3. Tapping a row opens the full day close detail — all sections (sales summary, inventory, cash reconciliation) in read-only mode.
+4. A finalized close record can be re-printed from the detail view.
+5. The list is sorted by date descending. It supports date range filtering.
+6. An admin can **un-finalize** a close from the detail view — this re-opens it for editing. Un-finalization is logged with the admin's username and timestamp.
+
+---
+
+### EOD-US-07 — Cost of goods sold vs. revenue
+
+**As** an admin, **I want to** see today's revenue against the actual cost of the goods sold today **so that** I have a meaningful daily margin that reflects the real cost of what was sold, not just what was bought on that day.
+
+**Actor:** Admin
+**Status:** 📋
+
+**Background:** Comparing today's revenue to today's acquisition spend is misleading — on most days there is no acquisition, making the "procurement cost" appear as zero. The correct measure is **cost of goods sold (COGS)**: the acquisition cost attributable to the specific quantities sold today. This is derived from the acquisition pool using a weighted average cost per product, applied to today's sold quantities.
+
+**Acceptance criteria:**
+1. The Day Close screen includes a **Revenue vs. COGS** section with the following figures:
+
+   **Today's revenue:**
+   - **Gross revenue today** = `SUM(order_items.total_price)` for all order items in orders with `order_date` = close date (all orders regardless of paid status).
+   - **Collected revenue today** = same, but restricted to orders where `is_paid = true`.
+   - **Outstanding revenue today** = gross − collected (what is still owed from today's orders).
+
+   **Cost of goods sold (COGS) today:**
+   - For each product sold today, COGS = `qty_sold_today × weighted_avg_cost_per_unit`.
+   - **Weighted average cost per unit** = `SUM(acquisitions.total_amount) / SUM(acquisitions.quantity)` for that product, all acquisitions ever. This represents the average cost per kg (or per piece) across the entire acquisition history.
+   - **Total COGS today** = sum of COGS across all products sold today.
+
+   **Margin:**
+   - **Gross margin (amount)** = collected revenue today − total COGS today.
+   - **Gross margin (%)** = (gross margin ÷ collected revenue today) × 100, to 1 decimal place. Shown as `—` if collected revenue is zero.
+
+2. A secondary **Cumulative position** subsection shows the broader picture:
+   - **Total acquisition investment (all time)** = `SUM(acquisitions.total_amount)` for all products ever acquired.
+   - **Total revenue collected (all time)** = `SUM(orders.total_amount)` for all paid orders ever.
+   - **Outstanding inventory value** = adjusted theoretical remaining stock (from EOD-US-03) × weighted average cost per unit, summed across all products. This is how much capital is still tied up in unsold stock.
+   - **Net recovered** = total revenue collected − total acquisition investment. Positive means the business has recovered more than it spent on stock overall; negative means cumulative acquisition investment still exceeds total collections.
+
+3. A visual indicator (color) distinguishes positive from negative margin on both today's and the cumulative figures.
+4. This section is informational and never blocks finalization. If today's gross margin is negative, a confirmation dialog appears: "Today's COGS exceeds collected revenue. Confirm close?" — allowing the user to proceed.
+5. **Other outflows today** are listed separately below the margin line and are not subtracted from it:
+   - Employee wages paid today = `SUM(employee_payments.amount)` for payments with `date_paid` = close date.
+   - Remittances recorded today = `SUM(remittances.amount)` for remittances with `date` = close date.
+   These are shown for completeness; net margin after labor and overhead is a server-side reporting concept (EOD reporting on device is gross margin only).
+
+---
+
+### EOD-US-10 — Outstanding inventory report
+
+**As** an admin or purchasing assistant, **I want to** view all stock currently on hand across all acquisitions **so that** I know exactly what I have, what it cost, how long it has been sitting, and what is at risk of spoilage.
+
+**Actor:** Admin, Purchasing Assistant
+**Status:** 📋
+
+**Background:** "Outstanding inventory" is distinct from the EOD-US-03 inventory close. EOD-US-03 is a reconciliation done at close time that posts spoilage. The outstanding inventory report is a **live, always-available view** of the current theoretical stock position derived from all acquisition and order records — accessible at any time during the day, not just at close. It is the answer to "what do I still have on hand right now?"
+
+**Acceptance criteria:**
+
+**Access:**
+1. The Outstanding Inventory screen is accessible from the main dashboard as a standalone navigation item, available to `ADMIN` and `PURCHASING` roles at any time — not only during day close.
+2. It is also shown as a section within the Day Close screen (EOD-US-01) when the user reaches the inventory step.
+
+**Per-product summary view (default):**
+3. The screen lists every product with a non-zero theoretical remaining quantity. For each product:
+   - **Product name.**
+   - **Total acquired (all time):** cumulative quantity across all acquisition records.
+   - **Total sold (all time):** cumulative quantity across all order items.
+   - **Previously posted spoilage:** total variance from all finalized day closes.
+   - **Theoretical on hand:** total acquired − total sold − posted spoilage.
+   - **Weighted average cost/unit:** `SUM(total_amount) / SUM(quantity)` across all acquisitions for that product.
+   - **Outstanding inventory value:** theoretical on hand × weighted avg cost/unit.
+   - **Oldest unsold stock date:** date of the earliest acquisition that still has unrecovered quantity (based on FIFO — oldest acquisition's remaining quantity depleted first by sales).
+   - **Days on hand (oldest lot):** calendar days since the oldest unsold acquisition date.
+4. Products are sorted by **days on hand descending** by default (oldest unsold stock first), so aging inventory is immediately visible at the top.
+5. A **total outstanding inventory value** is shown at the top of the screen: sum of outstanding value across all products.
+
+**Per-acquisition drill-down:**
+6. Tapping a product row expands it to show the individual acquisition lots contributing to the current stock position. For each acquisition lot:
+   - Acquisition date, acquisition ID, quantity acquired, quantity sold (attributed to this lot, FIFO), quantity remaining in this lot, cost per unit, lot remaining value.
+   - Age in days since acquisition date.
+7. Lots with **age ≥ 3 days** (default; configurable in settings by admin) are flagged with a visual indicator (e.g., amber color) to indicate aging/spoilage risk. Lots ≥ 7 days are flagged as critical (red).
+
+**Filtering and search:**
+8. The list can be filtered by product category and searched by product name.
+9. A toggle shows **"At-risk only"** — products where the oldest lot is beyond the aging threshold.
+
+**Print:**
+10. A **Print Outstanding Inventory** button prints a thermal slip with:
+    - Header: "Outstanding Inventory — as of [date and time]"
+    - One line per product: product name, theoretical on hand (qty + unit), days on hand (oldest lot), outstanding value.
+    - Total outstanding value.
+    - Footer: printed by (username).
+
+**Relationship to EOD-US-03:**
+11. The quantities shown in the Outstanding Inventory screen are the same theoretical figures used as the starting point for the EOD-US-03 physical count. If a day close has been finalized for today, the outstanding inventory screen reflects the `actual_remaining` values from that close instead of the theoretical remaining (i.e., finalized close values override the theoretical until the next day's sales update the running total).
+
+---
+
+### EOD-US-08 — Outstanding orders report at close
+
+**As** an admin or store assistant, **I want to** see all unpaid orders as part of the day close **so that** I know exactly what receivables are open going into the next day.
+
+**Actor:** Admin, Store Assistant
+**Status:** 📋
+
+**Acceptance criteria:**
+1. The Day Close screen includes an **Outstanding Orders** section listing all orders where `is_paid = false` as of close time — not just today's orders but all historical unpaid orders.
+2. Each row shows: order ID, customer name, channel, order date (age in days), and amount.
+3. Orders are sorted by order date ascending (oldest outstanding first).
+4. The section shows a total outstanding amount at the top.
+5. Tapping an order row navigates to the Order Detail screen — allowing the user to mark it paid directly from within the day close flow.
+6. The outstanding orders list is printed as a section on the thermal EOD slip (up to 10 rows; if more, shows count and total only to fit on 58mm paper).
+
+---
+
+### EOD-US-09 — Employee day summary at close
+
+**As** an admin, **I want to** see a summary of which employees worked today and what wages are due **so that** payroll is accounted for each day even if payment is made later.
+
+**Actor:** Admin
+**Status:** 📋
+
+**Acceptance criteria:**
+1. The Day Close screen includes an **Employee Day Summary** section.
+2. The section lists employees who have a payment record with `date_paid` equal to today's business date, showing: employee name, gross wage (`amount`), cash advance (`cash_advance_amount`), and net pay.
+3. If no payments were recorded today, the section shows "No employee payments recorded today" — this is not a blocker for close.
+4. **Wages due but not yet paid** can be noted in a free-text `notes` field on the day close record — the app does not enforce payment before close.
+5. Total wages paid today = sum of `amount` from today's `employee_payments`. Shown as a summary line.
+6. Wages due today appear on the printed EOD slip as a single total line: "Employee wages paid today: PHP X,XXX.00".
+
+---
+
 ## Non-Functional Stories
 
 ### NFR-US-01 — Works on Android 7.0+
@@ -1265,6 +1546,6 @@ CREATE TABLE IF NOT EXISTS preset_activation_log ( ... );
 - Cloud backup / remote database
 - Push notifications
 - Role-based access control (RBAC) in the UI
-- Report generation / dashboards / charts
-- Print support from within the app
+- Report generation / dashboards / charts *(EOD daily reports are in scope as of Epic 12; multi-period dashboards and trend charts remain out of scope)*
+- Print support from within the app *(EOD thermal slip printing is in scope as of Epic 12; general in-app print is out of scope)*
 - Barcode / QR scanning for products

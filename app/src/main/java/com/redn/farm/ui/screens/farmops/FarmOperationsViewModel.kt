@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.model.FarmOperation
 import com.redn.farm.data.model.FarmOperationType
+import com.redn.farm.data.model.Product
 import com.redn.farm.data.repository.FarmOperationRepository
 import com.redn.farm.data.repository.ProductRepository
 import com.redn.farm.security.Rbac
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import com.redn.farm.utils.MillisDateRange
 import kotlinx.coroutines.launch
@@ -65,12 +67,21 @@ class FarmOperationsViewModel @Inject constructor(
         initialValue = emptyList()
     )
 
-    val products = productRepository.getAllProducts()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
+    private val _products = MutableStateFlow<List<Product>>(emptyList())
+    val products: StateFlow<List<Product>> = _products.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            productRepository.getAllProducts().collect { list -> _products.value = list }
+        }
+    }
+
+    /** Re-read DB when opening the related-product picker (BUG-FOP-02 — sheet/flow timing). */
+    fun refreshProductListFromDb() {
+        viewModelScope.launch {
+            _products.value = productRepository.getAllProducts().first()
+        }
+    }
 
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
@@ -114,4 +125,6 @@ class FarmOperationsViewModel @Inject constructor(
         }
     }
 
+    /** BUG-FOP-04: pre-fill **Personnel** on new log operation from session. */
+    fun loggedInUsernameOrEmpty(): String = sessionManager.getUsername().orEmpty()
 } 

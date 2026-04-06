@@ -2,6 +2,7 @@ package com.redn.farm.ui.screens.farmops
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,7 +35,6 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -43,7 +43,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -54,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.redn.farm.data.model.FarmOperation
 import com.redn.farm.data.model.FarmOperationType
 import com.redn.farm.data.model.Product
@@ -62,6 +62,20 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+private val FARM_OP_WEATHER_OPTIONS = listOf("Hot/Dry", "Rainy", "Cloudy")
+
+private fun normalizeFarmOpWeather(saved: String): String {
+    val t = saved.trim()
+    if (t in FARM_OP_WEATHER_OPTIONS) return t
+    val lower = t.lowercase(Locale.getDefault())
+    return when {
+        lower.contains("rain") -> "Rainy"
+        lower.contains("cloud") -> "Cloudy"
+        lower.contains("hot") || lower.contains("dry") -> "Hot/Dry"
+        else -> FARM_OP_WEATHER_OPTIONS.first()
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,8 +109,14 @@ fun FarmOperationFormScreen(
     var selectedType by remember(operationIdKey) { mutableStateOf(FarmOperationType.SOWING) }
     var details by remember(operationIdKey) { mutableStateOf("") }
     var area by remember(operationIdKey) { mutableStateOf("") }
-    var weather by remember(operationIdKey) { mutableStateOf("") }
-    var personnel by remember(operationIdKey) { mutableStateOf("") }
+    var weather by remember(operationIdKey) {
+        mutableStateOf(if (isNew) FARM_OP_WEATHER_OPTIONS.first() else "")
+    }
+    var personnel by remember(operationIdKey) {
+        mutableStateOf(
+            if (operationIdKey == "new") viewModel.loggedInUsernameOrEmpty() else ""
+        )
+    }
     var operationDateMillis by remember(operationIdKey) {
         mutableStateOf(MillisDateRange.startOfDayMillis(System.currentTimeMillis()))
     }
@@ -106,13 +126,21 @@ fun FarmOperationFormScreen(
     var searchQuery by remember { mutableStateOf("") }
     var showDatePicker by remember { mutableStateOf(false) }
     var typeMenuExpanded by remember(operationIdKey) { mutableStateOf(false) }
+    var weatherMenuExpanded by remember(operationIdKey) { mutableStateOf(false) }
+
+    LaunchedEffect(showProductSheet) {
+        if (showProductSheet) {
+            searchQuery = ""
+            viewModel.refreshProductListFromDb()
+        }
+    }
 
     LaunchedEffect(existing, products) {
         val op = existing ?: return@LaunchedEffect
         selectedType = op.operation_type
         details = op.details
         area = op.area
-        weather = op.weather_condition
+        weather = normalizeFarmOpWeather(op.weather_condition)
         personnel = op.personnel
         operationDateMillis = MillisDateRange.startOfDayMillis(op.operation_date)
         selectedProduct = op.product_id?.let { pid -> products.find { it.product_id == pid } }
@@ -128,7 +156,6 @@ fun FarmOperationFormScreen(
         }
     }
 
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val canSave = details.isNotBlank()
 
     fun performSave() {
@@ -180,19 +207,25 @@ fun FarmOperationFormScreen(
     }
 
     if (showProductSheet) {
-        ModalBottomSheet(
+        Dialog(
             onDismissRequest = {
                 showProductSheet = false
                 searchQuery = ""
-            },
-            sheetState = sheetState
+            }
         ) {
-            Column(
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 24.dp)
+                    .heightIn(min = 220.dp, max = 520.dp),
+                shape = RoundedCornerShape(16.dp),
+                tonalElevation = 6.dp
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 16.dp)
+                ) {
                 Text("Select product", style = MaterialTheme.typography.titleMedium)
                 OutlinedTextField(
                     value = searchQuery,
@@ -215,28 +248,44 @@ fun FarmOperationFormScreen(
                     modifier = Modifier.heightIn(max = 400.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(filteredProducts, key = { it.product_id }) { product ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selectedProduct = product
-                                    showProductSheet = false
-                                    searchQuery = ""
-                                }
-                        ) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text(product.product_name, style = MaterialTheme.typography.titleSmall)
-                                if (product.product_description.isNotEmpty()) {
-                                    Text(
-                                        product.product_description,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                    if (filteredProducts.isEmpty()) {
+                        item {
+                            Text(
+                                text = if (products.isEmpty()) {
+                                    "No products yet. Add them under Manage Products."
+                                } else {
+                                    "No products match your search."
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 16.dp)
+                            )
+                        }
+                    } else {
+                        items(filteredProducts, key = { it.product_id }) { product ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedProduct = product
+                                        showProductSheet = false
+                                        searchQuery = ""
+                                    }
+                            ) {
+                                Column(Modifier.padding(16.dp)) {
+                                    Text(product.product_name, style = MaterialTheme.typography.titleSmall)
+                                    if (product.product_description.isNotEmpty()) {
+                                        Text(
+                                            product.product_description,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
+                }
                 }
             }
         }
@@ -353,13 +402,39 @@ fun FarmOperationFormScreen(
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
-                OutlinedTextField(
-                    value = weather,
-                    onValueChange = { weather = it },
-                    label = { Text("Weather") },
-                    singleLine = true,
+                ExposedDropdownMenuBox(
+                    expanded = weatherMenuExpanded,
+                    onExpandedChange = { weatherMenuExpanded = !weatherMenuExpanded },
                     modifier = Modifier.weight(1f)
-                )
+                ) {
+                    OutlinedTextField(
+                        value = weather,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Weather") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = weatherMenuExpanded)
+                        },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = weatherMenuExpanded,
+                        onDismissRequest = { weatherMenuExpanded = false }
+                    ) {
+                        FARM_OP_WEATHER_OPTIONS.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option) },
+                                onClick = {
+                                    weather = option
+                                    weatherMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
             }
 
             OutlinedTextField(

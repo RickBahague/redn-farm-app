@@ -935,21 +935,84 @@ All per-piece acquisitions already in the DB have inflated SRPs. They will need 
 - The sheet lists **all products** (or the same set other screens use from **`ProductRepository`**), with search filtering as implemented.
 - If there are truly no products, show an explicit **empty state** message instead of a blank list.
 
-### Investigation *(open)*
-1. Confirm **`FarmOperationsViewModel.products`** (`productRepository.getAllProducts()` → **`collectAsState`**) is subscribed and non-empty when the form is shown (navigation scope, **`stateIn`** timing, first emission).
-2. Check **`filteredProducts`** / **`searchQuery`** — e.g. stale filter clearing when opening the sheet.
-3. Compare with a screen that reliably loads products (**`TakeOrderViewModel`**, **`ManageProductsViewModel`**) for DAO / repository parity.
+### Root cause
+- **`products`** used **`stateIn(..., SharingStarted.WhileSubscribed(5000))`** while **`FarmOperationsScreen`** never **`collect`**s **`products`** (only **`operations`**). After 5s with no subscribers the upstream collection **stopped**; restarting on the form was **unreliable**, so the sheet often saw only **`initialValue` `emptyList()`**.
+
+### Fix *(implemented)*
+- **`FarmOperationsViewModel.products`:** Replaced **`stateIn`** with **`MutableStateFlow`** + **`init { collect(getAllProducts()) }`** so the product list always tracks Room.
+- **`refreshProductListFromDb()`:** Called when the related-product picker opens (**`LaunchedEffect(showProductSheet)`**) to **`first()`** the Flow and avoid stale/empty UI (**persisting FOP-02** follow-up).
+- **`FarmOperationFormScreen`:** Product UI moved from **`ModalBottomSheet`** to **`Dialog` + `Surface`** (same class of layering as numeric pad) so the list isn’t an empty/glitched sheet; empty-state copy retained.
+- **`NavGraph`:** **`FarmOperationForm`** VM owner falls back to the form **`NavBackStackEntry`** if **`farm_ops`** is not on the stack.
+
+### Files
+- `app/src/main/java/com/redn/farm/ui/screens/farmops/FarmOperationsViewModel.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/farmops/FarmOperationFormScreen.kt`
+- `app/src/main/java/com/redn/farm/navigation/NavGraph.kt`
+
+### Verification
+- With at least one product in DB: open **Log operation** → **Related product** → sheet shows products; select one → save → history/card shows product name.
+- `./gradlew :app:compileDebugKotlin` ✅
+
+**Status:** `[x]`
+
+---
+
+## BUG-FOP-03 — **Log Operation:** **Weather** as **dropdown** (**Hot/Dry**, **Rainy**, **Cloudy**) not free text
+
+### Report
+- **Screen:** **Farm Operations** → **Log operation** / **Edit operation** (`FarmOperationFormScreen.kt`).
+- **Today:** **Weather** is a single-line **`OutlinedTextField`** (free text).
+- **Desired UX:** A **dropdown** (e.g. **`ExposedDropdownMenuBox`**, same pattern as **operation type**) with exactly these labels:
+  1. **Hot/Dry**
+  2. **Rainy**
+  3. **Cloudy**
+- Optional: fourth choice **Other** + short text only if product needs it later — **not** in scope unless stakeholders ask; default is the three fixed values only.
+
+### Expected
+- User picks one of the three options; stored **`weather_condition`** (or equivalent **`FarmOperation` / entity** field) is that string (e.g. for print/history cards).
+- **Edit** pre-selects the matching option when the saved string equals one of the three; legacy/custom saved text may map to a sensible default or first item (decide in implementation).
+
+### Fix (implemented)
+- **`FarmOperationFormScreen`:** **Weather** uses **`ExposedDropdownMenuBox`** with fixed options **Hot/Dry**, **Rainy**, **Cloudy**; new operations default to **Hot/Dry**. **`normalizeFarmOpWeather`** maps legacy free text (keywords **rain** / **cloud** / **hot**/**dry**) or defaults to **Hot/Dry**.
+
+### Files
+- `app/src/main/java/com/redn/farm/ui/screens/farmops/FarmOperationFormScreen.kt` (primary)
+- Display surfaces if needed: `FarmOperationCard.kt`, `FarmOperationHistoryScreen.kt`, `ThermalPrintBuilders.kt` / `buildFarmOperationLog` (verify weather line still reads well)
+
+### Verification
+- Log + edit operation: choose each weather value, save, reopen — field shows selection; list/card/print show expected text.
+- `./gradlew :app:compileDebugKotlin`
+
+**Status:** `[x]`
+
+---
+
+## BUG-FOP-04 — **Log Operation:** **Personnel** pre-filled with **logged-in user**
+
+### Report
+- **Screen:** **Farm Operations** → **Log operation** (`FarmOperationFormScreen.kt` — new operation; clarify behavior for **edit** below).
+- **Today:** **Personnel** is an empty **`OutlinedTextField`** until the user types.
+- **Desired UX:** For **new** operations, pre-populate **Personnel** with the current session user (**login username**), e.g. from **`SessionManager.getUsername()`** (same source as auth; see **`SessionManager.kt`**).
+- **Edit existing operation:** Keep **stored** **`personnel`** from the record; do **not** overwrite with the current user unless the field was blank (product decision: default = preserve DB on edit).
+
+### Expected
+- **Add / Log operation:** Opening the form shows the logged-in username in **Personnel**; user may still edit or clear before save.
+- **`FarmOperation.personnel`** persists whatever is shown on save (unchanged rule).
 
 ### Files
 - `app/src/main/java/com/redn/farm/ui/screens/farmops/FarmOperationFormScreen.kt`
 - `app/src/main/java/com/redn/farm/ui/screens/farmops/FarmOperationsViewModel.kt`
-- `app/src/main/java/com/redn/farm/data/repository/ProductRepository.kt` (or equivalent **`getAllProducts`**)
+
+### Fix *(implemented)*
+- **`FarmOperationsViewModel.loggedInUsernameOrEmpty()`** — **`sessionManager.getUsername().orEmpty()`**.
+- **`FarmOperationFormScreen`:** **`personnel`** **`mutableStateOf`** for **`operationIdKey == "new"`** uses that value; **edit** still starts **`""`** and **`LaunchedEffect(existing, …)`** sets **`personnel = op.personnel`**.
 
 ### Verification
-- With at least one product in DB: open **Log operation** → **Related product** → sheet shows products; select one → save → history/card shows product name.
-- `./gradlew :app:compileDebugKotlin`
+- Log in as **user A** → **Log operation** → **Personnel** contains **user A**’s username (or display convention if you normalize case).
+- Edit an operation saved with different personnel → field still shows saved value.
+- `./gradlew :app:compileDebugKotlin` ✅
 
-**Status:** `[ ]`
+**Status:** `[x]`
 
 ---
 
@@ -1120,6 +1183,10 @@ All per-piece acquisitions already in the DB have inflated SRPs. They will need 
 
 | Date | Change |
 |------|--------|
+| 2026-04-06 | **BUG-FOP-04** fixed: **`loggedInUsernameOrEmpty()`** + new-op **`personnel`** default; edit via **`LaunchedEffect`**; **`[x]`**. |
+| 2026-04-03 | **BUG-FOP-03** fixed: **Log operation** **Weather** — **`ExposedDropdownMenu`** **Hot/Dry** / **Rainy** / **Cloudy**; **`normalizeFarmOpWeather`** for legacy text; tracker **`[x]`**. |
+| 2026-04-06 | **BUG-FOP-03** logged: **Log operation** — **Weather** → dropdown **Hot/Dry**, **Rainy**, **Cloudy** (not free text); **`[ ]`**. |
+| 2026-04-06 | **BUG-FOP-02** fixed: **`FarmOperationsViewModel.products`** **`SharingStarted.Eagerly`** (list screen never subscribed — **`WhileSubscribed`** dropped upstream); product sheet empty states; **`NavGraph`** form VM owner fallback; tracker **`[x]`**. |
 | 2026-04-06 | **BUG-PRT-01** fixed: **`PrinterUtils.connectPrinter`** (**`withTimeoutOrNull`**, **`resumeOnce`**, no bind failure on **`onDisconnected`**); **`lineWrap`/`cutPaper`** errors after **`printText`** don’t force **`false`**; **`OrderHistoryScreen`** snapshot **`null`** → **Could not load order for print**; tracker **`[x]`**. |
 | 2026-04-06 | **BUG-ARC-09** logged: **`docs/build_framework.md`** §15.2 — **epoch millis everywhere**; remaining **`LocalDateTime`** in domain/repos/UI beyond **BUG-ARC-02**; tracker **`[ ]`**. |
 | 2026-04-06 | **BUG-SYS-02** fixed: single **`LoginViewModel.logout()`** path; **`SessionChecker`** **`popUpTo(navController.graph.id)`** **`inclusive`** + **`launchSingleTop`**; removed **`NavGraph.onLogout`** / **`MainViewModel.logout`**; tracker **`[x]`**. |
