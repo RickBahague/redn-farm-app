@@ -273,6 +273,8 @@ Always in `Scaffold.bottomBar` or a full-width `FilledButton` at the bottom of a
 
 Build one `NumericPadBottomSheet` composable and reuse it everywhere quantity, price, or amount is entered. Hardcoding numeric input into multiple screens diverges quickly. The Farm App built this in Phase 2 and used it across acquisition, order, payment, and remittance flows.
 
+**Scroll vs. press:** Do not open the pad from **`collectIsPressedAsState()`** (or similar) on the **read-only field** inside a **vertically scrolling** form (e.g. pricing preset editor). A scrolling finger briefly presses children as it moves, which opens the pad by mistake. Prefer opening the pad **only from an explicit control** (dialpad trailing icon). If you need tap-on-field for a tiny non-scroll dialog, gate it behind a parameter (Farm App: `NumericPadOutlinedTextField(..., openPadOnFieldPress = true)` only where the trade-off is acceptable). Track regressions in **`docs/bugs.md`**.
+
 ### 6.4 Live computation preview
 
 Show the user what the system will compute before they save. This is especially important for:
@@ -487,6 +489,7 @@ A well-maintained `CLAUDE.md` eliminates 80% of the context-setting needed at th
 | **No snapshot on configurable compute** | Edit with new preset silently changes historical record | Snapshot pattern on every configured computation |
 | **Dialog for complex forms** | 8-field form crammed into AlertDialog; keyboard covers save button | Apply the 4-field rule strictly from Phase 1 |
 | **Per-unit-type blindness in print** | Print builder always showed `/kg` SRP, even for per-piece acquisitions | Every price display checks `is_per_kg`; per-piece products must never show kg-labelled prices |
+| **Numeric pad opens while scrolling** | Press detection on the field fires during scroll gestures | Icon-only open on scrollable screens; see §6.3 |
 
 ---
 
@@ -513,7 +516,9 @@ A well-maintained `CLAUDE.md` eliminates 80% of the context-setting needed at th
 
 ## 15. Things this app would do differently in v2
 
-**Tracker (open items):** **`docs/bugs.md`** — **BUG-ARC-01** through **BUG-ARC-09** (§15.2 follow-through: **BUG-ARC-09**; **BUG-ARC-02** = partial Room/domain millis migration).
+**Bugs:** Every defect worth fixing should be filed in **`docs/bugs.md`** with report, root cause (once known), fix, files, verification, and **`[ ]` / `[x]`** status — not only “architecture” items. Examples: **BUG-ARC-*** (structure, Room, millis), **BUG-FOP-*** (farm ops UX), **BUG-ORD-***, **BUG-ACQ-***, **BUG-PRD-***, etc. That file is the single tracker; this section lists **v2 conventions**, not every bug id.
+
+**Tracker snapshot (architecture-heavy):** **`docs/bugs.md`** — **BUG-ARC-01** through **BUG-ARC-09** (e.g. §15.2 epoch millis: **BUG-ARC-09**; Room/domain migration: **BUG-ARC-02** / **BUG-ARC-04**). See **`bugs.md`** for the full list and open items.
 
 1. **Hilt everywhere from day 1** — no manual ViewModelFactory anywhere
 2. **Epoch millis everywhere** — no `LocalDateTime` with converters

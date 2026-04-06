@@ -558,6 +558,39 @@ All per-piece acquisitions already in the DB have inflated SRPs. They will need 
 
 ---
 
+## BUG-ACQ-09 — Add/Edit acquisition: align **numpad** UX with **preset editor** (icon-only; no scroll misfire)
+
+### Report
+- **Screen:** **Acquire Produce** → **Add** / **Edit acquisition** (`AcquisitionFormScreen.kt` — full-screen form with scroll).
+- **Today:** The shared **`NumericPadBottomSheet`** is opened when **`collectIsPressedAsState()`** goes true on **quantity**, **price/unit**, **total**, **spoilage**, **custom SRP** fields (and related **`LaunchedEffect`** wiring). That matches the older **BUG-ACQ-01** “press to open pad” fix but conflicts with the pattern used on **Pricing Preset Editor** and **`NumericPadOutlinedTextField`**: by default the pad opens **only from the dialpad trailing icon**, so **scrolling** past fields does not accidentally open the pad (**`docs/build_framework.md`** §6.3).
+- **Desired:** Same behavior as preset editor — **explicit dialpad (or equivalent) opens the pad** on this scrollable acquisition form; remove or disable press-to-open on the field body unless intentionally opted in (e.g. `openPadOnFieldPress = true` only where justified).
+
+### Expected
+- Scrolling the add/edit acquisition form does not open the numeric pad unless the user taps the **dialpad** control (or a clearly separate affordance per field).
+- Parity with **`PricingPresetEditorScreen`** / **`NumericPadOutlinedTextField`** defaults; refactor or duplicate trailing-icon pattern for **`AcquisitionNumericPadTarget`** fields as needed.
+
+### Files
+- `app/src/main/java/com/redn/farm/ui/screens/acquire/AcquisitionFormScreen.kt` (primary)
+- See **Related screens (audit)** for other call sites to align or follow up.
+
+### Related screens (audit)
+- **Reference (already icon-only default):** **`PricingPresetEditorScreen`**, **`RemittanceFormScreen`** — use **`NumericPadOutlinedTextField`** with **`openPadOnFieldPress = false`** (pad opens from **dialpad** only unless opted in).
+- **Aligned in same fix:** **`ProductSelectionDialog.kt`** (Take Order quantity), **`EditOrderScreen.kt`** (**`EditOrderItemDialog`** + add-line dialog quantity), **`ManageProductsScreen.kt`** **`SetFallbackPriceSheet`** (dialpad icons; removed **`clickable`** on fields).
+
+### Fix *(implemented)*
+- Removed **`collectIsPressedAsState()`** / **`LaunchedEffect`** pad-open wiring from **`AcquisitionFormScreen`** (quantity, total, price/unit, spoilage) and from **`CustomSrpPadField`**; pad opens only via **dialpad** **`IconButton`**.
+- Same for **Take Order** / **Edit order** quantity fields above.
+- **Set fallback price** sheet: **`Modifier.clickable`** on read-only fields replaced with **trailing dialpad** + **`LocalFocusManager.clearFocus()`** on open.
+
+### Verification
+- Scroll up/down through the form without touching dialpad icons → pad stays closed.
+- Tap dialpad on each numeric field → pad opens with correct title/target.
+- `./gradlew :app:compileDebugKotlin` ✅ + manual QA on device.
+
+**Status:** `[x]`
+
+---
+
 ## BUG-RMT-01 — Remittance: add/edit as full-screen form (not `AlertDialog`)
 
 ### Report
@@ -863,6 +896,60 @@ All per-piece acquisitions already in the DB have inflated SRPs. They will need 
 - **`./gradlew :app:compileDebugKotlin`** + **`./gradlew :app:testDebugUnitTest`** (includes **`MillisDateRangeTest`**).
 
 **Status:** `[x]`
+
+---
+
+## BUG-FOP-01 — **Farm Operations → Log Operation:** operation type as **dropdown** (not chip grid)
+
+### Report
+- **Screen:** **Farm Operations** → **Log Operation** (add/edit farm operation form).
+- **Current UX:** **`FarmOperationFormScreen`** lays out **`FarmOperationType`** as multiple rows of **`FilterChip`** (three chips per row). This uses a lot of vertical space and reads more like a filter than a single field selection.
+- **Desired UX:** One **simple dropdown** (e.g. **`ExposedDropdownMenuBox`** / Material3 **menu**) listing all operation types with the same human-readable labels as today (**`FarmOperationType.toString()`**).
+
+### Expected
+- Single compact control: tap → list of all types → pick one; selected value visible when closed.
+- No behavior change to **`FarmOperation`** / save logic beyond binding **`selectedType`** the same way as today.
+
+### Fix
+- Replaced **`FilterChip`** grid with **`ExposedDropdownMenuBox`** + read-only **`OutlinedTextField`** + **`ExposedDropdownMenu`** (same pattern as **`FarmOperationFilters`** / **`PricingPresetEditorScreen`**). Labels remain **`FarmOperationType.toString()`**.
+
+### Files
+- `app/src/main/java/com/redn/farm/ui/screens/farmops/FarmOperationFormScreen.kt`
+
+### Verification
+- `./gradlew :app:compileDebugKotlin` ✅
+- Manual: open **Log Operation**, choose each type from the dropdown, save, confirm history/card shows correct type.
+
+**Status:** `[x]`
+
+---
+
+## BUG-FOP-02 — **Log Operation:** **Related product** picker shows **no products** (empty list / “dropdown”)
+
+### Report
+- **Screen:** **Farm Operations** → **Log Operation** / **Edit operation** (`FarmOperationFormScreen.kt`).
+- **Area:** Expand **Related product (optional)** → tap the card to open the **Select product** bottom sheet (search + list — users often describe this as a dropdown).
+- **Symptom:** The product list is **empty** (no rows), so a related product cannot be chosen even when the app has products elsewhere (e.g. **Manage Products**, **Take Order**).
+
+### Expected
+- The sheet lists **all products** (or the same set other screens use from **`ProductRepository`**), with search filtering as implemented.
+- If there are truly no products, show an explicit **empty state** message instead of a blank list.
+
+### Investigation *(open)*
+1. Confirm **`FarmOperationsViewModel.products`** (`productRepository.getAllProducts()` → **`collectAsState`**) is subscribed and non-empty when the form is shown (navigation scope, **`stateIn`** timing, first emission).
+2. Check **`filteredProducts`** / **`searchQuery`** — e.g. stale filter clearing when opening the sheet.
+3. Compare with a screen that reliably loads products (**`TakeOrderViewModel`**, **`ManageProductsViewModel`**) for DAO / repository parity.
+
+### Files
+- `app/src/main/java/com/redn/farm/ui/screens/farmops/FarmOperationFormScreen.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/farmops/FarmOperationsViewModel.kt`
+- `app/src/main/java/com/redn/farm/data/repository/ProductRepository.kt` (or equivalent **`getAllProducts`**)
+
+### Verification
+- With at least one product in DB: open **Log operation** → **Related product** → sheet shows products; select one → save → history/card shows product name.
+- `./gradlew :app:compileDebugKotlin`
+
+**Status:** `[ ]`
 
 ---
 

@@ -153,27 +153,82 @@ Bidirectional — devices upload new customers (Group C), server makes them avai
 
 ### 3.2 Operational Records (device uploads, server aggregates)
 
-These are **content entities** — uploaded via Group C sync endpoints, stored verbatim with provenance metadata appended. They are never modified by the server after acceptance (except `is_paid` / `is_delivered` status for orders via Group E).
+These are **content entities** — uploaded via Group C sync endpoints, stored verbatim with provenance metadata appended. Records are **never deleted and never overwritten** — every sync and resync produces a new row.
 
-Primary key on all: `(device_id, local_id)` — composite unique key enabling safe re-upload (idempotent upsert).
+### Versioning model
+
+Every `farm_synced_*` table uses an **append-only versioning model**:
+
+- Each submission of a `(device_id, local_id)` pair is inserted as a new row with an incrementing `submission_seq`.
+- Exactly one row per `(device_id, local_id)` is marked `is_canonical = true` — this is the version used by all reporting and analytics queries.
+- When a resync arrives, the previous canonical row's `is_canonical` is set to `false` and `superseded_at` is set to the server's current time; the new row is inserted as `is_canonical = true`.
+- The `is_canonical` flag is the **only mutable field** on a synced row after insertion. All other fields — including provenance stamps — are immutable.
+- A partial unique index `UNIQUE (device_id, local_id) WHERE is_canonical = true` enforces that at most one canonical version exists per record at any time.
+
+**Why append-only:** Re-uploading a record (after a device reset, data recovery, or correction) must not silently replace what the server already holds. Every submission is evidence — the audit trail must show that a record was re-sent, when, by whom, and what changed.
+
+### Resync reason codes
+
+Each submission carries a `resync_reason` that explains the context:
+
+| Code | Meaning |
+|---|---|
+| `INITIAL` | First time this `(device_id, local_id)` has been seen by the server |
+| `RECONNECT` | Routine re-upload after offline period; payload is identical to the canonical version |
+| `CORRECTION` | Device re-submitted with changed field values (server detects diff vs. current canonical) |
+| `RECOVERY` | Bulk resync triggered after device reset, app reinstall, or data loss |
+| `FORCED` | Admin-initiated full resync from the web management panel |
+
+The device may include `"resync_reason": "<code>"` at the top level of the batch payload. If omitted, the server infers the reason: `INITIAL` for first submissions; `RECONNECT` vs. `CORRECTION` by comparing payload against the current canonical row.
+
+### Canonical views
+
+All reporting, analytics, and Group F endpoints query **named views** that filter `WHERE is_canonical = true`. Raw tables are never queried directly by reporting code:
+
+```sql
+farm_canonical_orders           → SELECT * FROM farm_synced_orders WHERE is_canonical = true
+farm_canonical_acquisitions     → SELECT * FROM farm_synced_acquisitions WHERE is_canonical = true
+farm_canonical_remittances      → SELECT * FROM farm_synced_remittances WHERE is_canonical = true
+farm_canonical_farm_operations  → SELECT * FROM farm_synced_farm_ops WHERE is_canonical = true
+farm_canonical_employee_payments → SELECT * FROM farm_synced_emp_payments WHERE is_canonical = true
+```
+
+Audit and provenance queries use the raw tables directly and can see all versions.
+
+### Version fields on every `farm_synced_*` table
+
+In addition to the provenance stamps from §3.4:
+
+| Field | Type | Notes |
+|---|---|---|
+| `submission_seq` | integer | Starts at 1; incremented per `(device_id, local_id)` on each resync |
+| `resync_reason` | enum | `INITIAL / RECONNECT / CORRECTION / RECOVERY / FORCED` |
+| `is_canonical` | boolean | `true` = used for reporting; only one per `(device_id, local_id)` |
+| `superseded_at` | bigint? | Server time when this row was displaced by a newer submission; null while canonical |
+| `superseded_by_seq` | integer? | `submission_seq` of the row that superseded this one; null while canonical |
 
 #### `farm_synced_order`
-| Field | Source |
-|---|---|
-| `server_id` | serial (server-assigned) |
-| `device_id` | `X-Device-Id` header — **provenance: device** |
-| `synced_by_user` | JWT subject at sync time — **provenance: user** |
-| `synced_at` | server clock at acceptance — **provenance: receipt time** |
-| `local_id` | from payload |
-| `customer_id` | from payload (server `farm_customer.customer_id`) |
-| `channel` | `online / reseller / offline` |
-| `total_amount` | decimal |
-| `order_date` | bigint — origin time on device |
-| `order_update_date` | bigint |
-| `is_paid` | boolean; **mutable via Group E** |
-| `is_delivered` | boolean; **mutable via Group E** |
-| `status_updated_at` | bigint; set when Group E write occurs |
-| `status_updated_by_user` | web admin username that changed the status via Group E |
+| Field | Source | Mutable? |
+|---|---|---|
+| `server_id` | serial (server-assigned) | — |
+| `device_id` | `X-Device-Id` header — **provenance: device** | No |
+| `synced_by_user` | JWT subject at sync time — **provenance: user** | No |
+| `synced_at` | server clock at acceptance — **provenance: receipt time** | No |
+| `submission_seq` | server-assigned; 1 on first sync, +1 on each resync | No |
+| `resync_reason` | server-inferred or device-supplied | No |
+| `is_canonical` | `true` = used for reporting | **Yes** — toggled on supersession |
+| `superseded_at` | server time when displaced by newer submission | **Yes** — set on supersession |
+| `superseded_by_seq` | `submission_seq` of superseding row | **Yes** — set on supersession |
+| `local_id` | from payload | No |
+| `customer_id` | from payload | No |
+| `channel` | `online / reseller / offline` | No |
+| `total_amount` | decimal | No |
+| `order_date` | bigint — origin time on device | No |
+| `order_update_date` | bigint | No |
+| `is_paid` | boolean; **mutable via Group E on canonical row only** | Yes (Group E only) |
+| `is_delivered` | boolean; **mutable via Group E on canonical row only** | Yes (Group E only) |
+| `status_updated_at` | bigint; set when Group E write occurs | Yes (Group E only) |
+| `status_updated_by_user` | web admin username that triggered the Group E write | Yes (Group E only) |
 
 #### `farm_synced_order_item`
 | Field | Notes |
@@ -283,7 +338,8 @@ One row per `POST /sync/batch` or per-table sync call.
 | `synced_at` | server clock |
 | `ip_address` | remote IP for additional traceability |
 | `app_version` | from device heartbeat / registration |
-| `tables_json` | `{ "orders": {"accepted":3, "rejected":0}, ... }` |
+| `resync_reason_requested` | top-level `resync_reason` from batch payload (if supplied) |
+| `tables_json` | `{ "orders": {"accepted":5, "new":3, "resynced":2, "rejected":0}, ... }` |
 
 #### `farm_record_provenance_summary` (view / materialized)
 A denormalized summary built as a database view over all `farm_synced_*` tables. Used by the admin Device Activity panel and provenance audit queries.
@@ -358,17 +414,28 @@ Each resource plugin's `permissions()` method returns a Drupal permission string
 
 **Entry point:** `SyncService::processBatch(array $payload, string $deviceId, string $syncedByUser)`
 
-Both `$deviceId` (from `X-Device-Id` header) and `$syncedByUser` (from JWT subject) are passed in from the auth middleware — they are not trusted from the payload body.
+Both `$deviceId` (from `X-Device-Id` header) and `$syncedByUser` (from JWT subject) are passed in from the auth middleware — they are never accepted from the payload body.
 
-For each table in the batch:
-1. Validate required fields; reject the record and add to `errors[]` if invalid.
-2. Look up existing row by `(device_id, local_id)`.
-3. If not found → **INSERT**, stamping `device_id`, `synced_by_user`, and `synced_at = now()` from server context — never from payload.
-4. If found → **UPDATE** payload fields only (last-write-wins by `date_updated`); provenance stamps (`device_id`, `synced_by_user`, `synced_at`) are **immutable after first insert** — a re-upload cannot change who originally submitted the record.
-5. Increment accepted / rejected counters.
-6. Write a `farm_sync_log` row including `device_id`, `synced_by_user`, `synced_at`, and per-table counts.
+For each record in each table:
+1. **Validate** required fields; reject and add to `errors[]` if invalid.
+2. **Query** existing rows for this `(device_id, local_id)` to get current `MAX(submission_seq)` and find the current canonical row.
+3. **Determine resync reason:**
+   - No existing rows → `INITIAL`
+   - Rows exist, payload fields are byte-for-byte identical to canonical → `RECONNECT`
+   - Rows exist, payload fields differ from canonical → `CORRECTION`
+   - Batch top-level `resync_reason` is `RECOVERY` or `FORCED` → use that value regardless
+4. **INSERT** a new row with:
+   - `submission_seq = previous_max + 1` (or `1` for `INITIAL`)
+   - `resync_reason` from step 3
+   - `is_canonical = true`
+   - `superseded_at = null`, `superseded_by_seq = null`
+   - Provenance stamps: `device_id`, `synced_by_user`, `synced_at = server_now()` — all from auth context
+5. **Supersede** the previous canonical row (if any):
+   - `UPDATE SET is_canonical = false, superseded_at = server_now(), superseded_by_seq = new_seq WHERE server_id = old_canonical_server_id`
+6. Increment `accepted` counter; track `new` (INITIAL) vs `resynced` (any other reason) sub-counts.
+7. After all tables processed, **write `farm_sync_log`** with device, user, time, and per-table counts including resync breakdown.
 
-**Provenance is server-assigned, not self-reported.** The device payload never contains `device_id` or `synced_by_user` fields — these values are extracted from validated auth context only. A device cannot forge provenance for another device's records.
+**No record is ever deleted or overwritten.** The only fields modified after insert are `is_canonical`, `superseded_at`, and `superseded_by_seq` on rows being displaced. All payload data and all provenance stamps are immutable per row.
 
 **Customer deduplication:** When a device uploads a new customer (`firstname + lastname + contact` match an existing server record), the server returns a `409 CONFLICT` with `canonical_customer_id`. The device should reconcile its local record in a future config pull.
 
@@ -384,11 +451,13 @@ For each table in the batch:
 
 | Scenario | Resolution |
 |---|---|
-| Same `(device_id, local_id)` uploaded twice | Idempotent upsert — second upload is a no-op if `date_updated` is same or older |
-| Web marks order paid; device also updated order | `PATCH /orders/{deviceId}/{localId}/status` sets `status_updated_at`; on next Group E pull the device receives the server state (last write wins by `status_updated_at`) |
+| Same `(device_id, local_id)` uploaded twice, same data | New row inserted as `RECONNECT`; previous canonical superseded. Both rows stored. Analytics see only the new canonical — same values, so no impact on counts or totals. |
+| Same `(device_id, local_id)` uploaded twice, data differs | New row inserted as `CORRECTION`; previous canonical superseded. Analytics use the corrected values. Full diff is queryable in audit. |
+| Web marks order paid; device also updated order | Group E writes `is_paid / is_delivered` on the **current canonical row** only. Non-canonical rows retain their original values for audit. On next Group E pull, device receives current canonical state. |
 | Two devices create customers with same contact | Server accepts both; dedup is advisory (409 hint) not enforced |
 | Preset activated on server while device offline | Device continues with cached preset; on reconnect `GET /config/pricing-presets` or `GET /config/version` detects the change and the device pulls the new preset |
 | Product deactivated on server | In-flight device carts complete normally; next config pull sets `is_active = false` locally; product hidden from new orders |
+| Admin pins older submission as canonical | Admin can set `is_canonical = true` on a specific `submission_seq` via the audit panel; current canonical is superseded. Used for data recovery when the latest sync was known-bad. |
 
 ### 5.4 Order Status Feedback Loop (Group E)
 
@@ -397,7 +466,63 @@ When an admin marks an order paid or delivered via the web dashboard:
 2. On the device's next sync (`GET /orders/pending-status-updates?since=...&device_id=...`), the server returns changed rows.
 3. The device writes the update to its local `orders` table.
 
-This is a **one-way feedback path** (web → device) for status only. The web does not modify any other fields of uploaded operational records.
+This is a **one-way feedback path** (web → device) for status only. The web does not modify any other fields of uploaded operational records. Group E writes target the canonical row only.
+
+### 5.5 Resync Policy
+
+**Resyncs are allowed at any time and for any table.** There is no server-side restriction on re-uploading previously synced records. The sync endpoint does not distinguish an initial sync from a resync at the HTTP level — the versioning logic in `SyncService` handles classification automatically.
+
+#### When resyncs occur
+
+| Trigger | Resync reason | Who initiates |
+|---|---|---|
+| App reconnects after offline period, queued records re-sent | `RECONNECT` | Device (automatic) |
+| User edits a record on-device and syncs again | `CORRECTION` | Device (automatic) |
+| Device was reset / app reinstalled; full local DB restored from export and synced | `RECOVERY` | Device (user action) |
+| Admin presses "Force full resync" in the web panel for a specific device | `FORCED` | Web admin |
+| Device sends same batch twice due to network timeout/retry | `RECONNECT` | Device (automatic) |
+
+#### Batch response for resyncs
+
+The sync response includes a sub-count distinguishing new records from resyncs:
+
+```json
+{
+  "results": {
+    "orders": { "accepted": 5, "new": 3, "resynced": 2, "rejected": 0 },
+    "acquisitions": { "accepted": 8, "new": 6, "resynced": 2, "rejected": 0 }
+  },
+  "server_time": 1743638405000
+}
+```
+
+The device can display this breakdown in the Sync screen to give the operator visibility into whether records were fresh or resubmitted.
+
+#### What "no duplicates in analysis" means
+
+"No duplicates" does not mean preventing resyncs — it means ensuring analytics always query the **canonical layer**:
+
+1. All reporting endpoints and Group F queries use the canonical views (`farm_canonical_orders`, etc.) which filter `WHERE is_canonical = true`.
+2. Aggregate functions (SUM, COUNT) applied to canonical views produce correct totals regardless of how many times a record has been resynced.
+3. The raw `farm_synced_*` tables are **never queried directly** by reporting code — only by audit and provenance queries.
+4. Every canonical view is a simple filtered view of its raw table, not a copy — there is no ETL or batch job needed to maintain it. The `is_canonical` flag is kept consistent transactionally in `SyncService`.
+
+#### Audit queries vs. analytics queries
+
+| Query type | Table / view | Purpose |
+|---|---|---|
+| Analytics / reporting | `farm_canonical_*` views | Counts, totals, trends — no duplicates |
+| Full submission history for a record | `farm_synced_orders WHERE device_id = ? AND local_id = ?` | See all versions with timestamps |
+| Diff between versions | Compare rows by `submission_seq` | What changed on a correction |
+| Resync frequency per device | `farm_synced_orders GROUP BY device_id, resync_reason` | Detect abnormal resync patterns |
+| Records still pending canonical selection | `farm_synced_orders WHERE is_canonical = false AND superseded_by_seq IS NULL` | Should be empty in normal operation; if not, indicates a bug in `SyncService` |
+
+#### Admin canonical override
+
+An admin can manually set any `submission_seq` as canonical for a given `(device_id, local_id)` pair from `/admin/farm/audit/record-versions`. This is the data recovery path when the latest submission is known to be bad (e.g., device uploaded corrupted data). The override:
+1. Sets the chosen row's `is_canonical = true`, clears `superseded_at` and `superseded_by_seq`.
+2. Sets all other rows for that `(device_id, local_id)` to `is_canonical = false`, `superseded_at = now()`.
+3. Logs the override to `farm_sync_log` with `resync_reason = ADMIN_OVERRIDE` and the admin's username.
 
 ---
 
@@ -411,9 +536,11 @@ Drupal's admin panel (`/admin`) provides the management interface for:
 | Pricing presets | `/admin/farm/presets` | Create presets, configure channels, **activate** (triggers version bump + optional FCM push) |
 | Employee list | `/admin/farm/employees` | Add, edit, deactivate employees |
 | User accounts | `/admin/farm/users` | Create accounts, assign roles (all 5 farm roles), reset passwords, deactivate |
-| Device registry | `/admin/farm/devices` | View registered devices, last-seen time, last sync time; deactivate |
-| Order status | `/admin/farm/orders` | View consolidated order list across all devices; mark paid / delivered |
-| Sync log | `/admin/farm/audit/sync-log` | Per-device sync history |
+| Device registry | `/admin/farm/devices` | View registered devices, last-seen time, last sync time, `last_sync_user`; deactivate |
+| Order status | `/admin/farm/orders` | View consolidated order list (canonical only); mark paid / delivered |
+| **Record version history** | `/admin/farm/audit/record-versions` | Look up all submissions for any `(device_id, local_id)` across all tables; see diffs between versions; perform admin canonical override |
+| **Resync log** | `/admin/farm/audit/resync-log` | Filter sync log by `resync_reason`; see which devices resync frequently; detect abnormal patterns |
+| Sync log | `/admin/farm/audit/sync-log` | Per-device sync history with new/resynced breakdown per table |
 | Preset activation log | `/admin/farm/audit/preset-activations` | Full activation history |
 
 These views are standard Drupal entity list builders and form displays — no custom frontend required.
@@ -425,6 +552,8 @@ These views are standard Drupal entity list builders and form displays — no cu
 `farm_reports` exposes a `ReportQueryService` that wraps raw SQL (Drupal Database API) against the synced operational tables. All report endpoints from Group F are read-only and callable only with ADMIN or MANAGEMENT role tokens (not from the Android app).
 
 ### 7.1 Available Reports
+
+All reports query the **canonical views** (`farm_canonical_*`). This guarantees no duplicate counting regardless of how many times a record has been resynced — only the current canonical version of each record is counted.
 
 All reports accept `?device_id=` and `?synced_by_user=` as optional filter parameters. This allows an admin to scope any report to a specific POS unit or specific operator. When these parameters are omitted, the report aggregates across all devices and users.
 
@@ -508,37 +637,89 @@ farm_customers          (customer_id SERIAL, firstname, lastname, contact,
                          customer_type, address, city, province, postal_code,
                          source_device_id, date_created, date_updated)
 
--- Operational records (device uploads)
-farm_synced_orders      (server_id SERIAL, device_id, local_id, customer_id,
-                         channel, total_amount, order_date, order_update_date,
-                         is_paid, is_delivered, status_updated_at, synced_at,
-                         UNIQUE (device_id, local_id))
-farm_synced_order_items (server_id SERIAL, order_server_id, local_item_id,
-                         product_id, quantity, price_per_unit, is_per_kg, total_price)
-farm_synced_acquisitions (server_id SERIAL, device_id, local_id, product_id,
-                         product_name, quantity, price_per_unit, total_amount,
-                         is_per_kg, piece_count, date_acquired, created_at,
-                         location, preset_ref, spoilage_rate, additional_cost_per_kg,
+-- Operational records (device uploads — append-only, versioned)
+--
+-- Version / resync columns (on all farm_synced_* tables):
+--   submission_seq   INTEGER NOT NULL DEFAULT 1
+--   resync_reason    ENUM('INITIAL','RECONNECT','CORRECTION','RECOVERY','FORCED','ADMIN_OVERRIDE') NOT NULL
+--   is_canonical     TINYINT(1) NOT NULL DEFAULT 1
+--   superseded_at    BIGINT NULL           -- server time when displaced; null while canonical
+--   superseded_by_seq INTEGER NULL         -- submission_seq of displacing row; null while canonical
+--
+-- Constraint: UNIQUE (device_id, local_id, submission_seq)
+-- Partial unique (enforced via application layer + trigger):
+--   at most one row per (device_id, local_id) may have is_canonical = 1
+--
+-- Analytics NEVER query these tables directly — use the canonical views below.
+
+farm_synced_orders      (server_id SERIAL PK,
+                         -- provenance
+                         device_id NOT NULL, synced_by_user NOT NULL, synced_at NOT NULL,
+                         -- versioning
+                         submission_seq, resync_reason, is_canonical,
+                         superseded_at, superseded_by_seq,
+                         -- payload
+                         local_id, customer_id, channel, total_amount,
+                         order_date, order_update_date,
+                         -- Group E mutable fields (canonical row only)
+                         is_paid, is_delivered, status_updated_at, status_updated_by_user,
+                         UNIQUE (device_id, local_id, submission_seq))
+
+farm_synced_order_items (server_id SERIAL PK,
+                         order_server_id FK → farm_synced_orders.server_id,
+                         local_item_id, product_id, quantity,
+                         price_per_unit, is_per_kg, total_price)
+                         -- inherits provenance from parent order via join
+
+farm_synced_acquisitions (server_id SERIAL PK,
+                         -- provenance
+                         device_id NOT NULL, synced_by_user NOT NULL, synced_at NOT NULL,
+                         -- versioning
+                         submission_seq, resync_reason, is_canonical,
+                         superseded_at, superseded_by_seq,
+                         -- payload
+                         local_id, product_id, product_name, quantity,
+                         price_per_unit, total_amount, is_per_kg, piece_count,
+                         date_acquired, created_at, location, preset_ref,
+                         spoilage_rate, additional_cost_per_kg,
                          srp_online_per_kg, srp_reseller_per_kg, srp_offline_per_kg,
                          srp_online_500g, srp_reseller_500g, srp_offline_500g,
                          srp_online_250g, srp_reseller_250g, srp_offline_250g,
                          srp_online_100g, srp_reseller_100g, srp_offline_100g,
                          srp_online_per_piece, srp_reseller_per_piece, srp_offline_per_piece,
                          srp_custom_override, channels_snapshot_json, hauling_fees_json,
-                         synced_at,
-                         UNIQUE (device_id, local_id))
-farm_synced_remittances  (server_id SERIAL, device_id, local_id,
-                          amount, date, remarks, date_updated, synced_at,
-                          UNIQUE (device_id, local_id))
-farm_synced_farm_ops     (server_id SERIAL, device_id, local_id,
-                          operation_type, operation_date, details, area,
+                         UNIQUE (device_id, local_id, submission_seq))
+
+farm_synced_remittances  (server_id SERIAL PK,
+                          device_id NOT NULL, synced_by_user NOT NULL, synced_at NOT NULL,
+                          submission_seq, resync_reason, is_canonical,
+                          superseded_at, superseded_by_seq,
+                          local_id, amount, date, remarks, date_updated,
+                          UNIQUE (device_id, local_id, submission_seq))
+
+farm_synced_farm_ops     (server_id SERIAL PK,
+                          device_id NOT NULL, synced_by_user NOT NULL, synced_at NOT NULL,
+                          submission_seq, resync_reason, is_canonical,
+                          superseded_at, superseded_by_seq,
+                          local_id, operation_type, operation_date, details, area,
                           weather_condition, personnel, product_id, product_name,
-                          date_created, date_updated, synced_at,
-                          UNIQUE (device_id, local_id))
-farm_synced_emp_payments (server_id SERIAL, device_id, local_id,
-                          employee_id, amount, cash_advance_amount, liquidated_amount,
-                          date_paid, received_date, signature, synced_at,
-                          UNIQUE (device_id, local_id))
+                          date_created, date_updated,
+                          UNIQUE (device_id, local_id, submission_seq))
+
+farm_synced_emp_payments (server_id SERIAL PK,
+                          device_id NOT NULL, synced_by_user NOT NULL, synced_at NOT NULL,
+                          submission_seq, resync_reason, is_canonical,
+                          superseded_at, superseded_by_seq,
+                          local_id, employee_id, amount, cash_advance_amount,
+                          liquidated_amount, date_paid, received_date, signature,
+                          UNIQUE (device_id, local_id, submission_seq))
+
+-- Canonical views (used by ALL reporting and analytics — no direct table queries)
+CREATE VIEW farm_canonical_orders           AS SELECT * FROM farm_synced_orders WHERE is_canonical = 1;
+CREATE VIEW farm_canonical_acquisitions     AS SELECT * FROM farm_synced_acquisitions WHERE is_canonical = 1;
+CREATE VIEW farm_canonical_remittances      AS SELECT * FROM farm_synced_remittances WHERE is_canonical = 1;
+CREATE VIEW farm_canonical_farm_operations  AS SELECT * FROM farm_synced_farm_ops WHERE is_canonical = 1;
+CREATE VIEW farm_canonical_employee_payments AS SELECT * FROM farm_synced_emp_payments WHERE is_canonical = 1;
 
 -- Device registry and audit
 farm_devices             (device_id PK, device_name, app_version, db_version,

@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Add
@@ -19,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
@@ -329,6 +331,7 @@ private fun SetFallbackPriceSheet(
     var perKgStr by remember(product.product_id) { mutableStateOf(currentPrice?.per_kg_price?.toString().orEmpty()) }
     var perPieceStr by remember(product.product_id) { mutableStateOf(currentPrice?.per_piece_price?.toString().orEmpty()) }
     var numericPadTarget by remember { mutableStateOf<FallbackPadTarget?>(null) }
+    val focusManager = LocalFocusManager.current
 
     val padVisible = numericPadTarget != null
     val padTitle = when (numericPadTarget) {
@@ -376,9 +379,15 @@ private fun SetFallbackPriceSheet(
                 prefix = { Text("₱") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { numericPadTarget = FallbackPadTarget.PER_KG }
+                trailingIcon = {
+                    IconButton(onClick = {
+                        numericPadTarget = FallbackPadTarget.PER_KG
+                        focusManager.clearFocus()
+                    }) {
+                        Icon(Icons.Filled.Dialpad, contentDescription = "Open numeric pad")
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
             )
 
             OutlinedTextField(
@@ -389,9 +398,15 @@ private fun SetFallbackPriceSheet(
                 prefix = { Text("₱") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { numericPadTarget = FallbackPadTarget.PER_PIECE }
+                trailingIcon = {
+                    IconButton(onClick = {
+                        numericPadTarget = FallbackPadTarget.PER_PIECE
+                        focusManager.clearFocus()
+                    }) {
+                        Icon(Icons.Filled.Dialpad, contentDescription = "Open numeric pad")
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
             )
 
             Row(

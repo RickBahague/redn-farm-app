@@ -23,8 +23,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import kotlin.math.abs
 
 /**
- * Read-only amount field that opens [NumericPadBottomSheet] (dialpad icon + tap field).
- * Use for string-backed form state (e.g. preset spoilage text).
+ * Read-only amount field that opens [NumericPadBottomSheet] via the dialpad icon.
+ *
+ * By default the pad does **not** open when the field is pressed — that avoids accidental opens while
+ * **scrolling** past fields (e.g. pricing preset editor). Set [openPadOnFieldPress] to true only where
+ * tap-to-open is worth the scroll risk (e.g. compact dialogs).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,15 +44,19 @@ fun NumericPadOutlinedTextField(
     decimalEnabled: Boolean = true,
     maxDecimalPlaces: Int = 4,
     prefix: @Composable (() -> Unit)? = null,
+    /** When true, pressing the field (not just the icon) opens the pad — can misfire during scroll. */
+    openPadOnFieldPress: Boolean = false,
 ) {
     var padOpen by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    LaunchedEffect(pressed) {
-        if (pressed && enabled) {
-            padOpen = true
-            focusManager.clearFocus()
+    val interactionSource = remember { MutableInteractionSource() }
+    if (openPadOnFieldPress) {
+        val pressed by interactionSource.collectIsPressedAsState()
+        LaunchedEffect(pressed) {
+            if (pressed && enabled) {
+                padOpen = true
+                focusManager.clearFocus()
+            }
         }
     }
 
@@ -65,7 +72,7 @@ fun NumericPadOutlinedTextField(
         singleLine = singleLine,
         prefix = prefix,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        interactionSource = interaction,
+        interactionSource = interactionSource,
         trailingIcon = {
             IconButton(
                 onClick = {
@@ -113,6 +120,7 @@ fun NumericPadOutlinedTextFieldForDouble(
     maxDecimalPlaces: Int = 4,
     prefix: @Composable (() -> Unit)? = null,
     rememberKey: Any? = null,
+    openPadOnFieldPress: Boolean = false,
 ) {
     fun format(d: Double) = when {
         emptyWhenZero && d == 0.0 -> ""
@@ -148,6 +156,7 @@ fun NumericPadOutlinedTextFieldForDouble(
         decimalEnabled = decimalEnabled,
         maxDecimalPlaces = maxDecimalPlaces,
         prefix = prefix,
+        openPadOnFieldPress = openPadOnFieldPress,
     )
 }
 
@@ -170,6 +179,7 @@ fun NumericPadOutlinedTextFieldForNullableDouble(
     maxDecimalPlaces: Int = 4,
     prefix: @Composable (() -> Unit)? = null,
     rememberKey: Any? = null,
+    openPadOnFieldPress: Boolean = false,
 ) {
     fun format(d: Double?) = d?.toString() ?: ""
 
@@ -199,5 +209,6 @@ fun NumericPadOutlinedTextFieldForNullableDouble(
         decimalEnabled = decimalEnabled,
         maxDecimalPlaces = maxDecimalPlaces,
         prefix = prefix,
+        openPadOnFieldPress = openPadOnFieldPress,
     )
 }

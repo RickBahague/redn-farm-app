@@ -27,8 +27,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -103,6 +105,7 @@ fun FarmOperationFormScreen(
     var showProductSheet by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var showDatePicker by remember { mutableStateOf(false) }
+    var typeMenuExpanded by remember(operationIdKey) { mutableStateOf(false) }
 
     LaunchedEffect(existing, products) {
         val op = existing ?: return@LaunchedEffect
@@ -284,20 +287,34 @@ fun FarmOperationFormScreen(
                 .imePadding(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Operation type", style = MaterialTheme.typography.titleSmall)
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FarmOperationType.values().toList().chunked(3).forEach { rowTypes ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        rowTypes.forEach { type ->
-                            FilterChip(
-                                selected = selectedType == type,
-                                onClick = { selectedType = type },
-                                label = { Text(type.toString()) }
-                            )
-                        }
+            ExposedDropdownMenuBox(
+                expanded = typeMenuExpanded,
+                onExpandedChange = { typeMenuExpanded = !typeMenuExpanded }
+            ) {
+                OutlinedTextField(
+                    value = selectedType.toString(),
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Operation type") },
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeMenuExpanded)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor()
+                )
+                ExposedDropdownMenu(
+                    expanded = typeMenuExpanded,
+                    onDismissRequest = { typeMenuExpanded = false }
+                ) {
+                    FarmOperationType.values().forEach { type ->
+                        DropdownMenuItem(
+                            text = { Text(type.toString()) },
+                            onClick = {
+                                selectedType = type
+                                typeMenuExpanded = false
+                            }
+                        )
                     }
                 }
             }

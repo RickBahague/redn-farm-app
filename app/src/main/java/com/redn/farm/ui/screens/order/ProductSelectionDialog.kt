@@ -3,8 +3,6 @@ package com.redn.farm.ui.screens.order
 import com.redn.farm.utils.CurrencyFormatter
 import com.redn.farm.ui.components.NumericPadBottomSheet
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -109,14 +107,6 @@ fun ProductSelectionDialog(
                         }
                     }
                 } else {
-                    val qtyInteraction = remember { MutableInteractionSource() }
-                    val qtyPressed by qtyInteraction.collectIsPressedAsState()
-                    LaunchedEffect(qtyPressed) {
-                        if (qtyPressed) {
-                            numericPadVisible = true
-                            focusManager.clearFocus()
-                        }
-                    }
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -155,7 +145,6 @@ fun ProductSelectionDialog(
                                 label = { Text("Quantity") },
                                 readOnly = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                interactionSource = qtyInteraction,
                                 trailingIcon = {
                                     IconButton(onClick = {
                                         numericPadVisible = true

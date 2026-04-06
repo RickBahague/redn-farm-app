@@ -3,8 +3,6 @@ package com.redn.farm.ui.screens.acquire
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -632,21 +630,12 @@ fun AcquisitionFormScreen(
                 }
             }
 
-            val qtyInteraction = remember { MutableInteractionSource() }
-            val qtyPressed by qtyInteraction.collectIsPressedAsState()
-            LaunchedEffect(qtyPressed) {
-                if (qtyPressed) {
-                    numericPadTarget = AcquisitionNumericPadTarget.QUANTITY
-                    focusManager.clearFocus()
-                }
-            }
             OutlinedTextField(
                 value = quantity,
                 onValueChange = {},
                 label = { Text("Quantity") },
                 readOnly = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                interactionSource = qtyInteraction,
                 trailingIcon = {
                     IconButton(onClick = {
                         numericPadTarget = AcquisitionNumericPadTarget.QUANTITY
@@ -659,22 +648,6 @@ fun AcquisitionFormScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            val ppuInteraction = remember { MutableInteractionSource() }
-            val ppuPressed by ppuInteraction.collectIsPressedAsState()
-            LaunchedEffect(ppuPressed) {
-                if (ppuPressed) {
-                    numericPadTarget = AcquisitionNumericPadTarget.PRICE_PER_UNIT
-                    focusManager.clearFocus()
-                }
-            }
-            val totalInteraction = remember { MutableInteractionSource() }
-            val totalPressed by totalInteraction.collectIsPressedAsState()
-            LaunchedEffect(totalPressed) {
-                if (totalPressed) {
-                    numericPadTarget = AcquisitionNumericPadTarget.TOTAL_AMOUNT
-                    focusManager.clearFocus()
-                }
-            }
             OutlinedTextField(
                 value = totalAmount,
                 onValueChange = {},
@@ -682,7 +655,6 @@ fun AcquisitionFormScreen(
                 prefix = { Text("₱") },
                 readOnly = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                interactionSource = totalInteraction,
                 trailingIcon = {
                     IconButton(onClick = {
                         numericPadTarget = AcquisitionNumericPadTarget.TOTAL_AMOUNT
@@ -705,7 +677,6 @@ fun AcquisitionFormScreen(
                 prefix = { Text("₱") },
                 readOnly = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                interactionSource = ppuInteraction,
                 trailingIcon = {
                     IconButton(onClick = {
                         numericPadTarget = AcquisitionNumericPadTarget.PRICE_PER_UNIT
@@ -802,14 +773,6 @@ fun AcquisitionFormScreen(
                 )
             }
             AnimatedVisibility(visible = isPerKg) {
-                val spoilInteraction = remember { MutableInteractionSource() }
-                val spoilPressed by spoilInteraction.collectIsPressedAsState()
-                LaunchedEffect(spoilPressed) {
-                    if (spoilPressed) {
-                        numericPadTarget = AcquisitionNumericPadTarget.SPOILAGE_KG
-                        focusManager.clearFocus()
-                    }
-                }
                 OutlinedTextField(
                     value = spoilageKgStr,
                     onValueChange = {},
@@ -818,7 +781,6 @@ fun AcquisitionFormScreen(
                     supportingText = {
                         Text("Leave empty to use preset spoilage rate. Applies when unit is per kg.")
                     },
-                    interactionSource = spoilInteraction,
                     trailingIcon = {
                         IconButton(onClick = {
                             numericPadTarget = AcquisitionNumericPadTarget.SPOILAGE_KG
@@ -860,22 +822,12 @@ private fun CustomSrpPadField(
     value: String,
     onOpenPad: () -> Unit,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val focusManager = LocalFocusManager.current
-    LaunchedEffect(pressed) {
-        if (pressed) {
-            onOpenPad()
-            focusManager.clearFocus()
-        }
-    }
     OutlinedTextField(
         value = value,
         onValueChange = {},
         label = { Text(label) },
         prefix = { Text("₱") },
         readOnly = true,
-        interactionSource = interaction,
         trailingIcon = {
             IconButton(onClick = onOpenPad) {
                 Icon(Icons.Filled.Dialpad, contentDescription = "Open numeric pad")
