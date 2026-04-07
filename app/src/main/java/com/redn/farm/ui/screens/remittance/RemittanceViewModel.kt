@@ -1,9 +1,11 @@
 package com.redn.farm.ui.screens.remittance
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.data.model.Remittance
+import com.redn.farm.data.model.RemittanceEntryType
 import com.redn.farm.data.repository.RemittanceRepository
 import com.redn.farm.security.Rbac
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,7 +20,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import android.content.Context
 import javax.inject.Inject
 
 @HiltViewModel
@@ -45,24 +46,55 @@ class RemittanceViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
-    fun addRemittance(amount: Double, remarks: String, date: Long) {
+    fun canAddRemittance(): Boolean = Rbac.canWriteRemittances(sessionManager.getRole())
+
+    fun canAddDisbursement(): Boolean = Rbac.canWriteDisbursements(sessionManager.getRole())
+
+    fun canEdit(remittance: Remittance): Boolean {
+        val role = sessionManager.getRole()
+        return when (RemittanceEntryType.normalize(remittance.entry_type)) {
+            RemittanceEntryType.DISBURSEMENT -> Rbac.canWriteDisbursements(role)
+            else -> Rbac.canWriteRemittances(role)
+        }
+    }
+
+    fun canDelete(remittance: Remittance): Boolean = canEdit(remittance)
+
+    fun addRemittance(amount: Double, remarks: String, date: Long, entryType: String) {
         viewModelScope.launch {
             _isSaving.value = true
             try {
-                if (!Rbac.canWriteRemittances(sessionManager.getRole())) {
-                    _userMessage.emit("You don't have permission to add remittances.")
-                    return@launch
+                val normalized = RemittanceEntryType.normalize(entryType)
+                when (normalized) {
+                    RemittanceEntryType.DISBURSEMENT -> {
+                        if (!Rbac.canWriteDisbursements(sessionManager.getRole())) {
+                            _userMessage.emit("You don't have permission to add disbursements.")
+                            return@launch
+                        }
+                    }
+                    else -> {
+                        if (!Rbac.canWriteRemittances(sessionManager.getRole())) {
+                            _userMessage.emit("You don't have permission to add remittances.")
+                            return@launch
+                        }
+                    }
                 }
+                val now = System.currentTimeMillis()
                 repository.addRemittance(
                     Remittance(
                         amount = amount,
                         remarks = remarks,
-                        date = date
+                        date = date,
+                        date_updated = now,
+                        entry_type = normalized,
                     )
                 )
                 _saveSucceeded.emit(Unit)
                 delay(200)
-                _userMessage.emit("Remittance saved")
+                _userMessage.emit(
+                    if (normalized == RemittanceEntryType.DISBURSEMENT) "Disbursement saved"
+                    else "Remittance saved"
+                )
             } catch (_: Exception) {
                 _userMessage.emit("Save failed — try again")
             } finally {
@@ -73,8 +105,8 @@ class RemittanceViewModel @Inject constructor(
 
     fun deleteRemittance(remittance: Remittance) {
         viewModelScope.launch {
-            if (!Rbac.canWriteRemittances(sessionManager.getRole())) {
-                _userMessage.emit("You don't have permission to delete remittances.")
+            if (!canDelete(remittance)) {
+                _userMessage.emit("You don't have permission to delete this entry.")
                 return@launch
             }
             repository.deleteRemittance(remittance)
@@ -85,14 +117,22 @@ class RemittanceViewModel @Inject constructor(
         viewModelScope.launch {
             _isSaving.value = true
             try {
-                if (!Rbac.canWriteRemittances(sessionManager.getRole())) {
-                    _userMessage.emit("You don't have permission to update remittances.")
+                if (!canEdit(remittance)) {
+                    _userMessage.emit("You don't have permission to update this entry.")
                     return@launch
                 }
-                repository.updateRemittance(remittance)
+                repository.updateRemittance(
+                    remittance.copy(
+                        entry_type = RemittanceEntryType.normalize(remittance.entry_type),
+                        date_updated = System.currentTimeMillis(),
+                    )
+                )
                 _saveSucceeded.emit(Unit)
                 delay(200)
-                _userMessage.emit("Remittance saved")
+                _userMessage.emit(
+                    if (RemittanceEntryType.isDisbursement(remittance.entry_type)) "Disbursement saved"
+                    else "Remittance saved"
+                )
             } catch (_: Exception) {
                 _userMessage.emit("Save failed — try again")
             } finally {

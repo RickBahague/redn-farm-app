@@ -3,6 +3,7 @@ package com.redn.farm.data.repository
 import com.redn.farm.data.local.dao.RemittanceDao
 import com.redn.farm.data.local.entity.RemittanceEntity
 import com.redn.farm.data.model.Remittance
+import com.redn.farm.data.model.RemittanceEntryType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -38,13 +39,17 @@ class RemittanceRepository @Inject constructor(
         remittance_id = remittance_id,
         amount = amount,
         date = date,
-        remarks = remarks
+        remarks = remarks,
+        date_updated = date_updated,
+        entry_type = RemittanceEntryType.normalize(entry_type),
     )
 
     private fun Remittance.toEntity() = RemittanceEntity(
         remittance_id = remittance_id,
         amount = amount,
         date = date,
-        remarks = remarks
+        remarks = remarks,
+        date_updated = date_updated,
+        entry_type = RemittanceEntryType.normalize(entry_type),
     )
 } 

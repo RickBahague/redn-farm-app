@@ -24,13 +24,14 @@ A point-of-sale and operations management app for a farm-to-table business. It c
 - Taking and tracking customer orders
 - Logging farm operations (planting, harvesting, pesticide, etc.)
 - Managing employees and their compensation (with cash advances / liquidations)
-- Recording remittances to employees
+- Recording **sales remittances** (store assistant) and **disbursements** (funds received by purchasing) on the shared **Remittance** screen — **USER_STORIES.md** Epic 8 (**DISB-US-01–03**)
+- **End of day (day close):** daily sales snapshot, inventory reconciliation vs. physical count, cash reconciliation, COGS/margin, thermal EOD slip, day-close history, outstanding inventory report (see **§14** and **USER_STORIES.md** Epic 12 — EOD-US-01–10)
 - Exporting all data to CSV files
 - Login / session management with hashed passwords
 
 ---
 ## 3. Actors and User Stories
-- refer to USER_STORIES.md
+- See **USER_STORIES.md** (includes **Epic 12 — End of Day Operations** EOD-US-01–10).
 
 ---
 
@@ -66,7 +67,7 @@ Defined in `navigation/NavGraph.kt` as a sealed class `Screen`:
 | `products` | Manage Products |
 | `customers` | Manage Customers |
 | `acquire` | Acquire Produce (Inventory) |
-| `remittance` | Remittance |
+| `remittance` | Remittances & disbursements (single screen; **USER_STORIES** Epic 8 **DISB-US-01–03**) |
 | `employees` | Manage Employees (Green Crew) |
 | `employee_payments/{employeeId}/{employeeName}` | Employee Payments |
 | `farm_ops` | Farm Operations |
@@ -94,7 +95,7 @@ Start destination is `login`. After login succeeds, the back stack is cleared so
 | `admin` | `admin123` | ADMIN |
 | `user` | `user123` | USER |
 
-Users are created in `FarmDatabase`'s `onOpen` / `onCreate` callback if they don't already exist. Role is stored as a plain string in `users.role` — no role-based access control is enforced in the UI currently.
+Users are created in `FarmDatabase`'s `onOpen` / `onCreate` callback if they don't already exist. Role is stored as a plain string in `users.role`. Dashboard and several flows already gate destinations using **`security/Rbac.kt`** and **`SessionManager`** (normalized role strings **`ADMIN`**, **`STORE_ASSISTANT`**, **`PURCHASING`**, etc.). **Epic 12 (EOD)** adds further gates per **USER_STORIES.md** (e.g. Close Day for store assistant + admin; Outstanding Inventory for admin + purchasing; Day Close History and un-finalize for admin).
 
 ---
 
@@ -123,6 +124,10 @@ customers (customer_id INT PK, autoincrement)
 orders (order_id INT PK, autoincrement)
   └── order_items (order_id FK → CASCADE delete)
 
+day_closes (close_id INT PK, autoincrement)
+  ├── day_close_inventory (composite PK or id + unique (close_id, product_id))
+  └── day_close_audit (audit_id PK; optional FK close_id)
+
 employees (employee_id INT PK, autoincrement)
   └── employee_payments (employee_id FK → RESTRICT delete)
 
@@ -144,8 +149,11 @@ users (user_id INT PK, autoincrement; unique index on username)
 | `employee_payments` | `payment_id`, `employee_id`, `amount`, `cash_advance_amount?`, `liquidated_amount?`, `date_paid`, `signature`, `received_date?` |
 | `farm_operations` | `operation_id`, `operation_type` (enum), `operation_date`, `details`, `area`, `weather_condition`, `personnel`, `product_id?`, `product_name` |
 | `acquisitions` | `acquisition_id`, `product_id`, `product_name`, `quantity`, `price_per_unit`, `total_amount`, `is_per_kg`, `piece_count?` (pieces per kg), preset/SRP snapshot fields, `date_acquired`, `location` (enum) — see **USER_STORIES.md** INV-US-01 / INV-US-05; **PricingReference.md** §4.3 / §4.3.1 / §5.1.1 |
-| `remittances` | `remittance_id`, `amount`, `date`, `remarks`, `date_updated` |
+| `remittances` | `remittance_id`, `amount`, `date`, `remarks`, `date_updated`, **`entry_type`** (`REMITTANCE` \| `DISBURSEMENT`, default `REMITTANCE`) — Epic 8 |
 | `users` | `user_id`, `username` (unique), `password_hash`, `full_name`, `role`, `is_active` |
+| `day_closes` *(planned — EOD)* | See **§14.2** |
+| `day_close_inventory` *(planned — EOD)* | See **§14.2** |
+| `day_close_audit` *(planned — EOD)* | See **§14.13** |
 
 ### Migrations
 
@@ -247,6 +255,9 @@ All ViewModels use `StateFlow` exposed as `asStateFlow()`, collected in Composab
 ### Acquisitions
 - Records incoming inventory with source location (enum), price per unit, **`is_per_kg`**, optional **`piece_count`** (pieces per kg — CLARIF **Estimated Qty per Kg**). **Per kg:** **`quantity`** is kg; preset spoilage applies in SRP. **Per piece:** **`quantity`** is total pieces; engine derives kg **`quantity / piece_count`**; **CLARIF-01:** spoilage **not** applied in per-piece SRP (**`Q_sell = Q`** — **PricingReference.md** §5.1.1); preset **`spoilage_rate`** remains on the snapshot for audit. **Additional cost per kg** applies on the derived mass basis (**INV-US-05**, **§4.3.1**).
 
+### Remittances & disbursements
+- **`RemittanceScreen`** / **`RemittanceFormScreen`** (same routes as today) show **both** transaction kinds (**USER_STORIES.md** Epic 8): **`REMITTANCE`** = sales proceeds handed in by the **store assistant**; **`DISBURSEMENT`** = money **received by purchasing** (e.g. float, refunds). List/filter, print slip title, and **EOD** cash math distinguish **Remitted today** (REMITTANCE only) from disbursements (**DESIGN.md** §14.3 / §14.12).
+
 ### Export / Data Management
 `ExportScreen` / `ExportViewModel` provides per-table CSV export and per-table truncation (data wipe). It also has buttons to generate sample data (`DatabasePopulator`).
 
@@ -306,3 +317,192 @@ The Sunmi printer connection is managed as a coroutine-suspended bind (`suspendC
 4. ~~**`Converters.kt`**~~ — removed; it was never registered on **`FarmDatabase`** (**DI-04** / **BUG-ARC-09**). Active Room converters live under **`data/local/converters/`**.
 
 5. **Date/time storage inconsistency**: Domain paths for farm ops, order-history filters, and acquire flows now standardize on **epoch millis** where models cross layers; some entities or UI helpers may still differ — see **`BUG-ARC-09`** and **`BACKLOG.md`** **DI-05**.
+
+---
+
+## 14. End of day (Epic 12 — EOD-US-01–10)
+
+This section condenses **USER_STORIES.md** Epic 12 into **implementation-facing** decisions: schema, queries, UI entry points, and shared logic. Full acceptance criteria remain in **USER_STORIES.md**.
+
+### 14.1 Scope and principles
+
+- **Day close** is a **snapshot + reconciliation** flow. It does not delete or lock `orders`, `acquisitions`, or `order_items`. Unpaid orders stay open (EOD-US-08).
+- **Business date** = calendar day in the device default zone, stored as **epoch millis at local start-of-day** (reuse **`MillisDateRange.startOfDayMillis`** consistently with acquisitions / farm ops).
+- **Channel** breakdowns use existing order field **`orders.channel`** normalized via **`SalesChannel`** (`online`, `reseller`, `offline` — **EOD-US-02**).
+- **Weighted average cost (WAC)** per product: `SUM(acquisitions.total_amount) / SUM(acquisitions.quantity)` over all acquisitions for that product (same unit basis as **`is_per_kg`** on the acquisition — implementation must treat kg vs piece consistently per product; see **§14.5**).
+- **Draft vs finalized:** `day_closes.is_finalized = false` allows saving partial inventory counts and editing; **`true`** freezes the header row and child inventory rows. **Admin un-finalize** (EOD-US-06) sets back to draft and should append an **audit record** — see **`day_close_audit`** (**§14.13**).
+- **Live vs snapshot (implementation rule):** While `is_finalized = false`, sales, COGS, channel breakdowns, and warning lists are **computed from live queries** on each load. **On finalize**, copy all figures that must appear unchanged on **Day Close History** / detail / thermal slip into **`day_closes`** and **`day_close_inventory`** (and optional receivables snapshot fields in **§14.10**). After finalize, **detail and re-print** read persisted snapshot fields, not recomputed history (avoids drift if orders are edited later). Corrections: admin **un-finalize**, fix, re-finalize.
+- **RBAC:** Extend **`Rbac`** with destination sets for **Day Close**, **Day Close History**, **Outstanding Inventory**, matching Epic 12 actors. Use the same pattern as existing dashboard visibility (`MainScreen` / `Rbac.canAccessDestination`). **§14.10** locks section-level behavior.
+
+### 14.2 Room: `day_closes` and `day_close_inventory`
+
+Align entity fields with **USER_STORIES.md** §Epic 12 intro; add columns needed by EOD-US-04 / EOD-US-07 as needed for **persisted** draft and finalized snapshots.
+
+**`day_closes` (suggested)**
+
+| Column | Type | Notes |
+|--------|------|--------|
+| `close_id` | `INTEGER` PK auto | |
+| `business_date` | `INTEGER` | Start-of-day millis; **unique** index per business day (one close record per calendar day, draft or final). |
+| `closed_by` | `TEXT` | Username; set on finalize. |
+| `closed_at` | `INTEGER?` | Epoch millis; set on finalize. |
+| `is_finalized` | `INTEGER` (bool) | |
+| `total_orders` | `INTEGER` | Snapshot or recomputed in UI until finalize — recommend **snapshot on finalize** for stable history. |
+| `total_sales_amount` | `REAL` | |
+| `total_collected` | `REAL` | Paid orders on business date (per EOD-US-07 / EOD-US-02). |
+| `snapshot_unpaid_today_count` | `INTEGER?` | Count of orders with `order_date` on business date and `is_paid = false` — **EOD-US-02**; set on finalize. |
+| `snapshot_unpaid_today_amount` | `REAL?` | Sum of `orders.total_amount` for those rows — **EOD-US-02**; set on finalize. |
+| `snapshot_all_unpaid_count` | `INTEGER?` | Count of all orders with `is_paid = false` at finalize time — **EOD-US-08** slip / audit. |
+| `snapshot_all_unpaid_amount` | `REAL?` | Sum of `total_amount` for those orders — **EOD-US-08**. |
+| `total_acquisition_cost` | `REAL?` | Optional; if present, prefer **cumulative all-time** `SUM(acquisitions.total_amount)` at finalize (**EOD-US-07** cumulative block) — not “today’s purchase spend” unless explicitly labeled in UI. |
+| `notes` | `TEXT?` | Free text; wages “due but not paid” (EOD-US-09). |
+| **Cash (EOD-US-04)** | | Persist user-entered values so draft survives rotation. |
+| `cash_on_hand` | `REAL?` | Optional physical count. |
+| `cash_reconciliation_remarks` | `TEXT?` | Required before finalize when discrepancy rules in EOD-US-04 fire. |
+| **Margin snapshot (optional but useful for history)** | | `gross_revenue_today`, `collected_revenue_today`, `total_cogs_today`, `gross_margin_amount`, `gross_margin_percent` — can be denormalized at finalize. |
+
+Indexes: **unique(`business_date`)**; optional `INDEX(is_finalized, business_date DESC)` for history list.
+
+**`day_close_inventory` (suggested)**
+
+| Column | Type | Notes |
+|--------|------|--------|
+| `id` | `INTEGER` PK auto | Or composite PK (`close_id`, `product_id`). |
+| `close_id` | `INTEGER` FK → `day_closes` CASCADE | |
+| `product_id` | `TEXT` FK → `products` optional | Match project FK style (`RESTRICT` if preferred). |
+| `product_name` | `TEXT` | Denormalized for stable print/history. |
+| `total_acquired_all_time` | `REAL` | |
+| `total_sold_through_close_date` | `REAL` | |
+| `prior_posted_variance` | `REAL` | Sum of `variance_qty` from **prior** finalized closes. |
+| `adjusted_theoretical_remaining` | `REAL` | acquired − sold − prior variance (EOD-US-03). |
+| `sold_this_close_date` | `REAL` | |
+| `actual_remaining` | `REAL?` | Physical count; null = not counted. |
+| `variance_qty` | `REAL?` | theoretical − actual; null if not counted. |
+| `weighted_avg_cost_per_unit` | `REAL` | |
+| `variance_cost` | `REAL?` | variance × WAC. |
+
+**Finalize behavior:** Upsert one row per product that participates in the close (non-zero adjusted theoretical by default; “show zero” toggle may still persist rows — product decision). Rows **not counted** exclude variance from spoilage totals (EOD-US-03).
+
+**Bump `FarmDatabase` version**; follow existing project practice (**`fallbackToDestructiveMigration()`** during build, **`schema_evolution.sql`** + JSON schema when policy requires incremental migrations).
+
+### 14.3 Aggregation and query layer
+
+Implement a **`DayCloseRepository`** (or split **`DayCloseAggregator` + repository**) that:
+
+1. **Sales summary (EOD-US-02):** Orders whose `order_date` falls on the same calendar day as `business_date`, using **`MillisDateRange.startOfDayMillis(business_date)`** … **`MillisDateRange.endOfDayMillis(business_date)`** (inclusive bounds, consistent with **`MillisDateRange.contains`** / order-history filtering). Group counts and sums by **`SalesChannel.normalize(channel)`**, compute top products by revenue from **`order_items`** joined to orders.
+2. **COGS today (EOD-US-07):** For each product with sales on `business_date`, `qty_sold_today × WAC`. Sum to **total COGS today**; margin vs **collected** revenue.
+3. **Inventory bridge (EOD-US-03 / EOD-US-10):** Per product: total acquired (all time), total sold (all time through date), prior spoilage from **sum of `variance_qty`** on **`day_close_inventory`** for finalized closes before `business_date`. **Adjusted theoretical** = acquired − sold − prior spoilage. If today has a **finalized** close, **EOD-US-10** says **actual_remaining** overrides theoretical until new sales/acquisitions change the rolling picture — implement as: base stock position = last finalized `actual_remaining` for that product’s most recent close date, then **add acquisitions after that date** and **subtract sales after that date** (or equivalent single formula documented in code).
+4. **Cash (EOD-US-04):** **Expected cash** = sum of paid order totals on `business_date` where channel is **`offline` or `reseller`** (online/digital separate line). **Remitted today** = sum of **`remittances.amount`** where **`date`** is on `business_date` and **`entry_type = REMITTANCE`** (store assistant remits only; **disbursements** are excluded from this line — show **disbursements received today** separately if needed). Until **`entry_type`** ships, all existing rows count as remittances.
+5. **Outstanding orders (EOD-US-08):** All orders `is_paid = 0`, sorted oldest first; not limited to today.
+6. **Employee payments (EOD-US-09):** Payments with `date_paid` on `business_date`.
+
+Use **`@Transaction`** where multiple reads must be consistent for finalize. Prefer **single source** for “theoretical stock” used by **Outstanding Inventory** and **Day Close inventory step** to avoid drift.
+
+### 14.4 FIFO / lot aging (EOD-US-10)
+
+- **Outstanding Inventory** drill-down: allocate **`order_items`** quantities to **`acquisitions`** in **FIFO** order (by `date_acquired`, then `acquisition_id`) per product for **remaining quantity per lot** and **oldest unsold acquisition date**.
+- Encapsulate in a pure Kotlin type (e.g. **`InventoryFifoAllocator`**) unit-tested with small fixtures. **Aging thresholds:** **§14.15**.
+- **Category filter** uses **`products.category`** (nullable — treat null as “Uncategorized”).
+
+### 14.5 Units (kg vs piece)
+
+Acquisitions and order lines store **`is_per_kg`** on both line items and acquisitions; quantities use the **product unit**. WAC calculations must **not** mix kg lots with piece lots incorrectly:
+
+- For **EOD v1**, recommended rule: **one WAC per product per valuation unit** — if the product is effectively tracked in kg, convert piece acquisitions using **`piece_count`** (same as pricing) when present; if mixed history exists, document the chosen rule in **`OrderPricingResolver`** / acquisition docs and keep EOD consistent with that rule. Flag ambiguous products in QA.
+
+### 14.6 UI flow (EOD-US-01)
+
+- **Dashboard:** **“Close Day”** → `Screen.DayClose` (or similar). Hide per **RBAC**.
+- **Wizard steps (conceptual):** Review warnings (**§14.11**) → **Sales & margin** → **Inventory counts** (**§14.10** edit rights) → **Cash** (**§14.12**) → **Outstanding orders** → **Employee summary** (**§14.14**) → **Confirm**. Exact tabbing vs single scroll is flexible; **Review → Confirm** gating matches EOD-US-01 AC.
+- **Past date:** Only **admin** may select a `business_date` before today (late close); others always **today**.
+- **Navigation:** **Order detail** from outstanding orders list (**EOD-US-08**) — **`Screen.OrderDetail.createRoute(orderId)`** (**§14.16**).
+- **Negative gross margin (**EOD-US-07**):** If **collected revenue today − total COGS today** `< 0`, show a one-shot confirmation dialog before finalize; user may still proceed (AC4).
+
+### 14.7 Printing (EOD-US-05)
+
+- Add **`ThermalPrintBuilders.buildEodSummary(...)`** (58mm, left alignment): sections in **USER_STORIES** EOD-US-05; **“DRAFT — NOT FINAL”** when `!is_finalized`.
+- Reuse **`PrinterUtils.printMessage`**; mirror patterns from order / acquisition slips (**`docs/printing.md`** PRN numbering if extended).
+
+### 14.8 CSV export (optional follow-up)
+
+Not required by Epic 12 AC; **`CsvExportService`** may later add **`day_closes`** / **`day_close_inventory`** for parity with other tables.
+
+### 14.9 Named metrics (**EOD-US-02** vs **EOD-US-08**)
+
+Use **distinct labels** in UI and on the thermal slip so totals are never conflated:
+
+| Label | Definition | When computed |
+|--------|-------------|---------------|
+| **Unpaid orders (today)** | Orders with `order_date` on `business_date` and `is_paid = false` — count and sum of `total_amount`. | Live in draft; snapshot **`snapshot_unpaid_today_*`** on finalize (**§14.2**). |
+| **Open receivables (all)** | All orders with `is_paid = false` (any date) — **EOD-US-08** list and header total. | Live in draft; snapshot **`snapshot_all_unpaid_*`** on finalize for historical slip accuracy. |
+| **Digital collections (today)** | Paid orders (`is_paid = true`) on `business_date` with **`SalesChannel.normalize(channel) == SalesChannel.ONLINE`** — count and sum of `total_amount`. | Live; optional snapshot columns if history must freeze this line. |
+
+There is no single “outstanding” number: always specify **today unpaid** vs **all unpaid**.
+
+### 14.10 Wizard RBAC (single screen)
+
+- **One route** (e.g. `DayCloseScreen`) for draft and in-progress close; optional **`closeId`** or **`business_date`** argument for admin back-close.
+- **Dashboard — Close Day** (`EOD-US-01`): visible to **`ADMIN`** and **`STORE_ASSISTANT`** (`Rbac`).
+- **Dashboard — Day Close History** (`EOD-US-06`): **`ADMIN`** only.
+- **Dashboard — Outstanding Inventory** (`EOD-US-10`): **`ADMIN`** and **`PURCHASING`**.
+- **Inventory count fields** (`EOD-US-03` — `actual_remaining`, not-counted toggles): **editable** only for **`ADMIN`** and **`PURCHASING`**. **Store assistants** see the same section **read-only** (theoretical columns + message that purchasing/admin enters counts), or a collapsed summary—pick one in UI polish; **enforcement** must be server-side in ViewModel/repo (reject updates if role ∉ `{ ADMIN, PURCHASING }`).
+- **Finalize** remains available to roles allowed to complete **EOD-US-01** (**store assistant + admin**) unless product later restricts finalize to admin only.
+
+### 14.11 Day-close warnings (**EOD-US-01**)
+
+1. **Unpaid orders today:** Exists an order with `order_date` on `business_date` and `is_paid = false`.
+2. **Acquired today, no sales today (per product):** Exists a `product_id` such that **today’s acquisitions** sum `quantity > 0` for that product (acquisition `date_acquired` on `business_date`) **and** **today’s sales** sum `order_items.quantity` for that product (orders with `order_date` on `business_date`) **`= 0`**. Show one consolidated banner listing affected product names (cap list length in UI if needed).
+
+### 14.12 Cash reconciliation (**EOD-US-04**)
+
+- **Expected cash from orders** = sum of **`orders.total_amount`** for orders where `order_date` is on `business_date`, `is_paid = true`, and **`SalesChannel.normalize(channel)`** is **`offline`** or **`reseller`** (not online).
+- **Total remitted today** = sum of **`remittances.amount`** where **`remittances.date`** falls on the same calendar day **and** **`entry_type`** is **`REMITTANCE`** (or null during migration). **Disbursements** same day: separate informational total (`entry_type = DISBURSEMENT`).
+- **Difference (expected vs remitted)** = expected cash − total remitted.
+- **Cash on hand** (optional user entry): compare to **expected cash**; show second surplus/shortage line.
+- **Remarks required before finalize** when **any** of:
+  - `abs(difference_expected_minus_remittance) > epsilon` (use a small currency epsilon, e.g. **0.01**), or
+  - cash on hand entered and `abs(cash_on_hand - expected_cash) > epsilon`.
+  Persist in **`cash_reconciliation_remarks`**. Digital-only variance does not by itself satisfy “cash discrepancy” unless you also treat online totals as informational only (already excluded from expected cash).
+
+### 14.13 `day_close_audit` (EOD-US-06 un-finalize log)
+
+| Column | Type | Notes |
+|--------|------|--------|
+| `audit_id` | `INTEGER` PK auto | |
+| `close_id` | `INTEGER` FK → `day_closes` | `ON DELETE CASCADE` acceptable |
+| `action` | `TEXT` | e.g. `UNFINALIZE` |
+| `username` | `TEXT` | Actor |
+| `at_millis` | `INTEGER` | |
+| `note` | `TEXT?` | Optional free text |
+
+### 14.14 Employee day summary (**EOD-US-09**)
+
+- List **`employee_payments`** with **`date_paid`** on `business_date` (same day window as orders).
+- **Net pay** in UI must match payroll screens: use **`EmployeePayment.netPayAmount()`** (`data/model/EmployeePaymentAggregates.kt`).
+- **Total wages paid today** = sum of **`amount`** (gross wage field), not net — align with **USER_STORIES** AC5; show net per row from `netPayAmount()`.
+
+### 14.15 Inventory aging defaults (**EOD-US-03** / **EOD-US-10**)
+
+- **v1:** Define **`AppConfig`** (or module-level) constants: warn at **≥ 3** days, critical at **≥ 7** days since relevant acquisition date (lot or “most recent acquisition” row per AC).
+- **v2 (backlog):** Persist admin-tunable thresholds (settings / pref) when **USER_STORIES** “configurable” is scheduled.
+
+### 14.16 Computed UI fields (no extra columns)
+
+- **Last acquisition** (**EOD-US-03**): latest row per product by **`date_acquired`**, then **`acquisition_id`** — show date, qty, **`price_per_unit`** / cost fields from **`Acquisition`** / entity.
+- **Outstanding orders navigation:** From EOD flow, tap row → **`Screen.OrderDetail.createRoute(orderId)`** (existing **`OrderDetailScreen`**); user marks paid there and returns—no new route required.
+
+### 14.17 Printing doc
+
+- When **`buildEodSummary`** / **`buildOutstandingInventoryReport`** exist, add a **PRN-** entry and field list to **`docs/printing.md`** next to existing thermal templates.
+
+### 14.18 Implementation checklist (suggested order)
+
+1. Entities (**§14.2**, **`day_close_audit` §14.13**), DAOs, **`DayCloseRepository`**, domain models `DayClose`, `DayCloseInventoryLine`.
+2. **Stock + FIFO** pure functions + unit tests (feeds EOD-US-03 and EOD-US-10); **§14.3** bridge + **§14.9** metrics helpers.
+3. **Day close** ViewModel + main screen; persist draft; finalize writes **snapshots** (**§14.1**, **§14.9**) + inventory rows.
+4. **Day close history** + detail + admin un-finalize + **`day_close_audit`**.
+5. **Outstanding inventory** screen + thermal **`buildOutstandingInventoryReport`** (**§14.17**).
+6. **Dashboard** entries + **Rbac** constants (**§14.10**).
+7. **Thermal EOD** slip (**§14.7**, **§14.17**) + manual QA per **USER_STORIES**.
+
+Canonical acceptance criteria and edge-case wording: **USER_STORIES.md** Epic 12 (**EOD-US-01** through **EOD-US-10**).

@@ -62,7 +62,7 @@ Android app (Kotlin + Jetpack Compose) for farm management. Package: `com.redn.f
 
 ### Database
 
-`FarmDatabase` (Room, version 8) in `data/local/FarmDatabase.kt`. Incremental migrations in code: `MIGRATION_1_2`, `MIGRATION_2_3` only. Newer schema bumps (e.g. v6 `acquisitions.srp_custom_override`, v7 `acquisitions.spoilage_kg` / **BUG-PRC-04**, v8 **BUG-ARC-02** — `customers` / `product_prices` timestamps as epoch millis, **`DateTimeConverter` removed**) rely on **`fallbackToDestructiveMigration()`** during dev / fresh install — no incremental migration until production strategy is defined.
+`FarmDatabase` (Room, version 10) in `data/local/FarmDatabase.kt`. Incremental migrations in code: `MIGRATION_1_2`, `MIGRATION_2_3` only. Newer schema bumps (through v10: EOD day-close tables, **`remittances.entry_type`** / Epic 8, etc.) rely on **`fallbackToDestructiveMigration()`** during dev / fresh install — no incremental migration until production strategy is defined.
 
 On first create, default users are seeded: `admin` / `admin123` and `user` / `user123`.
 

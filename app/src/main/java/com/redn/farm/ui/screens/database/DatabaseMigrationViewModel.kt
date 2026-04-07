@@ -245,7 +245,8 @@ class DatabaseMigrationViewModel @Inject constructor(
                         amount = entity.amount,
                         date = entity.date,
                         remarks = entity.remarks,
-                        date_updated = entity.date_updated
+                        date_updated = entity.date_updated,
+                        entry_type = entity.entry_type,
                     )
                 }
             )

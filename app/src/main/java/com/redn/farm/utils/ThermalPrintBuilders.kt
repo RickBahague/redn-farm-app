@@ -7,6 +7,7 @@ import com.redn.farm.data.model.FarmOperation
 import com.redn.farm.data.model.Order
 import com.redn.farm.data.model.OrderItem
 import com.redn.farm.data.model.Remittance
+import com.redn.farm.data.model.RemittanceEntryType
 import com.redn.farm.data.model.lifetimeOutstandingAdvance
 import com.redn.farm.data.model.netPayAmount
 import com.redn.farm.data.model.periodTotals
@@ -285,11 +286,14 @@ private fun wrapThermalWords(text: String, maxWidth: Int): List<String> {
 }
 
 fun buildRemittanceSlip(remittance: Remittance): String = buildString {
+    val isDisb = RemittanceEntryType.isDisbursement(remittance.entry_type)
+    val title = if (isDisb) "DISBURSEMENT RECEIPT" else "REMITTANCE SLIP"
+    val idLabel = if (isDisb) "Disbursement # :" else "Remittance # :"
     appendLine(thermalDividerHeavy())
     appendLine(centerThermalLine("REDN GREENS FRESH"))
-    appendLine(centerThermalLine("REMITTANCE SLIP"))
+    appendLine(centerThermalLine(title))
     appendLine(thermalDividerHeavy())
-    appendLine(formatThermalLine("Remittance # :", remittance.remittance_id.toString().padStart(4, '0')))
+    appendLine(formatThermalLine(idLabel, remittance.remittance_id.toString().padStart(4, '0')))
     appendLine(formatThermalLine("Date         :", formatThermalDate(remittance.date)))
     appendLine(formatThermalLine("Amount       :", CurrencyFormatter.format(remittance.amount)))
     appendLine(thermalDividerLight())

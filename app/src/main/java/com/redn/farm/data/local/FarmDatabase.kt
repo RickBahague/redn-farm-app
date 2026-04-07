@@ -30,9 +30,12 @@ import kotlinx.coroutines.launch
         RemittanceEntity::class,
         UserEntity::class,
         PricingPresetEntity::class,
-        PresetActivationLogEntity::class
+        PresetActivationLogEntity::class,
+        DayCloseEntity::class,
+        DayCloseInventoryEntity::class,
+        DayCloseAuditEntity::class,
     ],
-    version = 8
+    version = 10
 )
 @TypeConverters(EnumConverters::class)
 abstract class FarmDatabase : RoomDatabase() {
@@ -48,6 +51,9 @@ abstract class FarmDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun pricingPresetDao(): PricingPresetDao
     abstract fun presetActivationLogDao(): PresetActivationLogDao
+    abstract fun dayCloseDao(): DayCloseDao
+    abstract fun dayCloseInventoryDao(): DayCloseInventoryDao
+    abstract fun dayCloseAuditDao(): DayCloseAuditDao
 
     companion object {
         const val DATABASE_NAME = "farm_database"
@@ -95,7 +101,10 @@ abstract class FarmDatabase : RoomDatabase() {
         }
 
         // Version 5+ schema: `employee_payments.is_finalized` (v5), `acquisitions.srp_custom_override` (v6),
-        // `acquisitions.spoilage_kg` (v7, BUG-PRC-04). Build phase: destructive migration on bump or fresh install.
+        // `acquisitions.spoilage_kg` (v7, BUG-PRC-04), `customers`/`product_prices` timestamps as epoch millis (v8, BUG-ARC-02),
+        // `day_closes`, `day_close_inventory`, `day_close_audit` (v9, Epic 12 EOD),
+        // `remittances.entry_type` (v10, Epic 8 DISB).
+        // Build phase: destructive migration on bump or fresh install.
 
         fun getDatabase(context: Context): FarmDatabase {
             return INSTANCE ?: synchronized(this) {

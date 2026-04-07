@@ -92,6 +92,61 @@ interface OrderDao {
     @Query("DELETE FROM order_items")
     suspend fun truncateOrderItems()
 
+    // ─── EOD aggregation queries (Phase 2b) ──────────────────────────────────
+
+    /**
+     * Total and collected revenue for orders whose order_date falls within [startMillis, endMillis].
+     * Used by DayCloseRepository to compute today's revenue snapshot.
+     */
+    @Query("""
+        SELECT
+            COUNT(*)               AS order_count,
+            SUM(total_amount)      AS total_sales,
+            SUM(CASE WHEN is_paid = 1 THEN total_amount ELSE 0 END) AS total_collected
+        FROM orders
+        WHERE order_date BETWEEN :startMillis AND :endMillis
+    """)
+    suspend fun getSalesSummaryOnDate(startMillis: Long, endMillis: Long): OrderSalesSummary
+
+    /**
+     * Count and sum of orders that are still unpaid as of [endMillis].
+     */
+    @Query("""
+        SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS amount
+        FROM orders
+        WHERE is_paid = 0 AND order_date <= :endMillis
+    """)
+    suspend fun getUnpaidSummaryAsOf(endMillis: Long): UnpaidSummary
+
+    /**
+     * Per-product sold quantity (sum of order_items.quantity) for orders
+     * within [startMillis, endMillis]. Used for COGS and inventory reconciliation.
+     */
+    @Query("""
+        SELECT oi.product_id, SUM(oi.quantity) AS total_qty
+        FROM order_items oi
+        INNER JOIN orders o ON oi.order_id = o.order_id
+        WHERE o.order_date BETWEEN :startMillis AND :endMillis
+        GROUP BY oi.product_id
+    """)
+    suspend fun getSoldQtyByProductOnDate(
+        startMillis: Long,
+        endMillis: Long
+    ): List<ProductQtySummary>
+
+    /**
+     * Per-product sold quantity (all time up to and including [endMillis]).
+     * Used for the all-time running stock ledger (EOD-US-03).
+     */
+    @Query("""
+        SELECT oi.product_id, SUM(oi.quantity) AS total_qty
+        FROM order_items oi
+        INNER JOIN orders o ON oi.order_id = o.order_id
+        WHERE o.order_date <= :endMillis
+        GROUP BY oi.product_id
+    """)
+    suspend fun getTotalSoldQtyByProductUpTo(endMillis: Long): List<ProductQtySummary>
+
     @Transaction
     suspend fun truncate() {
         truncateOrderItems()
@@ -122,4 +177,22 @@ data class OrderWithDetails(
 data class OrderItemWithProduct(
     @Embedded val orderItem: OrderItemEntity,
     val product_name: String
-) 
+)
+
+// EOD result types
+
+data class OrderSalesSummary(
+    val order_count: Int,
+    val total_sales: Double,
+    val total_collected: Double,
+)
+
+data class UnpaidSummary(
+    val count: Int,
+    val amount: Double,
+)
+
+data class ProductQtySummary(
+    val product_id: String,
+    val total_qty: Double,
+)

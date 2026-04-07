@@ -4,6 +4,9 @@ import android.content.Context
 import com.redn.farm.data.local.FarmDatabase
 import com.redn.farm.data.local.dao.AcquisitionDao
 import com.redn.farm.data.local.dao.CustomerDao
+import com.redn.farm.data.local.dao.DayCloseAuditDao
+import com.redn.farm.data.local.dao.DayCloseDao
+import com.redn.farm.data.local.dao.DayCloseInventoryDao
 import com.redn.farm.data.local.dao.EmployeeDao
 import com.redn.farm.data.local.dao.EmployeePaymentDao
 import com.redn.farm.data.local.dao.FarmOperationDao
@@ -90,4 +93,19 @@ object DatabaseModule {
     fun providePresetActivationLogDao(database: FarmDatabase): PresetActivationLogDao {
         return database.presetActivationLogDao()
     }
-} 
+
+    @Provides
+    fun provideDayCloseDao(database: FarmDatabase): DayCloseDao {
+        return database.dayCloseDao()
+    }
+
+    @Provides
+    fun provideDayCloseInventoryDao(database: FarmDatabase): DayCloseInventoryDao {
+        return database.dayCloseInventoryDao()
+    }
+
+    @Provides
+    fun provideDayCloseAuditDao(database: FarmDatabase): DayCloseAuditDao {
+        return database.dayCloseAuditDao()
+    }
+}

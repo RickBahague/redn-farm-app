@@ -119,7 +119,7 @@ Gross Est: PHP 28,450.00
 
 ---
 
-### CUR-03 — Recommended slips (PRN-01–08) — **implemented**
+### CUR-03 — Recommended slips (PRN-01–08) — **implemented**; PRN-09–10 — **planned (Epic 12)**
 
 | ID | Screen / trigger | Main files |
 |----|------------------|------------|
@@ -131,6 +131,10 @@ Gross Est: PHP 28,450.00
 | PRN-05 | `FarmOperationsScreen` + `FarmOperationHistoryScreen` → card **Print** icon | `FarmOperationCard.kt`, `buildFarmOperationLog` |
 | PRN-06 | `EmployeePaymentScreen` → **Print Summary** (under period filter) | `EmployeePaymentScreen.kt`, `buildEmployeePayrollSummary` |
 | PRN-07 | `OrderHistoryScreen` → order card **Print** (loads order + items via `getOrderSnapshotForPrint`) | `OrderHistoryScreen.kt`, `OrderHistoryViewModel.kt` |
+| PRN-09 | **Day Close** / **Day Close Detail** → **Print EOD Summary** (`[ ]` planned) | `ThermalPrintBuilders.kt` → `buildEodSummary`, **EOD-US-05** |
+| PRN-10 | **Outstanding Inventory** → **Print** (`[ ]` planned) | `ThermalPrintBuilders.kt` → `buildOutstandingInventoryReport`, **EOD-US-10** |
+
+**Design reference:** **`DESIGN.md` §14.7**, §14.9 (metric labels on slip), §14.17.
 
 ---
 
@@ -296,6 +300,7 @@ Acknowledged: ________________
 **Notes:**
 - Simple content — minimal formatting needed
 - "Acknowledged" signature line for the recipient
+- **Disbursement** rows (**Epic 8** **DISB-US-01–03**): use title **DISBURSEMENT RECEIPT** (or **FUNDS RECEIVED**) and the same amount / date / remarks body; document **PRN-03b** or branch inside `buildRemittanceSlip` on `entry_type`
 
 ---
 
@@ -411,6 +416,84 @@ Prepared by: __________________
 
 ---
 
+### PRN-09 — End of Day summary (thermal)
+**Priority:** P1 (Epic 12)  
+**Status:** `[ ]` not implemented  
+**Screens:** `DayCloseScreen` (route TBD, e.g. `day_close`) and read-only **Day Close Detail** — **Print EOD Summary** button (**EOD-US-05**). Available in **draft** and **finalized** state.  
+**Trigger:** `OutlinedButton` / `TextButton` → `PrinterUtils.printMessage(context, text, alignment = 0)` with body from **`ThermalPrintBuilders.buildEodSummary(...)`** (new).  
+**Who uses it:** Admin or store assistant files a physical end-of-day record.
+
+**Header / status**
+
+- Centred: **REDN GREENS FRESH** (or app thermal header consistent with PRN-02).
+- Title: **END OF DAY REPORT**.
+- **Business date:** localized date for `business_date`.
+- If `!is_finalized`: prominent line **DRAFT — NOT FINAL** (32-char width; repeat or boxed).
+
+**Sections (32-column, left-aligned body; `=` / `-` dividers per conventions above)**
+
+1. **Sales summary** — total orders (count); total sales amount; paid amount; **outstanding amount** (label must match **DESIGN.md** §14.9 — e.g. separate lines for *unpaid today* vs *all open receivables* if both appear).
+2. **By channel** — Online / Reseller / Offline: order count and amount each (`SalesChannel` labels).
+3. **Top products** — **Top 5** by revenue: product name (truncate), total revenue (PHP).
+4. **Inventory close** — one compact line per product: name (truncated), adjusted theoretical, actual (if counted), variance qty; **total variance cost** (spoilage) at section end. Many products → truncate list with **"+N more"** or continue on extra pages (product decision; **USER_STORIES** focus on slip completeness).
+5. **Cash reconciliation** — expected cash (offline + reseller paid today); cash on hand (if entered); difference; optional **remarks** line if non-empty (truncated/wrapped).
+6. **COGS today** and **gross margin** — amount and **%** (or `—` if no collected revenue per **EOD-US-07**).
+7. **Outstanding orders (thermal)** — **EOD-US-08:** up to **10** rows (order id, customer short, amount); if more than 10, print **count + total only** for the remainder.
+8. **One line:** **Employee wages paid today:** `PHP X,XXX.00` (**EOD-US-09**, gross sum per story).
+9. **Footer** — **Closed by:** username; **Closed at:** local time (finalized only); if draft, **Printed at:** timestamp only.
+
+**Data source**
+
+- Prefer **snapshot fields** on `day_closes` / `day_close_inventory` when **finalized**; when **draft**, pass live-computed DTO into `buildEodSummary` (**DESIGN.md** §14.1).
+
+**Notes**
+
+- Reuse `thermalDividerHeavy`, `formatThermalLine`, currency helpers from **`ThermalPrintBuilders.kt`**.
+- Same **32-char** wrapping rules as PRN-06 for long labels.
+
+---
+
+### PRN-10 — Outstanding Inventory report (thermal)
+**Priority:** P1 (Epic 12)  
+**Status:** `[ ]` not implemented  
+**Screen:** **Outstanding Inventory** (route TBD, e.g. `outstanding_inventory`) — **Print Outstanding Inventory** (**EOD-US-10**).  
+**Trigger:** App bar or footer **Print** → **`buildOutstandingInventoryReport(...)`** (new) + `printMessage(..., alignment = 0)`.  
+**Who uses it:** Admin or purchasing assistant prints current stock position.
+
+**Content**
+
+```
+================================
+  REDN GREENS FRESH
+  OUTSTANDING INVENTORY
+================================
+As of: 2026-04-03 16:42
+--------------------------------
+Tomatoes       45.0kg 18d  P6,300
+Lettuce         12pc  4d  P  480
+...
+--------------------------------
+TOTAL VALUE    PHP  45,230.00
+================================
+Printed by: username
+================================
+```
+
+**Per line (conceptual columns — fit within 32 chars):**
+
+- Product name (truncate ~12–14 chars).
+- **Theoretical on hand** with unit (`kg` / `pc` from product context).
+- **Days on hand** (oldest unsold lot), abbreviated e.g. `18d`.
+- **Outstanding value** for that line (right-align or second line if needed).
+
+**Notes**
+
+- Numbers must match the **same** theoretical / FIFO / post-close override logic as the on-screen list (**DESIGN.md** §14.3, §14.4).
+- If the list is long, cap lines with **"+ N products — see app"** or split print jobs (mirror PRN-08 length guard).
+- **At-risk** flags are optional on thermal v1; screen shows full color cues.
+
+---
+
 ## Implementation Checklist
 
 The current `printMessage()` sends a single raw string with centre-alignment applied globally. For the content templates in this doc, **`PrinterUtils` must be extended** as tracked by **PU-*** rows below.
@@ -438,7 +521,7 @@ The current `printMessage()` sends a single raw string with centre-alignment app
 | PU-04 | Error feedback — snackbars on new print entry points + order detail | P1 | `[~]` |
 | PU-05 | Printer connection state in ViewModel (optional) | P2 | `[ ]` |
 
-*Last checklist update: 2026-04-03 — PRN-01–08 shipped (`buildAcquisitionBatchReport`, app bar ListAlt on Acquire); PU-03/PU-05 backlog.*
+*Last checklist update: 2026-04-03 — PRN-01–08 shipped; **PRN-09/PRN-10** added for Epic 12 (EOD) — spec only, not implemented; PU-03/PU-05 backlog.*
 
 ### PU-01 — Left-align support
 

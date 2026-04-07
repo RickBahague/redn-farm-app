@@ -56,4 +56,54 @@ interface AcquisitionDao {
 
     @Query("DELETE FROM acquisitions")
     suspend fun truncate()
+
+    // ─── EOD aggregation queries (Phase 2b) ──────────────────────────────────
+
+    /**
+     * Total acquired quantity (in native units) and total cost per product, all time.
+     * Used by DayCloseRepository for WAC and running stock ledger (EOD-US-03 / EOD-US-07).
+     *
+     * Note (D1): per-piece acquisitions use quantity/piece_count conversion in the repository;
+     * the raw quantity column is returned as-is here.
+     */
+    @Query("""
+        SELECT
+            product_id,
+            SUM(quantity)      AS total_qty,
+            SUM(total_amount)  AS total_cost,
+            MAX(piece_count)   AS max_piece_count,
+            MAX(is_per_kg)     AS is_per_kg_flag
+        FROM acquisitions
+        GROUP BY product_id
+    """)
+    suspend fun getTotalAcquiredByProduct(): List<ProductAcquisitionSummary>
+
+    /**
+     * All acquisition rows for a product, ordered oldest-first — used by InventoryFifoAllocator.
+     */
+    @Query("""
+        SELECT * FROM acquisitions
+        WHERE product_id = :productId
+        ORDER BY date_acquired ASC, created_at ASC
+    """)
+    suspend fun getAcquisitionLotsForProduct(productId: String): List<AcquisitionEntity>
+
+    /**
+     * All acquisition rows for all products, ordered oldest-first — for full FIFO pass.
+     */
+    @Query("""
+        SELECT * FROM acquisitions
+        ORDER BY product_id, date_acquired ASC, created_at ASC
+    """)
+    suspend fun getAllAcquisitionLotsOldestFirst(): List<AcquisitionEntity>
 }
+
+// EOD result type
+
+data class ProductAcquisitionSummary(
+    val product_id: String,
+    val total_qty: Double,
+    val total_cost: Double,
+    val max_piece_count: Double?,
+    val is_per_kg_flag: Int,  // Room maps Boolean to Int in aggregates
+)

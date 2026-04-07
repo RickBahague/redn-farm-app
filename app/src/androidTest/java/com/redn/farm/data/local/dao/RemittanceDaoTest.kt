@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.redn.farm.data.local.FarmDatabase
 import com.redn.farm.data.local.entity.RemittanceEntity
+import com.redn.farm.data.model.RemittanceEntryType
 import com.redn.farm.data.repository.RemittanceRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -82,6 +83,21 @@ class RemittanceDaoTest {
         assertEquals(timestamp, loaded.date)
         assertEquals(500.0, loaded.amount, 0.001)
         assertEquals("payment", loaded.remarks)
+        assertEquals(RemittanceEntryType.REMITTANCE, loaded.entry_type)
+    }
+
+    @Test
+    fun remittance_disbursement_roundTrip() = runTest {
+        db.remittanceDao().insert(
+            RemittanceEntity(
+                amount = 250.0,
+                date = 1_700_000_000_000L,
+                remarks = "Float",
+                entry_type = RemittanceEntryType.DISBURSEMENT,
+            )
+        )
+        val loaded = repository.getAllRemittances().first().first()
+        assertEquals(RemittanceEntryType.DISBURSEMENT, loaded.entry_type)
     }
 
     @Test

@@ -17,9 +17,9 @@ object Rbac {
 
     /** Dashboard tile titles used in [com.redn.farm.ui.screens.main.MainScreen]. */
     fun dashboardTileTitles(normalizedRole: String): Set<String> = when (normalizedRole) {
-        ADMIN -> setOf("Orders", "Customers", "Inventory", "Farm Ops", "Remittance", "Employees", "Products", "Export")
-        STORE_ASSISTANT -> setOf("Orders", "Customers", "Remittance", "Products")
-        PURCHASING -> setOf("Inventory", "Products")
+        ADMIN -> setOf("Orders", "Customers", "Inventory", "Farm Ops", "Remittance", "Employees", "Products", "Export", "Day Close")
+        STORE_ASSISTANT -> setOf("Orders", "Customers", "Remittance", "Products", "Day Close")
+        PURCHASING -> setOf("Inventory", "Remittance", "Products", "Day Close")
         FARMER -> setOf("Farm Ops", "Products")
         USER -> setOf("Products")
         else -> setOf("Products")
@@ -58,11 +58,22 @@ object Rbac {
     fun canWriteOrders(role: String?) = normalizeRole(role) in ROLES_ORDERS_FLOW
     fun canWriteAcquisitions(role: String?) = normalizeRole(role) in ROLES_ACQUIRE
     fun canWriteRemittances(role: String?) = normalizeRole(role) in ROLES_REMITTANCE
+
+    /** Purchasing disbursements (+ admin). */
+    fun canWriteDisbursements(role: String?) = normalizeRole(role) in ROLES_DISBURSEMENT_WRITE
+
     fun canWriteEmployees(role: String?) = normalizeRole(role) in ROLES_EMPLOYEES
     fun canWriteFarmOperations(role: String?) = normalizeRole(role) in ROLES_FARM_OPS
     fun canExport(role: String?) = normalizeRole(role) in ROLES_EXPORT
     fun canManageSettingsAndPricing(role: String?) = normalizeRole(role) in ROLES_SETTINGS_AND_PRICING
     fun canManageUsers(role: String?) = normalizeRole(role) in ROLES_USER_MANAGEMENT
+
+    // EOD-US-* (Epic 12)
+    fun canOpenDayClose(role: String?) = normalizeRole(role) in ROLES_DAY_CLOSE
+    fun canViewDayCloseHistory(role: String?) = normalizeRole(role) in ROLES_DAY_CLOSE_HISTORY
+    fun canViewOutstandingInventory(role: String?) = normalizeRole(role) in ROLES_OUTSTANDING_INVENTORY
+    /** D2: Only ADMIN and PURCHASING may enter physical inventory counts. */
+    fun canEditInventoryCounts(role: String?) = normalizeRole(role) in setOf(ADMIN, PURCHASING)
 
     val ROLES_PRODUCTS: Set<String> = ALL_ROLES
     val ROLES_CUSTOMERS: Set<String> = setOf(ADMIN, STORE_ASSISTANT)
@@ -70,9 +81,19 @@ object Rbac {
     val ROLES_ACTIVE_SRPS: Set<String> = setOf(ADMIN, STORE_ASSISTANT, PURCHASING)
     val ROLES_ACQUIRE: Set<String> = setOf(ADMIN, PURCHASING)
     val ROLES_REMITTANCE: Set<String> = setOf(ADMIN, STORE_ASSISTANT)
+
+    val ROLES_DISBURSEMENT_WRITE: Set<String> = setOf(ADMIN, PURCHASING)
+
+    /** View combined remittance + disbursement screen. */
+    val ROLES_REMITTANCE_HUB: Set<String> = setOf(ADMIN, STORE_ASSISTANT, PURCHASING)
     val ROLES_EMPLOYEES: Set<String> = setOf(ADMIN)
     val ROLES_FARM_OPS: Set<String> = setOf(ADMIN, FARMER)
     val ROLES_EXPORT: Set<String> = setOf(ADMIN)
     val ROLES_SETTINGS_AND_PRICING: Set<String> = setOf(ADMIN)
     val ROLES_USER_MANAGEMENT: Set<String> = setOf(ADMIN)
+
+    // EOD roles (Epic 12)
+    val ROLES_DAY_CLOSE: Set<String> = setOf(ADMIN, STORE_ASSISTANT, PURCHASING)
+    val ROLES_DAY_CLOSE_HISTORY: Set<String> = setOf(ADMIN, STORE_ASSISTANT, PURCHASING)
+    val ROLES_OUTSTANDING_INVENTORY: Set<String> = setOf(ADMIN, PURCHASING, STORE_ASSISTANT)
 }

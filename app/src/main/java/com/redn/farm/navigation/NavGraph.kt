@@ -42,8 +42,13 @@ import com.redn.farm.ui.screens.profile.ChangePasswordScreen
 import com.redn.farm.ui.screens.profile.UserManagementScreen
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.redn.farm.data.local.session.SessionManager
 import com.redn.farm.security.Rbac
+import com.redn.farm.ui.screens.eod.DayCloseHistoryScreen
+import com.redn.farm.ui.screens.eod.DayCloseScreen
+import com.redn.farm.ui.screens.eod.OutstandingInventoryScreen
 import com.redn.farm.ui.screens.manage.customers.CustomerFormScreen
 import com.redn.farm.ui.screens.manage.customers.ManageCustomersViewModel
 import com.redn.farm.ui.screens.manage.products.ProductFormScreen
@@ -111,6 +116,15 @@ sealed class Screen(val route: String) {
     object PresetActivationPreview : Screen("preset_activation_preview/{presetId}") {
         fun createRoute(presetId: String) = "preset_activation_preview/$presetId"
     }
+
+    // Epic 12 — End of Day Operations
+    object DayClose : Screen("day_close/{businessDateMillis}") {
+        fun createRoute(businessDateMillis: Long) = "day_close/$businessDateMillis"
+        /** Opens today's day close. */
+        fun createRouteToday() = "day_close/${System.currentTimeMillis()}"
+    }
+    object DayCloseHistory : Screen("day_close_history")
+    object OutstandingInventory : Screen("outstanding_inventory")
 }
 
 @Composable
@@ -176,6 +190,9 @@ fun NavGraph(
                 },
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)
+                },
+                onNavigateToDayClose = {
+                    navController.navigate(Screen.DayClose.createRouteToday())
                 },
             )
         }
@@ -351,7 +368,7 @@ fun NavGraph(
             }
         }
         composable(Screen.Remittance.route) {
-            RequireRole(navController, Rbac.ROLES_REMITTANCE) {
+            RequireRole(navController, Rbac.ROLES_REMITTANCE_HUB) {
                 RemittanceScreen(
                     onNavigateBack = { navController.navigateUp() },
                     onNavigateToForm = { remittanceId ->
@@ -370,7 +387,7 @@ fun NavGraph(
             val remittanceListEntry = remember(entry) {
                 navController.getBackStackEntry(Screen.Remittance.route)
             }
-            RequireRole(navController, Rbac.ROLES_REMITTANCE) {
+            RequireRole(navController, Rbac.ROLES_REMITTANCE_HUB) {
                 RemittanceFormScreen(
                     remittanceIdKey = remittanceIdKey,
                     onNavigateBack = { navController.navigateUp() },
@@ -623,5 +640,47 @@ fun NavGraph(
                 )
             }
         }
+
+        // ── Epic 12 — End of Day Operations ───────────────────────────────────
+        composable(
+            route = Screen.DayClose.route,
+            arguments = listOf(
+                navArgument("businessDateMillis") { type = NavType.LongType }
+            )
+        ) { entry ->
+            val businessDateMillis = entry.arguments?.getLong("businessDateMillis")
+                ?: System.currentTimeMillis()
+            RequireRole(navController, Rbac.ROLES_DAY_CLOSE) {
+                val ctx = LocalContext.current.applicationContext
+                val session = remember(ctx) { SessionManager(ctx) }
+                DayCloseScreen(
+                    businessDateMillis = businessDateMillis,
+                    username = session.getUsername() ?: "unknown",
+                    role = Rbac.normalizeRole(session.getRole()),
+                    onNavigateBack = { navController.navigateUp() },
+                    onNavigateToHistory = { navController.navigate(Screen.DayCloseHistory.route) },
+                    onNavigateToOutstandingInventory = {
+                        navController.navigate(Screen.OutstandingInventory.route)
+                    },
+                )
+            }
+        }
+        composable(Screen.DayCloseHistory.route) {
+            RequireRole(navController, Rbac.ROLES_DAY_CLOSE_HISTORY) {
+                DayCloseHistoryScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onOpenClose = { dateMillis ->
+                        navController.navigate(Screen.DayClose.createRoute(dateMillis))
+                    },
+                )
+            }
+        }
+        composable(Screen.OutstandingInventory.route) {
+            RequireRole(navController, Rbac.ROLES_OUTSTANDING_INVENTORY) {
+                OutstandingInventoryScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                )
+            }
+        }
     }
-} 
+}

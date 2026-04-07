@@ -48,8 +48,9 @@ User accounts are stored in the `users` table with a `role` TEXT column. The rol
 | **Active SRPs (price board)** | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Acquisitions — view** | ✅ | ❌ | ✅ | ❌ | ❌ |
 | **Acquisitions — add / edit** | ✅ | ❌ | ✅ | ❌ | ❌ |
-| **Remittances — view** | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Remittances — add / edit** | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Cash hub (Remittance screen) — view remittances & disbursements** | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Record / edit remittance** (`REMITTANCE`) | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Record / edit disbursement** (`DISBURSEMENT`) | ✅ | ❌ | ✅ | ❌ | ❌ |
 | **Employees — view** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Employees — add / edit** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Employee Payments — view / add** | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -76,7 +77,8 @@ An admin cannot deactivate their own account.
 Day-to-day sales operations. Can:
 - Take, edit, mark paid, and mark delivered orders
 - Manage the customer list
-- Record and view remittances
+- Record and view remittances (sales proceeds)
+- View combined cash hub (remittances + disbursements) when **DISB-US-02** ships
 - View the active SRP price board
 
 Cannot see acquisitions, employees, pricing configuration, or export data.
@@ -86,6 +88,7 @@ Handles incoming produce. Can:
 - Record and edit acquisitions
 - View the active SRP price board (to compare cost vs. target selling price)
 - View the product catalog (read-only)
+- Record and edit **disbursements** on the shared Remittance screen (**DISB-US-01**, **DISB-US-03**); view combined list (**DISB-US-02**)
 
 Cannot see orders, customers, employees, or settings.
 

@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.redn.farm.data.model.RemittanceEntryType
 import com.redn.farm.ui.components.NumericPadOutlinedTextField
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -55,7 +56,8 @@ fun RemittanceFormScreen(
     onNavigateBack: () -> Unit,
     viewModel: RemittanceViewModel
 ) {
-    val isNew = remittanceIdKey == "new"
+    val isNew = remittanceIdKey == "new" || remittanceIdKey == "new_disbursement"
+    val isNewDisbursement = remittanceIdKey == "new_disbursement"
     val remittances by viewModel.remittances.collectAsState()
     val isSaving by viewModel.isSaving.collectAsState()
 
@@ -118,7 +120,8 @@ fun RemittanceFormScreen(
         }
         isAmountError = false
         if (isNew) {
-            viewModel.addRemittance(amt, remarks.trim(), millis)
+            val entryType = if (isNewDisbursement) RemittanceEntryType.DISBURSEMENT else RemittanceEntryType.REMITTANCE
+            viewModel.addRemittance(amt, remarks.trim(), millis, entryType)
         } else {
             val base = existing ?: return
             viewModel.updateRemittance(
@@ -126,7 +129,7 @@ fun RemittanceFormScreen(
                     amount = amt,
                     remarks = remarks.trim(),
                     date = millis,
-                    date_updated = System.currentTimeMillis()
+                    date_updated = System.currentTimeMillis(),
                 )
             )
         }
@@ -156,7 +159,17 @@ fun RemittanceFormScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(if (isNew) "Add remittance" else "Edit remittance") },
+                title = {
+                    Text(
+                        when {
+                            isNewDisbursement -> "Add disbursement"
+                            isNew -> "Add remittance"
+                            existing != null && RemittanceEntryType.isDisbursement(existing.entry_type) ->
+                                "Edit disbursement"
+                            else -> "Edit remittance"
+                        }
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")

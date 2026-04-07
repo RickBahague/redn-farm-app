@@ -249,10 +249,11 @@ class CsvExportService @Inject constructor(@ApplicationContext private val conte
     fun exportRemittances(remittances: List<Remittance>, sharedTimestamp: String? = null): File {
         val file = fileFor("remittances", sharedTimestamp)
         FileWriter(file).use { writer ->
-            writer.append("RemittanceId,Amount,Date,Remarks,DateUpdated,DeviceId\n")
+            writer.append("RemittanceId,EntryType,Amount,Date,Remarks,DateUpdated,DeviceId\n")
             val deviceId = DeviceUtils.getDeviceId(context)
             remittances.forEach { remittance ->
                 writer.append("${remittance.remittance_id},")
+                    .append(csvTextField(remittance.entry_type)).append(",")
                     .append("${remittance.amount},")
                     .append("${remittance.date},")
                     .append(csvTextField(remittance.remarks)).append(",")

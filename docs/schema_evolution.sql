@@ -374,3 +374,9 @@ CREATE TABLE IF NOT EXISTS `preset_activation_log` (
 -- INTEGER NOT NULL, epoch **milliseconds** (system default zone at UI/seed boundaries).
 -- Room **`DateTimeConverter`** (epoch seconds ↔ LocalDateTime) removed from `FarmDatabase`.
 -- No incremental 7→8 migration in code; dev relies on `fallbackToDestructiveMigration()`.
+
+-- ============================================================
+-- VERSION 10  (Epic 8 — remittances & disbursements)
+-- ============================================================
+-- `remittances.entry_type` TEXT NOT NULL DEFAULT 'REMITTANCE'  — values `REMITTANCE` | `DISBURSEMENT`.
+-- Room v10; dev upgrade via `fallbackToDestructiveMigration()` until incremental migration is defined.

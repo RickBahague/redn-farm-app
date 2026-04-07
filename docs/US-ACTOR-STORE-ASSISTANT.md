@@ -31,7 +31,8 @@ See [USER_STORIES.md](./USER_STORIES.md) for full acceptance criteria.
 | INV-US-06 | Active SRP is always the most recent acquisition | 📋 |
 | REM-US-01 | Record a remittance | ✅ |
 | REM-US-02 | View remittance history | ✅ |
-| REM-US-03 | Edit or delete a remittance | ✅ |
+| REM-US-03 | Edit or delete a remittance | ✅ *(remittance rows only once **DISB-US-01–03** ship)* |
+| DISB-US-02 | View remittances and disbursements on one screen | ✅ |
 
 ## Pricing boundary
 

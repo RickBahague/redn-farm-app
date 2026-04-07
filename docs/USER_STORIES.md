@@ -772,25 +772,36 @@ net_pay = amount + cash_advance_amount
 
 ---
 
-## Epic 8 — Remittance
+## Epic 8 — Remittances & disbursements
+
+**Definitions:**
+- **Remittance** — Cash or equivalent that the **store assistant** turns over from sales (sales proceeds). This is the existing **Remittance** behavior (**REM-US-01–03**).
+- **Disbursement** — Money **received by purchasing** (the purchaser), e.g. working float, capital injection, or supplier credit received — **not** the same as payroll (**employee_payments**).
+
+**UI:** Both kinds are recorded on the **same navigation destination** as today’s **Remittance** feature (`RemittanceScreen`, `RemittanceFormScreen`). The list combines entries; filters and labels distinguish type (**DISB-US-02**).
+
+**Data:** Extend the **`remittances`** table with **`entry_type`**: `REMITTANCE` \| `DISBURSEMENT` (default `REMITTANCE` for existing rows). Alternative names (`transaction_kind`, `direction`) are acceptable if documented; behavior must match this epic.
+
+---
 
 ### REM-US-01 — Record a remittance
-**As** a store assistant, **I want to** record a remittance transaction **so that** there is a log of money sent or received.
+**As** a store assistant, **I want to** record a remittance **so that** sales proceeds handed in are logged.
 
 **Actor:** Store Assistant  
-**Status:** ✅
+**Status:** ✅ *(form evolves: new saves default to `entry_type = REMITTANCE` — see **DISB-US-02**)*
 
 **Acceptance criteria:**
 1. I can enter an amount, date, and optional remarks.
 2. The amount input supports currency formatting.
+3. New remittance rows are stored with **`entry_type = REMITTANCE`**.
 
 ---
 
 ### REM-US-02 — View remittance history
-**As** a store assistant or admin, **I want to** view all remittances **so that** I can track financial transactions.
+**As** a store assistant or admin, **I want to** view remittance activity **so that** I can track sales proceeds turned in.
 
 **Actor:** Store Assistant, Admin  
-**Status:** ✅
+**Status:** ✅ *(combined list, filters, and dual totals — **DISB-US-02**)*
 
 **Acceptance criteria:**
 1. Remittances are listed with amount, date, and remarks, newest first.
@@ -806,8 +817,49 @@ net_pay = amount + cash_advance_amount
 **Status:** ✅
 
 **Acceptance criteria:**
-1. All remittance fields can be updated.
+1. All remittance fields can be updated **only** for rows with **`entry_type = REMITTANCE`** (or legacy null treated as remittance). Store assistant cannot edit **disbursement** rows (**DISB-US-03** / RBAC).
 2. A confirmation dialog is shown before deletion.
+
+---
+
+### DISB-US-01 — Record a disbursement
+**As** a purchasing assistant or admin, **I want to** record a disbursement **so that** money received for purchasing is tracked alongside store remittances.
+
+**Actor:** Purchasing Assistant, Admin  
+**Status:** ✅
+
+**Acceptance criteria:**
+1. From the **same** **Remittance** hub screen, I can add an entry of type **Disbursement** (e.g. FAB / **Add disbursement** or type toggle on the existing add flow).
+2. Fields mirror a remittance: **amount**, **date**, **optional remarks** — same validation and currency formatting as **REM-US-01**.
+3. Saved rows use **`entry_type = DISBURSEMENT`**.
+4. **Store assistant** cannot create disbursements (`Rbac` / ViewModel enforcement).
+
+---
+
+### DISB-US-02 — View remittances and disbursements on one screen
+**As** a user with access to the Remittance feature, **I want to** see remittances and disbursements in one place **so that** daily cash movement is clear.
+
+**Actor:** Store Assistant, Admin, Purchasing Assistant (view); see RBAC for who sees which filters and totals  
+**Status:** ✅
+
+**Acceptance criteria:**
+1. **`RemittanceScreen`** shows a **single chronological list** of both `REMITTANCE` and `DISBURSEMENT` rows (newest first), each row labeled or badged by type.
+2. **Filter chips** (or dropdown): **All** | **Remittances only** | **Disbursements only**; search continues to match amount, date, remarks.
+3. Summary area: **total remittances** and **total disbursements** for the **current filter** (when “All”, show both subtotals or two-line summary).
+4. Purchasing assistant gains **dashboard access** to this screen for view + add disbursement (**`user_roles.md`**, **`Rbac`**).
+
+---
+
+### DISB-US-03 — Edit or delete a disbursement
+**As** a purchasing assistant or admin, **I want to** correct or remove a disbursement **so that** purchasing cash records stay accurate.
+
+**Actor:** Purchasing Assistant, Admin  
+**Status:** ✅
+
+**Acceptance criteria:**
+1. Opening **`RemittanceFormScreen`** on a **`DISBURSEMENT`** row allows edit/delete with the same patterns as **REM-US-03**.
+2. **Store assistant** cannot edit or delete disbursement rows.
+3. Thermal **PRN-03** slip for a disbursement prints a distinct title (e.g. **DISBURSEMENT RECEIPT**) with the same body fields — see **`docs/printing.md`**.
 
 ---
 
@@ -866,7 +918,7 @@ net_pay = amount + cash_advance_amount
 `DeviceId`
 
 **remittances.csv**
-`RemittanceId, Amount, Date, Remarks, DateUpdated, DeviceId`
+`RemittanceId, EntryType, Amount, Date, Remarks, DateUpdated, DeviceId` — **`EntryType`** = `REMITTANCE` \| `DISBURSEMENT` (**DISB-US-01–03**)
 
 **Acceptance criteria:**
 1. All 10 tables listed above can be exported individually.
@@ -1322,8 +1374,8 @@ The app maintains a running balance per product using two aggregates computed di
 **Acceptance criteria:**
 1. The cash reconciliation section shows:
    - **Expected cash from orders** = total amount of today's orders marked `is_paid = true` and channel = `offline` or `reseller` (online orders may be paid via transfer and excluded or separately categorized).
-   - **Total remitted today** = sum of today's remittance records.
-   - **Difference** = expected cash − total remitted. Shown in a distinct color: green if zero or positive (surplus), red if negative (shortage).
+   - **Total remitted today** = sum of **`remittances.amount`** for the business day where **`entry_type = REMITTANCE`** (store assistant handover; **Epic 8**). Rows with **`DISBURSEMENT`** are **not** included here. Optionally show **Disbursements received today** as a separate informational line.
+   - **Difference** = expected cash − total remitted (remittance type only). Shown in a distinct color: green if zero or positive (surplus), red if negative (shortage).
 2. The user may enter a **cash-on-hand** figure (actual counted cash) as a free-entry field. If entered, the screen shows: cash-on-hand vs. expected cash, and the shortage/surplus.
 3. Any discrepancy (non-zero difference) must have a **remarks** field filled before the close can be finalized.
 4. Online payment collections (GCash, bank transfer) are shown separately from cash — labeled as "Digital collections" with a count and total amount, but not included in the cash reconciliation math.
@@ -1408,7 +1460,8 @@ The app maintains a running balance per product using two aggregates computed di
 4. This section is informational and never blocks finalization. If today's gross margin is negative, a confirmation dialog appears: "Today's COGS exceeds collected revenue. Confirm close?" — allowing the user to proceed.
 5. **Other outflows today** are listed separately below the margin line and are not subtracted from it:
    - Employee wages paid today = `SUM(employee_payments.amount)` for payments with `date_paid` = close date.
-   - Remittances recorded today = `SUM(remittances.amount)` for remittances with `date` = close date.
+   - **Sales remittances today** (`entry_type = REMITTANCE`) = `SUM(remittances.amount)` for `date` = close date.
+   - **Disbursements received today** (`entry_type = DISBURSEMENT`) = same filter, separate line (**Epic 8**).
    These are shown for completeness; net margin after labor and overhead is a server-side reporting concept (EOD reporting on device is gross margin only).
 
 ---
@@ -1545,7 +1598,7 @@ The app maintains a running balance per product using two aggregates computed di
 - Multi-device data synchronization (exports provide a manual bridge)
 - Cloud backup / remote database
 - Push notifications
-- Role-based access control (RBAC) in the UI
+- Full **RBAC** **administration** UI (role matrix, bulk assignment) — out of scope; **per-screen gates** already use **`Rbac`** (**DESIGN.md** §5), including **Epic 12** day close (**DESIGN.md** §14.10)
 - Report generation / dashboards / charts *(EOD daily reports are in scope as of Epic 12; multi-period dashboards and trend charts remain out of scope)*
 - Print support from within the app *(EOD thermal slip printing is in scope as of Epic 12; general in-app print is out of scope)*
 - Barcode / QR scanning for products

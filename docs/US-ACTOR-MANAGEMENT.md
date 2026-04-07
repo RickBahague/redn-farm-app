@@ -35,7 +35,12 @@ See [USER_STORIES.md](./USER_STORIES.md) for full acceptance criteria.
 | EMP-US-07 | Edit or delete an employee payment | ✅ |
 | INV-US-02 | View acquisition history (read-only) | ✅ |
 | FOP-US-02 | View farm operation history | ✅ |
+| REM-US-01 | Record a remittance | ✅ |
 | REM-US-02 | View remittance history | ✅ |
+| REM-US-03 | Edit or delete a remittance | ✅ |
+| DISB-US-01 | Record a disbursement | ✅ |
+| DISB-US-02 | View remittances and disbursements on one screen | ✅ |
+| DISB-US-03 | Edit or delete a disbursement | ✅ |
 | EXP-US-01 | Export data to CSV | ✅ |
 | EXP-US-02 | Clear specific data tables | ✅ |
 | MGT-US-01 | Define spoilage rate and hauling costs | 📋 |

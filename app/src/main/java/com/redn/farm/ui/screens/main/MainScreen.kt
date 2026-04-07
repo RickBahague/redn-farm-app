@@ -41,6 +41,7 @@ fun MainScreen(
     onNavigateToAbout: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToDayClose: () -> Unit = {},
     viewModel: MainViewModel = hiltViewModel(),
     loginViewModel: LoginViewModel = hiltViewModel(LocalContext.current as ComponentActivity),
 ) {
@@ -103,7 +104,8 @@ fun MainScreen(
                 Triple("Remittance", Icons.Default.Payments, onNavigateToRemittance),
                 Triple("Employees", Icons.Default.Groups, onNavigateToEmployees),
                 Triple("Products", Icons.Default.ListAlt, onNavigateToProducts),
-                Triple("Export", Icons.Default.FileDownload, onNavigateToExport)
+                Triple("Export", Icons.Default.FileDownload, onNavigateToExport),
+                Triple("Day Close", Icons.Default.EventAvailable, onNavigateToDayClose),
             )
 
             val allowedTitles = Rbac.dashboardTileTitles(Rbac.normalizeRole(userRole))
