@@ -4,12 +4,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.redn.farm.data.model.EmployeePayment
+import com.redn.farm.data.model.netPayAmount
 import com.redn.farm.utils.CurrencyFormatter
 import java.text.SimpleDateFormat
 import java.util.*
@@ -37,37 +39,50 @@ fun PaymentCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Payment #${payment.payment_id}",
+                        text = "Payment #${payment.payment_id}" +
+                            if (payment.is_finalized) " · Finalized" else " · Draft",
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = CurrencyFormatter.format(payment.amount),
+                        text = "Gross wage: ${CurrencyFormatter.format(payment.amount)}",
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    
-                    payment.cash_advance_amount?.let { cashAdvance ->
-                        Text(
-                            text = "Cash Advance: ${CurrencyFormatter.format(cashAdvance)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    
-                    payment.liquidated_amount?.let { liquidated ->
-                        Text(
-                            text = "Liquidated: ${CurrencyFormatter.format(liquidated)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.tertiary
-                        )
-                    }
+
+                    val cashAdvance = payment.cash_advance_amount ?: 0.0
+                    val liquidated = payment.liquidated_amount ?: 0.0
+                    Text(
+                        text = "Cash advance: ${CurrencyFormatter.format(cashAdvance)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Liquidated: ${CurrencyFormatter.format(liquidated)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    val netPay = payment.netPayAmount()
+                    Text(
+                        text = "Net pay: ${CurrencyFormatter.format(netPay)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
 
                     Text(
-                        text = "Date: ${dateFormatter.format(Date(payment.date_paid))}",
+                        text = "Date paid: ${dateFormatter.format(Date(payment.date_paid))}",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "Signature: ${payment.signature}",
+                        text = "Signature: ${
+                            if (payment.signature.isNotBlank() &&
+                                (payment.signature.contains("/") || payment.signature.contains("+") || payment.signature.contains("="))
+                            ) {
+                                "Captured (image)"
+                            } else {
+                                payment.signature
+                            }
+                        }",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     payment.received_date?.let {
@@ -81,17 +96,19 @@ fun PaymentCard(
                 Row {
                     IconButton(onClick = onEditClick) {
                         Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit payment",
+                            imageVector = if (payment.is_finalized) Icons.Default.Visibility else Icons.Default.Edit,
+                            contentDescription = if (payment.is_finalized) "View payment" else "Edit payment",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
-                    IconButton(onClick = onDeleteClick) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete payment",
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                    if (!payment.is_finalized) {
+                        IconButton(onClick = onDeleteClick) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete payment",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             }

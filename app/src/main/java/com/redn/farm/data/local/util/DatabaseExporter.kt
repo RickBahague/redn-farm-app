@@ -8,7 +8,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.time.LocalDateTime
+import java.time.Instant
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 class DatabaseExporter(
@@ -24,7 +25,9 @@ class DatabaseExporter(
     }
 
     suspend fun exportDatabase(): String = withContext(Dispatchers.IO) {
-        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+        val timestamp = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
+            .withZone(ZoneId.systemDefault())
+            .format(Instant.now())
         val exportData = mutableMapOf<String, List<Map<String, Any?>>>()
 
         // Export Products

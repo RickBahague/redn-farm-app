@@ -5,7 +5,9 @@ data class Product(
     val product_name: String,
     val product_description: String,
     val unit_type: String,
-    val is_active: Boolean = true
+    val is_active: Boolean = true,
+    val category: String? = null,
+    val defaultPieceCount: Int? = null
 )
 
 data class ProductList(

@@ -6,8 +6,6 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
-import com.redn.farm.data.model.ProductList
-import com.redn.farm.data.model.ProductPriceList
 import com.redn.farm.data.model.CustomerList
 import com.redn.farm.data.model.CustomerType
 import com.redn.farm.data.local.entity.CustomerEntity
@@ -17,43 +15,56 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeParseException
 
 class DatabaseInitializer(private val context: Context) {
     private val gson: Gson = GsonBuilder()
-        .create()  // Remove date format since we'll handle it manually
+        .create()
     private val applicationScope = CoroutineScope(SupervisorJob())
+    private val zone: ZoneId = ZoneId.systemDefault()
+
+    private data class SeedProducts(val products: List<SeedProduct>)
+    private data class SeedProduct(
+        val product_id: String,
+        val product_name: String,
+        val product_description: String? = null
+    ) {
+        fun description(): String = product_description ?: ""
+    }
+
+    private data class SeedProductPrices(val product_prices: List<SeedProductPrice>)
+    private data class SeedProductPrice(
+        val product_id: String,
+        val per_kg_price: Double?,
+        val per_piece_price: Double?,
+        val valid_date: String
+    )
+
+    private fun readAssetText(path: String): String =
+        context.assets.open(path).bufferedReader().use { it.readText() }
+
+    private fun parseSeedLocalDateToMillis(dateText: String): Long =
+        try {
+            LocalDate.parse(dateText).atStartOfDay(zone).toInstant().toEpochMilli()
+        } catch (_: DateTimeParseException) {
+            System.currentTimeMillis()
+        }
+
+    private fun parseSeedDateTimeToMillis(dateText: String, fallback: Long): Long =
+        runCatching {
+            LocalDateTime.parse(dateText).atZone(zone).toInstant().toEpochMilli()
+        }.recoverCatching {
+            LocalDate.parse(dateText).atStartOfDay(zone).toInstant().toEpochMilli()
+        }.getOrDefault(fallback)
 
     val callback = object : RoomDatabase.Callback() {
         override fun onCreate(db: SupportSQLiteDatabase) {
             super.onCreate(db)
             Log.d("DatabaseInitializer", "Database creation started")
-            
-            // Create tables
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS products (
-                    product_id TEXT PRIMARY KEY NOT NULL,
-                    product_name TEXT NOT NULL,
-                    product_description TEXT NOT NULL,
-                    unit_type TEXT NOT NULL,
-                    is_active INTEGER NOT NULL DEFAULT 1
-                )
-            """.trimIndent())
-            
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS product_prices (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    product_id TEXT NOT NULL,
-                    per_kg_price REAL,
-                    per_piece_price REAL,
-                    valid_date TEXT NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(product_id) REFERENCES products(product_id) ON DELETE CASCADE
-                )
-            """.trimIndent())
-            
+
             applicationScope.launch(Dispatchers.IO) {
                 try {
                     populateDatabase()
@@ -65,108 +76,70 @@ class DatabaseInitializer(private val context: Context) {
         }
     }
 
-    // New function to manually trigger reinitialization
-    suspend fun reinitializeDatabase() = withContext(Dispatchers.IO) {
-        try {
-            Log.d("DatabaseInitializer", "Manual database reinitialization started")
-            
-            // Get the current database instance and close it
-            FarmDatabase.getDatabase(context).close()
-            FarmDatabase.clearInstance()
-            
-            // Delete database file
-            context.deleteDatabase("farm_database")
-            Log.d("DatabaseInitializer", "Existing database deleted")
-            
-            // Create new database instance
-            val database = FarmDatabase.getDatabase(context)
-            
-            // Initialize with data
-            populateDatabase()
-            
-            Log.d("DatabaseInitializer", "Database reinitialized successfully")
-            true // Return success
-        } catch (e: Exception) {
-            Log.e("DatabaseInitializer", "Error reinitializing database", e)
-            throw e
-        }
-    }
-
     private suspend fun populateDatabase() {
         val database = FarmDatabase.getDatabase(context)
 
         try {
-            // Populate products
-            val products = listOf(
-                ProductEntity(
-                    product_id = "PROD001",
-                    product_name = "Tomatoes",
-                    product_description = "Fresh red tomatoes",
-                    unit_type = "kg",
-                    is_active = true
-                ),
-                ProductEntity(
-                    product_id = "PROD002",
-                    product_name = "Lettuce",
-                    product_description = "Fresh green lettuce",
-                    unit_type = "piece",
-                    is_active = true
-                )
-                // Add more products as needed
+            val seedProducts = gson.fromJson(
+                readAssetText("data/products.json"),
+                SeedProducts::class.java
             )
-            
-            products.forEach { product ->
-                database.productDao().insertProduct(product)
+            seedProducts.products.forEach { p ->
+                database.productDao().insertProduct(
+                    ProductEntity(
+                        product_id = p.product_id,
+                        product_name = p.product_name,
+                        product_description = p.description(),
+                        unit_type = "kg",
+                        category = null,
+                        default_piece_count = null,
+                        is_active = true
+                    )
+                )
             }
 
-            // Populate product prices
-            val productPrices = listOf(
-                ProductPriceEntity(
-                    product_id = "PROD001",
-                    per_kg_price = 50.0,
-                    per_piece_price = null,
-                    date_created = LocalDateTime.now()
-                ),
-                ProductPriceEntity(
-                    product_id = "PROD002",
-                    per_kg_price = null,
-                    per_piece_price = 25.0,
-                    date_created = LocalDateTime.now()
-                )
-                // Add more prices as needed
+            val seedPrices = gson.fromJson(
+                readAssetText("data/product_prices.json"),
+                SeedProductPrices::class.java
             )
-            
-            productPrices.forEach { price ->
-                database.productPriceDao().insert(price)
+            seedPrices.product_prices.forEach { price ->
+                val createdAtMillis = parseSeedLocalDateToMillis(price.valid_date)
+                database.productPriceDao().insert(
+                    ProductPriceEntity(
+                        product_id = price.product_id,
+                        per_kg_price = price.per_kg_price,
+                        per_piece_price = price.per_piece_price,
+                        discounted_per_kg_price = null,
+                        discounted_per_piece_price = null,
+                        date_created = createdAtMillis
+                    )
+                )
             }
 
-            // Populate customers
-            val customers = listOf(
-                CustomerEntity(
-                    firstname = "John",
-                    lastname = "Doe",
-                    contact = "09123456789",
-                    customer_type = CustomerType.RETAIL,
-                    address = "123 Main St",
-                    city = "Sample City",
-                    province = "Sample Province",
-                    postal_code = "1234"
-                ),
-                CustomerEntity(
-                    firstname = "Jane",
-                    lastname = "Smith",
-                    contact = "09987654321",
-                    customer_type = CustomerType.WHOLESALE,
-                    address = "456 Oak Ave",
-                    city = "Another City",
-                    province = "Another Province",
-                    postal_code = "5678"
-                )
-                // Add more customers as needed
+            val seedCustomers = gson.fromJson(
+                readAssetText("data/customers.json"),
+                CustomerList::class.java
             )
-            
-            customers.forEach { customer ->
-                database.customerDao().insertCustomer(customer)
+            seedCustomers.customers.forEach { c ->
+                val ct = runCatching { CustomerType.valueOf(c.customer_type.uppercase()) }
+                    .getOrDefault(CustomerType.RETAIL)
+                val now = System.currentTimeMillis()
+                val createdAt = parseSeedDateTimeToMillis(c.date_created, now)
+                val updatedAt = parseSeedDateTimeToMillis(c.date_updated, createdAt)
+                database.customerDao().insertCustomer(
+                    CustomerEntity(
+                        firstname = c.firstname,
+                        lastname = c.lastname,
+                        contact = c.contact,
+                        customer_type = ct,
+                        address = c.address,
+                        city = c.city,
+                        province = c.province,
+                        postal_code = c.postal_code,
+                        date_created = createdAt,
+                        date_updated = updatedAt
+                    )
+                )
             }
 
         } catch (e: Exception) {
@@ -174,4 +147,4 @@ class DatabaseInitializer(private val context: Context) {
             throw e
         }
     }
-} 
+}

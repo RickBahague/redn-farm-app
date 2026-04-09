@@ -1,10 +1,9 @@
 package com.redn.farm.data.model
 
-import java.time.LocalDateTime
-
 data class Order(
     val order_id: Int = 0,
     val customer_id: Int,
+    val channel: String = "offline",
     val customerName: String = "",
     val customerContact: String = "",
     val total_amount: Double,
@@ -23,4 +22,8 @@ data class OrderItem(
     val price_per_unit: Double,
     val is_per_kg: Boolean,
     val total_price: Double
-) 
+)
+
+/** Paid and delivered: order is treated as complete; line items and channel are locked until a flag is cleared. */
+val Order.isOrderFinalized: Boolean
+    get() = is_paid && is_delivered 

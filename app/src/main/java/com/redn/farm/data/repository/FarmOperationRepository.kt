@@ -10,8 +10,6 @@ import com.redn.farm.data.model.FarmOperationType
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import java.time.LocalDateTime
-import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,9 +43,7 @@ class FarmOperationRepository @Inject constructor(
         farmOperationDao.truncate()
     }
 
-    fun getOperationsInDateRange(startDate: LocalDateTime, endDate: LocalDateTime): Flow<List<FarmOperation>> {
-        val startMillis = startDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val endMillis = endDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    fun getOperationsInDateRange(startMillis: Long, endMillis: Long): Flow<List<FarmOperation>> {
         return farmOperationDao.getOperationsInDateRange(startMillis, endMillis).map { entities ->
             entities.map { it.toOperation() }
         }
@@ -61,22 +57,13 @@ class FarmOperationRepository @Inject constructor(
     private fun FarmOperationEntity.toOperation() = FarmOperation(
         operation_id = operation_id,
         operation_type = operation_type,
-        operation_date = LocalDateTime.ofInstant(
-            java.time.Instant.ofEpochMilli(operation_date),
-            ZoneId.systemDefault()
-        ),
+        operation_date = operation_date,
         details = details,
         area = area,
         weather_condition = weather_condition,
         personnel = personnel,
-        date_created = LocalDateTime.ofInstant(
-            java.time.Instant.ofEpochMilli(date_created),
-            ZoneId.systemDefault()
-        ),
-        date_updated = LocalDateTime.ofInstant(
-            java.time.Instant.ofEpochMilli(date_updated),
-            ZoneId.systemDefault()
-        ),
+        date_created = date_created,
+        date_updated = date_updated,
         product_id = product_id,
         product_name = product_name
     )
@@ -84,14 +71,14 @@ class FarmOperationRepository @Inject constructor(
     private fun FarmOperation.toEntity() = FarmOperationEntity(
         operation_id = operation_id,
         operation_type = operation_type,
-        operation_date = operation_date.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+        operation_date = operation_date,
         details = details,
         area = area,
         weather_condition = weather_condition,
         personnel = personnel,
-        date_created = date_created.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-        date_updated = date_updated.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+        date_created = date_created,
+        date_updated = date_updated,
         product_id = product_id,
         product_name = product_name
     )
-} 
+}

@@ -5,34 +5,53 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.CartItem
+import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.utils.CurrencyFormatter
 import java.util.*
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TakeOrderScreen(
     onNavigateBack: () -> Unit,
     onNavigateToOrderHistory: () -> Unit,
-    viewModel: TakeOrderViewModel = viewModel(factory = TakeOrderViewModel.Factory)
+    onNavigateToActiveSrps: () -> Unit = {},
+    viewModel: TakeOrderViewModel = hiltViewModel()
 ) {
     var showCustomerDialog by remember { mutableStateOf(false) }
     var showProductDialog by remember { mutableStateOf(false) }
     var showNewOrderDialog by remember { mutableStateOf(false) }
     
     val selectedCustomer by viewModel.selectedCustomer.collectAsState()
+    val channel by viewModel.channel.collectAsState()
     val cartItems by viewModel.cartItems.collectAsState()
     val cartTotal by viewModel.cartTotal.collectAsState()
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) {
+        launch {
+            viewModel.userMessage.collectLatest { snackbarHostState.showSnackbar(it) }
+        }
+        launch {
+            viewModel.orderPlaced.collectLatest { showNewOrderDialog = true }
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Take Order") },
@@ -42,12 +61,52 @@ fun TakeOrderScreen(
                     }
                 },
                 actions = {
-                    // Add History button
+                    FilledTonalButton(
+                        onClick = {
+                            viewModel.placeOrder()
+                        },
+                        enabled = selectedCustomer != null && cartItems.isNotEmpty(),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .semantics { contentDescription = "Place order" }
+                    ) {
+                        Text(
+                            text = "Order",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                    IconButton(onClick = onNavigateToActiveSrps) {
+                        Icon(Icons.Filled.AttachMoney, "Active SRPs")
+                    }
                     IconButton(onClick = onNavigateToOrderHistory) {
                         Icon(Icons.Default.History, "Order History")
                     }
                 }
             )
+        },
+        bottomBar = {
+            if (cartItems.isNotEmpty()) {
+                Surface(tonalElevation = 2.dp) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Total",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        Text(
+                            text = CurrencyFormatter.format(cartTotal),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
         }
     ) { padding ->
         Column(
@@ -85,6 +144,27 @@ fun TakeOrderScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            Text(
+                text = "Sales channel",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SalesChannel.ALL.forEach { key ->
+                    FilterChip(
+                        selected = channel == key,
+                        onClick = { viewModel.setChannel(key) },
+                        label = { Text(SalesChannel.label(key)) },
+                        modifier = Modifier.height(48.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             // Add Product Button
             OutlinedButton(
                 onClick = { showProductDialog = true },
@@ -110,7 +190,9 @@ fun TakeOrderScreen(
                         },
                         onRemove = {
                             viewModel.removeFromCart(item.product.product_id)
-                        }
+                        },
+                        showUnitToggle = viewModel.productSupportsDualUnit(item.product),
+                        onToggleUnit = { viewModel.toggleCartItemUnit(item.product.product_id) }
                     )
                 }
             }
@@ -120,40 +202,6 @@ fun TakeOrderScreen(
                 items = cartItems,
                 total = cartTotal
             )
-
-            // Total and Place Order
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Total")
-                        Text(
-                            CurrencyFormatter.format(cartTotal),
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = {
-                            viewModel.placeOrder()
-                            showNewOrderDialog = true
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = selectedCustomer != null && cartItems.isNotEmpty()
-                    ) {
-                        Text("Place Order")
-                    }
-                }
-            }
         }
 
         if (showCustomerDialog) {
@@ -169,8 +217,8 @@ fun TakeOrderScreen(
         if (showProductDialog) {
             ProductSelectionDialog(
                 onDismiss = { showProductDialog = false },
-                onProductSelected = { product, quantity, isPerKg, useDiscountedPrice ->
-                    viewModel.addToCart(product, quantity, isPerKg, useDiscountedPrice)
+                onProductSelected = { product, quantity, isPerKg ->
+                    viewModel.addToCart(product, quantity, isPerKg)
                     showProductDialog = false
                 }
             )

@@ -7,16 +7,18 @@ import com.redn.farm.data.model.Order
 import com.redn.farm.data.model.OrderItem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import java.time.LocalDateTime
-import java.time.ZoneId
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class OrderRepository(private val orderDao: OrderDao) {
+@Singleton
+class OrderRepository @Inject constructor(private val orderDao: OrderDao) {
     fun getAllOrders(): Flow<List<Order>> {
         return orderDao.getAllOrders().map { orders ->
             orders.map { orderWithDetails ->
                 Order(
                     order_id = orderWithDetails.order.order_id,
                     customer_id = orderWithDetails.order.customer_id,
+                    channel = orderWithDetails.order.channel,
                     total_amount = orderWithDetails.order.total_amount,
                     order_date = orderWithDetails.order.order_date,
                     order_update_date = orderWithDetails.order.order_update_date,
@@ -32,6 +34,7 @@ class OrderRepository(private val orderDao: OrderDao) {
     suspend fun createOrder(order: Order, items: List<OrderItem>): Long {
         val orderEntity = OrderEntity(
             customer_id = order.customer_id,
+            channel = order.channel,
             total_amount = order.total_amount,
             is_delivered = order.is_delivered
         )
@@ -63,12 +66,18 @@ class OrderRepository(private val orderDao: OrderDao) {
         orderDao.truncate()
     }
 
+    /** Deletes **order_items** only; **orders** rows remain (BUG-02). */
+    suspend fun truncateOrderItemsOnly() {
+        orderDao.truncateOrderItems()
+    }
+
     fun getOrderById(orderId: Int): Flow<Order?> {
         return orderDao.getOrderById(orderId).map { orderWithDetails ->
             orderWithDetails?.let {
                 Order(
                     order_id = it.order.order_id,
                     customer_id = it.order.customer_id,
+                    channel = it.order.channel,
                     total_amount = it.order.total_amount,
                     order_date = it.order.order_date,
                     order_update_date = it.order.order_update_date,
@@ -102,6 +111,7 @@ class OrderRepository(private val orderDao: OrderDao) {
         val orderEntity = OrderEntity(
             order_id = order.order_id,
             customer_id = order.customer_id,
+            channel = order.channel,
             total_amount = order.total_amount,
             order_date = order.order_date,
             order_update_date = System.currentTimeMillis(),

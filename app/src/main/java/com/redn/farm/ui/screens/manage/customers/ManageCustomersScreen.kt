@@ -12,12 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import java.time.format.DateTimeFormatter
 import com.redn.farm.data.model.Customer
-import com.redn.farm.data.model.CustomerType
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
@@ -26,10 +21,9 @@ import androidx.compose.ui.text.style.TextOverflow
 @Composable
 fun ManageCustomersScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToCustomerForm: (String) -> Unit,
     viewModel: ManageCustomersViewModel = hiltViewModel()
 ) {
-    var showAddDialog by remember { mutableStateOf(false) }
-    var customerToEdit by remember { mutableStateOf<Customer?>(null) }
     var showDeleteConfirmation by remember { mutableStateOf<Customer?>(null) }
     
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -59,7 +53,7 @@ fun ManageCustomersScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { showAddDialog = true }) {
+                        IconButton(onClick = { onNavigateToCustomerForm("new") }) {
                             Icon(Icons.Default.Add, "Add Customer")
                         }
                     }
@@ -115,6 +109,7 @@ fun ManageCustomersScreen(
                     .fillMaxSize()
                     .padding(padding)
                     .padding(horizontal = 16.dp)
+                    .imePadding()
             ) {
                 // Search field with compact padding
                 OutlinedTextField(
@@ -128,34 +123,72 @@ fun ManageCustomersScreen(
                     singleLine = true
                 )
 
-                // Customer grid/list based on screen width
-                if (isWideScreen) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 300.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(vertical = 8.dp)
+                val isFiltering = searchQuery.isNotBlank()
+                if (customers.isEmpty() && uiState !is ManageCustomersViewModel.UiState.Loading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 24.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        items(customers) { customer ->
-                            CustomerCard(
-                                customer = customer,
-                                onEdit = { customerToEdit = customer },
-                                onDelete = { showDeleteConfirmation = customer }
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.People,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(48.dp)
                             )
+                            Text(
+                                text = if (isFiltering) "No matching customers" else "No customers yet",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = if (isFiltering) "Try adjusting your search." else "Add your first customer to start recording orders.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(
+                                onClick = { onNavigateToCustomerForm("new") },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (isFiltering) "Add customer" else "Add customer")
+                            }
                         }
                     }
                 } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(1),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(vertical = 8.dp)
-                    ) {
-                        items(customers) { customer ->
-                            CustomerCard(
-                                customer = customer,
-                                onEdit = { customerToEdit = customer },
-                                onDelete = { showDeleteConfirmation = customer }
-                            )
+                    // Customer grid/list based on screen width
+                    if (isWideScreen) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 300.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp)
+                        ) {
+                            items(customers) { customer ->
+                                CustomerCard(
+                                    customer = customer,
+                                    onEdit = { onNavigateToCustomerForm(customer.customer_id.toString()) },
+                                    onDelete = { showDeleteConfirmation = customer }
+                                )
+                            }
+                        }
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(1),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp)
+                        ) {
+                            items(customers) { customer ->
+                                CustomerCard(
+                                    customer = customer,
+                                    onEdit = { onNavigateToCustomerForm(customer.customer_id.toString()) },
+                                    onDelete = { showDeleteConfirmation = customer }
+                                )
+                            }
                         }
                     }
                 }
@@ -167,26 +200,6 @@ fun ManageCustomersScreen(
                     modifier = Modifier.align(Alignment.Center)
                 )
             }
-        }
-
-        // Add/Edit dialog
-        if (showAddDialog || customerToEdit != null) {
-            CustomerDialog(
-                customer = customerToEdit,
-                onDismiss = {
-                    showAddDialog = false
-                    customerToEdit = null
-                },
-                onSave = { customer ->
-                    if (customerToEdit == null) {
-                        viewModel.addCustomer(customer)
-                    } else {
-                        viewModel.updateCustomer(customer)
-                    }
-                    showAddDialog = false
-                    customerToEdit = null
-                }
-            )
         }
 
         // Delete confirmation dialog
@@ -201,6 +214,10 @@ fun ManageCustomersScreen(
                             viewModel.deleteCustomer(customer)
                             showDeleteConfirmation = null
                         }
+                        ,
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
                     ) {
                         Text("Delete")
                     }
@@ -221,8 +238,6 @@ private fun CustomerCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy")
-
     Card(
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -302,161 +317,3 @@ private fun CustomerCard(
         }
     }
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CustomerDialog(
-    customer: Customer? = null,
-    onDismiss: () -> Unit,
-    onSave: (Customer) -> Unit
-) {
-    var firstname by remember { mutableStateOf(customer?.firstname ?: "") }
-    var lastname by remember { mutableStateOf(customer?.lastname ?: "") }
-    var contact by remember { mutableStateOf(customer?.contact ?: "") }
-    var customerType by remember { mutableStateOf(customer?.customer_type ?: CustomerType.RETAIL) }
-    var address by remember { mutableStateOf(customer?.address ?: "") }
-    var city by remember { mutableStateOf(customer?.city ?: "") }
-    var province by remember { mutableStateOf(customer?.province ?: "") }
-    var postalCode by remember { mutableStateOf(customer?.postal_code ?: "") }
-    var expanded by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (customer == null) "Add Customer" else "Edit Customer") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Basic Information Section
-                OutlinedTextField(
-                    value = firstname,
-                    onValueChange = { firstname = it },
-                    label = { Text("First Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = lastname,
-                    onValueChange = { lastname = it },
-                    label = { Text("Last Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = contact,
-                    onValueChange = { contact = it },
-                    label = { Text("Contact") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // Customer Type Selection
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
-                ) {
-                    OutlinedTextField(
-                        value = customerType.toString(),
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Customer Type") },
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor()
-                    )
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
-                    ) {
-                        CustomerType.values().forEach { type ->
-                            DropdownMenuItem(
-                                text = { Text(type.toString()) },
-                                onClick = {
-                                    customerType = type
-                                    expanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                // Address Section
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = address,
-                        onValueChange = { address = it },
-                        label = { Text("Address") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = city,
-                        onValueChange = { city = it },
-                        label = { Text("City") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = province,
-                        onValueChange = { province = it },
-                        label = { Text("Province") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = postalCode,
-                        onValueChange = { postalCode = it },
-                        label = { Text("Postal Code") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    onSave(
-                        Customer(
-                            customer_id = customer?.customer_id ?: 0,
-                            firstname = firstname,
-                            lastname = lastname,
-                            contact = contact,
-                            customer_type = customerType,
-                            address = address,
-                            city = city,
-                            province = province,
-                            postal_code = postalCode
-                        )
-                    )
-                },
-                enabled = firstname.isNotEmpty() && lastname.isNotEmpty()
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-} 

@@ -8,11 +8,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import com.redn.farm.data.model.FarmOperationType
-import java.time.ZoneId
+import com.redn.farm.utils.MillisDateRange
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -21,21 +21,22 @@ fun FarmOperationFilters(
     onSearchQueryChange: (String) -> Unit,
     selectedType: FarmOperationType?,
     onTypeSelected: (FarmOperationType?) -> Unit,
-    dateRange: Pair<LocalDateTime?, LocalDateTime?>,
-    onDateRangeSelected: (Pair<LocalDateTime?, LocalDateTime?>) -> Unit,
+    dateRange: Pair<Long?, Long?>,
+    onDateRangeSelected: (Pair<Long?, Long?>) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showEndDatePicker by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
-    
-    val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy")
+
+    val dateFormatter = remember {
+        DateTimeFormatter.ofPattern("MMM dd, yyyy").withZone(ZoneId.systemDefault())
+    }
 
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Search field
         OutlinedTextField(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
@@ -52,7 +53,6 @@ fun FarmOperationFilters(
             singleLine = true
         )
 
-        // Operation Type filter
         ExposedDropdownMenuBox(
             expanded = expanded,
             onExpandedChange = { expanded = !expanded }
@@ -92,12 +92,10 @@ fun FarmOperationFilters(
             }
         }
 
-        // Date Range Filters
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // From Date
             OutlinedCard(
                 onClick = { showStartDatePicker = true },
                 modifier = Modifier.weight(1f)
@@ -112,13 +110,13 @@ fun FarmOperationFilters(
                         style = MaterialTheme.typography.labelMedium
                     )
                     Text(
-                        text = dateRange.first?.format(dateFormatter) ?: "Select Date",
+                        text = dateRange.first?.let { dateFormatter.format(Instant.ofEpochMilli(it)) }
+                            ?: "Select Date",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
 
-            // To Date
             OutlinedCard(
                 onClick = { showEndDatePicker = true },
                 modifier = Modifier.weight(1f)
@@ -133,14 +131,14 @@ fun FarmOperationFilters(
                         style = MaterialTheme.typography.labelMedium
                     )
                     Text(
-                        text = dateRange.second?.format(dateFormatter) ?: "Select Date",
+                        text = dateRange.second?.let { dateFormatter.format(Instant.ofEpochMilli(it)) }
+                            ?: "Select Date",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
         }
 
-        // Clear Filters Button
         TextButton(
             onClick = {
                 onSearchQueryChange("")
@@ -153,27 +151,21 @@ fun FarmOperationFilters(
         }
     }
 
-    // Start Date Picker Dialog
     if (showStartDatePicker) {
-        val currentStartDate = dateRange.first ?: LocalDateTime.now()
+        val currentStartMillis = dateRange.first ?: System.currentTimeMillis()
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = currentStartDate
-                .atZone(ZoneId.systemDefault())
-                .toInstant()
-                .toEpochMilli()
+            initialSelectedDateMillis = currentStartMillis
         )
-        
+
         DatePickerDialog(
             onDismissRequest = { showStartDatePicker = false },
             confirmButton = {
                 TextButton(
                     onClick = {
                         datePickerState.selectedDateMillis?.let { millis ->
-                            val selectedDate = LocalDateTime.ofInstant(
-                                Instant.ofEpochMilli(millis),
-                                ZoneId.systemDefault()
-                            ).withHour(0).withMinute(0).withSecond(0)
-                            onDateRangeSelected(selectedDate to dateRange.second)
+                            onDateRangeSelected(
+                                MillisDateRange.startOfDayMillis(millis) to dateRange.second
+                            )
                         }
                         showStartDatePicker = false
                     }
@@ -194,14 +186,10 @@ fun FarmOperationFilters(
         }
     }
 
-    // End Date Picker Dialog
     if (showEndDatePicker) {
-        val currentEndDate = dateRange.second ?: LocalDateTime.now()
+        val currentEndMillis = dateRange.second ?: System.currentTimeMillis()
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = currentEndDate
-                .atZone(ZoneId.systemDefault())
-                .toInstant()
-                .toEpochMilli()
+            initialSelectedDateMillis = currentEndMillis
         )
 
         DatePickerDialog(
@@ -210,11 +198,9 @@ fun FarmOperationFilters(
                 TextButton(
                     onClick = {
                         datePickerState.selectedDateMillis?.let { millis ->
-                            val selectedDate = LocalDateTime.ofInstant(
-                                Instant.ofEpochMilli(millis),
-                                ZoneId.systemDefault()
-                            ).withHour(23).withMinute(59).withSecond(59)
-                            onDateRangeSelected(dateRange.first to selectedDate)
+                            onDateRangeSelected(
+                                dateRange.first to MillisDateRange.endOfDayMillis(millis)
+                            )
                         }
                         showEndDatePicker = false
                     }
@@ -234,4 +220,4 @@ fun FarmOperationFilters(
             )
         }
     }
-} 
+}

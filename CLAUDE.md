@@ -1,0 +1,85 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build Commands
+
+```bash
+# Build debug APK
+./gradlew assembleDebug
+
+# Build release APK
+./gradlew assembleRelease
+
+# Run unit tests
+./gradlew testDebugUnitTest
+
+# Run a single test class
+./gradlew :app:testDebugUnitTest --tests "*.PasswordManagerTest"
+
+# Run instrumented tests (requires connected device/emulator)
+./gradlew connectedAndroidTest
+
+# Clean build
+./gradlew clean
+```
+
+## Dev Script
+
+`scripts/dev.sh` wraps the most common tasks:
+
+If **adb** reports *more than one device/emulator*, run `./scripts/dev.sh devices`, then either `export ANDROID_SERIAL=<serial>` or `./scripts/dev.sh install <serial>` (same optional serial works for `fresh`, `launch`, `log`, etc.).
+
+```bash
+./scripts/dev.sh install          # build + install debug APK
+./scripts/dev.sh fresh            # uninstall + install + launch (clean slate)
+./scripts/dev.sh log              # filtered logcat
+./scripts/dev.sh log-crash        # errors and crashes only
+./scripts/dev.sh pull-exports     # pull CSV exports to ~/Desktop/farm_exports/
+./scripts/dev.sh db               # print DB Inspector SQL queries
+./scripts/dev.sh test-class <Cls> # run one JVM test class by short name
+./scripts/dev.sh pair             # guided wireless ADB pairing
+```
+
+Run `./scripts/dev.sh help` for the full list.
+
+## Architecture Overview
+
+Android app (Kotlin + Jetpack Compose) for farm management. Package: `com.redn.farm`.
+
+**Tech stack:** MVVM, Hilt DI, Room (SQLite), Jetpack Navigation Compose, Material3
+
+### Layer structure under `app/src/main/java/com/redn/farm/`:
+
+- `data/local/` — Room entities, DAOs, FarmDatabase, session/security utilities
+- `data/model/` — domain models (separate from Room entities)
+- `data/repository/` — repositories wrapping DAOs
+- `data/export/` — `CsvExportService` writes CSV to external files dir `exports/`
+- `ui/screens/` — feature folders, each containing `*Screen.kt` + `*ViewModel.kt`
+- `di/` — Hilt modules: `DatabaseModule` (provides DB + DAOs), `RepositoryModule` (provides select repositories)
+- `navigation/NavGraph.kt` — all routes defined as `Screen` sealed class; start destination is `Login`
+- `config/AppConfig.kt` — app-level constants
+
+### Database
+
+`FarmDatabase` (Room, version 10) in `data/local/FarmDatabase.kt`. Incremental migrations in code: `MIGRATION_1_2`, `MIGRATION_2_3` only. Newer schema bumps (through v10: EOD day-close tables, **`remittances.entry_type`** / Epic 8, etc.) rely on **`fallbackToDestructiveMigration()`** during dev / fresh install — no incremental migration until production strategy is defined.
+
+On first create, default users are seeded: `admin` / `admin123` and `user` / `user123`.
+
+Seed assets live in `app/src/main/assets/`: `data/products.json`, `data/product_prices.json`, `data/customers.json`, and a pre-populated `database/farm.db`.
+
+### Pricing (acquisition SRP)
+
+`SrpCalculator` + `PricingChannelEngine` implement **INV-US-05** / **PricingReference.md** **FR-PC-14**: **`C_bulk` = B / sellable kg**, **`C = C_bulk + A`** (hauling per kg), *then* channel markup/margin, optional per-channel fees, rounding; fractional tiers and per-piece from rounded per-kg SRP. **Per-piece acquisition mode** (`is_per_kg = false`): **`quantity`** = total pieces, **`piece_count`** = **Estimated Qty per Kg** \(n\); **`bulkQuantityKg`** = `quantity / n`. **CLARIF-01 / §5.1.1 (design):** per-piece SRP uses **`s_eff = 0`** → **`Q_sell = Q`** (spoilage not in per-piece SRP math); **implement in code** when aligning with **`docs/pricing_clarif.md`**. Spreadsheet notation: **§4.3.1** (CLARIF “**A**” in by-weight rows = **`C_bulk`**, not spec **`A`**). Checklist: `docs/INV_ACQUISITION_SRP_TRACKER.md`. See `docs/USER_STORIES.md`, **`docs/pricing_clarif.md`** (**by-weight** spoilage: **rate** or **actual kg** per line 10 — **BUG-PRC-04**; per-piece **B** = **`Q × A_spec`** lot total; **SRP** = **(A + B/total_quantity)** × markup), **`docs/PricingReference.md`** (v0.9.33-draft). Align legacy training sheets with **§4.3.1** if they still use literal **(A + lot B)** without **÷ P_tot**.
+
+### DI pattern
+
+Not all repositories are bound in `RepositoryModule` — some are injected directly via constructor injection by Hilt. `DatabaseModule` provides all DAOs; ViewModels receive them through Hilt constructor injection.
+
+### Session management
+
+`SessionManager` (SharedPreferences) tracks login state. `LoginScreen` → `MainScreen` navigation pops the back stack so the user can't navigate back to login. Logout clears the entire back stack.
+
+### Navigation
+
+Routes are string-based. Parameterized routes (e.g., `edit_order/{orderId}`, `employee_payments/{employeeId}/{employeeName}`) are defined in the `Screen` sealed class with `createRoute(...)` helpers. Employee names have spaces replaced with `_` in the route and restored on the receiving end.

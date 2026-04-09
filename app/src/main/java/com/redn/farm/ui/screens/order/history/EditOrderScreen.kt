@@ -10,9 +10,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Order
 import com.redn.farm.data.model.OrderItem
+import com.redn.farm.data.model.isOrderFinalized
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.ProductPrice
 import java.text.NumberFormat
@@ -23,7 +24,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.rememberLazyListState
+import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.utils.CurrencyFormatter
+import com.redn.farm.ui.components.NumericPadBottomSheet
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -34,6 +37,7 @@ import java.time.LocalDate
 import com.redn.farm.utils.PrinterUtils
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +57,7 @@ private fun formatDate(timestamp: Long): String {
 fun EditOrderScreen(
     orderId: Int,
     onNavigateBack: () -> Unit,
-    viewModel: OrderHistoryViewModel = viewModel(factory = OrderHistoryViewModel.Factory)
+    viewModel: OrderHistoryViewModel = hiltViewModel()
 ) {
     var order by remember { mutableStateOf<Order?>(null) }
     var orderItems by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
@@ -68,13 +72,13 @@ fun EditOrderScreen(
     val context = LocalContext.current
 
     LaunchedEffect(orderId) {
-        viewModel.getOrder(orderId).collectLatest { loadedOrder ->
+        viewModel.getOrder(orderId).collectLatest { loadedOrder: Order? ->
             order = loadedOrder
         }
     }
 
     LaunchedEffect(orderId) {
-        viewModel.getOrderItems(orderId).collectLatest { items ->
+        viewModel.getOrderItems(orderId).collectLatest { items: List<OrderItem> ->
             orderItems = items
         }
     }
@@ -96,7 +100,7 @@ fun EditOrderScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("${if (order?.is_paid == true) "View" else "Edit"} Order #$orderId") },
+                title = { Text("${if (order?.isOrderFinalized == true) "View" else "Edit"} Order #$orderId") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
@@ -128,7 +132,8 @@ fun EditOrderScreen(
                                             
                                             orderItems.forEach { item ->
                                                 appendLine("${item.product_name} - ${CurrencyFormatter.format(item.total_price)}")
-                                                appendLine("${item.quantity}${if (item.is_per_kg) "kg" else "pc"} x ${CurrencyFormatter.format(item.price_per_unit)}")
+                                                val u = if (item.is_per_kg) "/kg" else "/pc"
+                                                appendLine("${item.quantity}${if (item.is_per_kg) "kg" else "pc"} x ${CurrencyFormatter.format(item.price_per_unit)}$u")
                                             }
                                             
                                             appendLine("--------------------------------")
@@ -141,7 +146,7 @@ fun EditOrderScreen(
                                             appendLine("Mobile: 0998.849.0469")
                                         }
 
-                                        val success = PrinterUtils.printMessage(context, message)
+                                        val success = PrinterUtils.printMessage(context, message, alignment = 0)
                                         if (success) {
                                             Toast.makeText(context, "Print job sent successfully", Toast.LENGTH_SHORT).show()
                                         }
@@ -159,7 +164,7 @@ fun EditOrderScreen(
                     ) {
                         Icon(Icons.Default.Print, "Print Order")
                     }
-                    if (hasChanges && order?.is_paid == false) {
+                    if (hasChanges && order?.isOrderFinalized != true) {
                         TextButton(
                             onClick = {
                                 order?.let { currentOrder ->
@@ -221,7 +226,7 @@ fun EditOrderScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                if (!currentOrder.is_paid) {
+                                if (!currentOrder.isOrderFinalized) {
                                     IconButton(
                                         onClick = { showDatePicker = true }
                                     ) {
@@ -232,61 +237,91 @@ fun EditOrderScreen(
                         }
                     }
 
-                    // Payment Status Card - 40% width
-                    if (!currentOrder.is_paid) {
-                        Card(
-                            modifier = Modifier.weight(0.4f)
+                    // Payment / delivery — editable until both paid and delivered
+                    Card(
+                        modifier = Modifier.weight(0.4f)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            Text(
+                                text = "Payment & delivery",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Payment Status",
-                                    style = MaterialTheme.typography.titleSmall
+                                    text = if (currentOrder.is_paid) "Paid" else "Unpaid",
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = if (currentOrder.is_paid) "Paid" else "Unpaid",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Switch(
-                                        checked = currentOrder.is_paid,
-                                        onCheckedChange = { newStatus -> 
-                                            showPaymentConfirmDialog = newStatus
-                                        }
-                                    )
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Delivered",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Switch(
-                                        checked = currentOrder.is_delivered,
-                                        onCheckedChange = { newDeliveryStatus ->
-                                            val updatedOrder = currentOrder.copy(
-                                                is_delivered = newDeliveryStatus,
-                                                order_update_date = System.currentTimeMillis()
-                                            )
-                                            order = updatedOrder
-                                            hasChanges = true
-                                            viewModel.updateOrderDeliveryStatus(orderId, newDeliveryStatus)
-                                        },
-                                        enabled = !currentOrder.is_paid
-                                    )
-                                }
+                                Switch(
+                                    checked = currentOrder.is_paid,
+                                    onCheckedChange = { newStatus ->
+                                        showPaymentConfirmDialog = newStatus
+                                    }
+                                )
                             }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Delivered",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Switch(
+                                    checked = currentOrder.is_delivered,
+                                    onCheckedChange = { newDeliveryStatus ->
+                                        val updatedOrder = currentOrder.copy(
+                                            is_delivered = newDeliveryStatus,
+                                            order_update_date = System.currentTimeMillis()
+                                        )
+                                        order = updatedOrder
+                                        hasChanges = true
+                                        viewModel.updateOrderDeliveryStatus(orderId, newDeliveryStatus)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Channel: ${SalesChannel.label(SalesChannel.normalize(currentOrder.channel))}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (!currentOrder.isOrderFinalized) {
+                    Text(
+                        text = "Change channel to re-apply active SRPs to all lines",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SalesChannel.ALL.forEach { key ->
+                            FilterChip(
+                                selected = SalesChannel.normalize(currentOrder.channel) == key,
+                                onClick = {
+                                    val repriced = viewModel.repriceOrderItems(orderItems, key)
+                                    orderItems = repriced
+                                    order = currentOrder.copy(
+                                        channel = key,
+                                        total_amount = repriced.sumOf { it.total_price },
+                                        order_update_date = System.currentTimeMillis()
+                                    )
+                                    hasChanges = true
+                                },
+                                label = { Text(SalesChannel.label(key)) }
+                            )
                         }
                     }
                 }
@@ -310,7 +345,7 @@ fun EditOrderScreen(
                                 text = "Order Items",
                                 style = MaterialTheme.typography.titleMedium
                             )
-                            if (!currentOrder.is_paid) {
+                            if (!currentOrder.isOrderFinalized) {
                                 IconButton(onClick = { showAddProductDialog = true }) {
                                     Icon(Icons.Default.Add, "Add Product")
                                 }
@@ -324,13 +359,13 @@ fun EditOrderScreen(
                             items(orderItems) { item ->
                                 OrderItemRow(
                                     item = item,
-                                    onEditItem = { if (!currentOrder.is_paid) showEditItemDialog = it },
-                                    onRemoveItem = { itemToRemove -> 
-                                        if (!currentOrder.is_paid) {
+                                    onEditItem = { if (!currentOrder.isOrderFinalized) showEditItemDialog = it },
+                                    onRemoveItem = { itemToRemove ->
+                                        if (!currentOrder.isOrderFinalized) {
                                             showDeleteItemDialog = itemToRemove
                                         }
                                     },
-                                    isEditable = !currentOrder.is_paid
+                                    isEditable = !currentOrder.isOrderFinalized
                                 )
                             }
                         }
@@ -358,15 +393,20 @@ fun EditOrderScreen(
 
         // Dialogs remain unchanged
         order?.let { currentOrder ->
-            if (!currentOrder.is_paid) {
+            if (!currentOrder.isOrderFinalized) {
                 showEditItemDialog?.let { item ->
                     EditOrderItemDialog(
                         item = item,
+                        orderChannel = currentOrder.channel,
                         onDismiss = { showEditItemDialog = null },
                         onSave = { updatedItem ->
-                            orderItems = orderItems.map { 
-                                if (it.id == updatedItem.id) updatedItem else it 
+                            orderItems = orderItems.map {
+                                if (it.id == updatedItem.id) updatedItem else it
                             }
+                            order = currentOrder.copy(
+                                total_amount = orderItems.sumOf { it.total_price },
+                                order_update_date = System.currentTimeMillis()
+                            )
                             hasChanges = true
                             showEditItemDialog = null
                         },
@@ -376,15 +416,14 @@ fun EditOrderScreen(
 
                 if (showAddProductDialog) {
                     ProductSelectionDialog(
+                        orderChannel = currentOrder.channel,
                         onDismiss = { showAddProductDialog = false },
                         onProductSelected = { product, quantity, isPerKg ->
-                            val productPrice = viewModel.getLatestProductPrice(product.product_id)
-                            val unitPrice = if (isPerKg) {
-                                productPrice?.per_kg_price
-                            } else {
-                                productPrice?.per_piece_price
-                            } ?: 0.0
-                            
+                            val unitPrice = viewModel.resolveOrderLinePrice(
+                                product.product_id,
+                                currentOrder.channel,
+                                isPerKg
+                            )
                             val newItem = OrderItem(
                                 order_id = orderId,
                                 product_id = product.product_id,
@@ -394,13 +433,10 @@ fun EditOrderScreen(
                                 is_per_kg = isPerKg,
                                 total_price = quantity * unitPrice
                             )
-                            
-                            // Update order total
-                            order?.let { currentOrder ->
-                                val newTotal = currentOrder.total_amount + newItem.total_price
-                                order = currentOrder.copy(total_amount = newTotal)
+                            order?.let { co ->
+                                val newTotal = co.total_amount + newItem.total_price
+                                order = co.copy(total_amount = newTotal)
                             }
-                            
                             orderItems = orderItems + newItem
                             hasChanges = true
                             showAddProductDialog = false
@@ -417,7 +453,7 @@ fun EditOrderScreen(
                     text = { 
                         Text(
                             "Are you sure you want to mark this order as ${if (newStatus) "paid" else "unpaid"}? " +
-                            if (newStatus) "This action cannot be undone." else ""
+                                "You can still update delivery until the order is both paid and delivered."
                         )
                     },
                     confirmButton = {
@@ -452,13 +488,14 @@ fun EditOrderScreen(
                 DatePickerDialog(
                     onDismissRequest = { showDatePicker = false },
                     onDateSelected = { selectedDate ->
+                        val dayMillis = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                         val updatedOrder = currentOrder.copy(
-                            order_date = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                            order_date = dayMillis,
                             order_update_date = System.currentTimeMillis()
                         )
                         order = updatedOrder
                         hasChanges = true
-                        viewModel.updateOrderDate(orderId, selectedDate.atStartOfDay())
+                        viewModel.updateOrderDate(orderId, dayMillis)
                         showDatePicker = false
                     },
                     initialDate = LocalDate.ofInstant(
@@ -541,16 +578,8 @@ private fun DatePickerDialog(
             .toEpochMilli()
     )
 
-    AlertDialog(
+    DatePickerDialog(
         onDismissRequest = onDismissRequest,
-        title = { Text("Select Date") },
-        text = {
-            DatePicker(
-                state = datePickerState,
-                showModeToggle = false,
-                modifier = Modifier.padding(16.dp)
-            )
-        },
         confirmButton = {
             TextButton(
                 onClick = {
@@ -570,7 +599,12 @@ private fun DatePickerDialog(
                 Text("Cancel")
             }
         }
-    )
+    ) {
+        DatePicker(
+            state = datePickerState,
+            showModeToggle = false
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -615,46 +649,32 @@ private fun CustomerInfoCard(
                     text = "Order Date: ${orderDate.format(dateFormatter)}",
                     style = MaterialTheme.typography.bodyMedium
                 )
-                if (!order.is_paid) {
+                if (!order.isOrderFinalized) {
                     IconButton(onClick = { showDatePicker = true }) {
                         Icon(Icons.Default.Edit, "Edit Date")
                     }
                 }
             }
 
-            // Delivery Status Switch
-            if (!order.is_paid) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Delivered")
-                    Switch(
-                        checked = isDelivered,
-                        onCheckedChange = { newDeliveryStatus ->
-                            isDelivered = newDeliveryStatus
-                            val updatedOrder = order.copy(
-                                is_delivered = newDeliveryStatus,
-                                order_update_date = System.currentTimeMillis()
-                            )
-                            viewModel.updateOrderDeliveryStatus(order.order_id, newDeliveryStatus)
-                            onOrderUpdated(updatedOrder)
-                        }
-                    )
-                }
-            } else {
-                // Show delivery status as text for paid orders
-                Text(
-                    text = if (isDelivered) "Delivered" else "Pending Delivery",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (isDelivered) 
-                        MaterialTheme.colorScheme.primary
-                    else 
-                        MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Delivered")
+                Switch(
+                    checked = isDelivered,
+                    onCheckedChange = { newDeliveryStatus ->
+                        isDelivered = newDeliveryStatus
+                        val updatedOrder = order.copy(
+                            is_delivered = newDeliveryStatus,
+                            order_update_date = System.currentTimeMillis()
+                        )
+                        viewModel.updateOrderDeliveryStatus(order.order_id, newDeliveryStatus)
+                        onOrderUpdated(updatedOrder)
+                    }
                 )
             }
         }
@@ -664,14 +684,15 @@ private fun CustomerInfoCard(
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             onDateSelected = { selectedDate ->
+                val dayMillis = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                 val updatedOrder = order.copy(
-                    order_date = selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                    order_date = dayMillis,
                     order_update_date = System.currentTimeMillis()
                 )
                 onOrderUpdated(updatedOrder)
                 viewModel.updateOrderDate(
                     orderId = order.order_id,
-                    newDate = selectedDate.atStartOfDay()
+                    orderDateMillis = dayMillis
                 )
                 showDatePicker = false
             },
@@ -789,7 +810,7 @@ private fun OrderItemRow(
                         style = MaterialTheme.typography.bodySmall
                     )
                     Text(
-                        text = "@${CurrencyFormatter.format(item.price_per_unit)}",
+                        text = "@${CurrencyFormatter.format(item.price_per_unit)}${if (item.is_per_kg) "/kg" else "/pc"}",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -887,14 +908,17 @@ private fun TotalAmountCard(
 @Composable
 private fun EditOrderItemDialog(
     item: OrderItem,
+    orderChannel: String,
     onDismiss: () -> Unit,
     onSave: (OrderItem) -> Unit,
     viewModel: OrderHistoryViewModel
 ) {
     var quantity by remember { mutableStateOf(item.quantity.toString()) }
+    var numericPadVisible by remember { mutableStateOf(false) }
     var isPerKg by remember { mutableStateOf(item.is_per_kg) }
-    var useDiscountedPrice by remember { mutableStateOf(false) }
-    val productPrice = viewModel.getLatestProductPrice(item.product_id)
+    val products by viewModel.products.collectAsState()
+    val product = products.find { it.product_id == item.product_id }
+    val focusManager = LocalFocusManager.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -903,128 +927,66 @@ private fun EditOrderItemDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .imePadding()
                     .padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Product Name
                 Text(
                     text = item.product_name,
                     style = MaterialTheme.typography.titleMedium
                 )
-
-                // Regular Prices Section
                 Text(
-                    text = "Regular Prices",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                    text = "Channel: ${SalesChannel.label(SalesChannel.normalize(orderChannel))} — unit price from active SRP or fallback.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Per Kg: ${CurrencyFormatter.format(productPrice?.per_kg_price ?: 0.0)}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = "Per Piece: ${CurrencyFormatter.format(productPrice?.per_piece_price ?: 0.0)}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
 
-                // Discounted Prices Section
-                if (productPrice?.discounted_per_kg_price != null || productPrice?.discounted_per_piece_price != null) {
-                    Text(
-                        text = "Discounted Prices",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Per Kg: ${CurrencyFormatter.format(productPrice.discounted_per_kg_price ?: 0.0)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Text(
-                            text = "Per Piece: ${CurrencyFormatter.format(productPrice.discounted_per_piece_price ?: 0.0)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-
-                // Quantity Input
                 OutlinedTextField(
                     value = quantity,
-                    onValueChange = { 
-                        if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                            quantity = it
+                    onValueChange = {},
+                    label = { Text("Quantity") },
+                    readOnly = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            numericPadVisible = true
+                            focusManager.clearFocus()
+                        }) {
+                            Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
                         }
                     },
-                    label = { Text("Quantity") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Price Type Selection
-                if (productPrice?.let { price ->
-                    (isPerKg && price.discounted_per_kg_price != null) ||
-                    (!isPerKg && price.discounted_per_piece_price != null)
-                } == true) {
+                if (product != null && viewModel.productSupportsDualUnit(product)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Use Discounted Price")
+                        Text(if (isPerKg) "Per kilogram" else "Per piece")
                         Switch(
-                            checked = useDiscountedPrice,
-                            onCheckedChange = { useDiscountedPrice = it }
+                            checked = isPerKg,
+                            onCheckedChange = { isPerKg = it }
                         )
                     }
                 }
 
-                // Per kg/piece switch
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(if (isPerKg) "Per Kilogram" else "Per Piece")
-                    Switch(
-                        checked = isPerKg,
-                        onCheckedChange = { isPerKg = it }
-                    )
-                }
-
-                // Show current price based on selection
-                val currentUnitPrice = if (isPerKg) {
-                    if (useDiscountedPrice) productPrice?.discounted_per_kg_price else productPrice?.per_kg_price
-                } else {
-                    if (useDiscountedPrice) productPrice?.discounted_per_piece_price else productPrice?.per_piece_price
-                } ?: 0.0
+                val unitPrice = viewModel.resolveOrderLinePrice(item.product_id, orderChannel, isPerKg)
+                Text(
+                    text = "Unit price: ${CurrencyFormatter.format(unitPrice)}",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
 
                 quantity.toDoubleOrNull()?.let { qty ->
-                    val total = qty * currentUnitPrice
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.End
-                    ) {
-                        Text(
-                            text = "Unit Price: ${CurrencyFormatter.format(currentUnitPrice)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (useDiscountedPrice) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Total: ${CurrencyFormatter.format(total)}",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    Text(
+                        text = "Line total: ${CurrencyFormatter.format(qty * unitPrice)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.align(Alignment.End)
+                    )
                 }
             }
         },
@@ -1032,18 +994,15 @@ private fun EditOrderItemDialog(
             TextButton(
                 onClick = {
                     quantity.toDoubleOrNull()?.let { newQuantity ->
-                        val newUnitPrice = if (isPerKg) {
-                            if (useDiscountedPrice) productPrice?.discounted_per_kg_price else productPrice?.per_kg_price
-                        } else {
-                            if (useDiscountedPrice) productPrice?.discounted_per_piece_price else productPrice?.per_piece_price
-                        } ?: 0.0
-                        
-                        onSave(item.copy(
-                            quantity = newQuantity,
-                            is_per_kg = isPerKg,
-                            price_per_unit = newUnitPrice,
-                            total_price = newQuantity * newUnitPrice
-                        ))
+                        val newUnitPrice = viewModel.resolveOrderLinePrice(item.product_id, orderChannel, isPerKg)
+                        onSave(
+                            item.copy(
+                                quantity = newQuantity,
+                                is_per_kg = isPerKg,
+                                price_per_unit = newUnitPrice,
+                                total_price = newQuantity * newUnitPrice
+                            )
+                        )
                     }
                 },
                 enabled = quantity.isNotEmpty() && quantity.toDoubleOrNull() != null
@@ -1057,32 +1016,42 @@ private fun EditOrderItemDialog(
             }
         }
     )
+
+    NumericPadBottomSheet(
+        visible = numericPadVisible,
+        title = "Quantity",
+        value = quantity,
+        onValueChange = { quantity = it },
+        decimalEnabled = true,
+        maxDecimalPlaces = 3,
+        onDismiss = { numericPadVisible = false }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProductSelectionDialog(
+    orderChannel: String,
     onDismiss: () -> Unit,
     onProductSelected: (Product, Double, Boolean) -> Unit,
     viewModel: OrderHistoryViewModel
 ) {
     var selectedProduct by remember { mutableStateOf<Product?>(null) }
     var quantity by remember { mutableStateOf("") }
+    var numericPadVisible by remember { mutableStateOf(false) }
     var isPerKg by remember { mutableStateOf(true) }
-    var useDiscountedPrice by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
-    
-    val products by viewModel.products.collectAsState()
-    val isWideScreen = LocalConfiguration.current.screenWidthDp > 600
 
-    // Filter products based on search query
+    val products by viewModel.products.collectAsState()
+    val focusManager = LocalFocusManager.current
+
     val filteredProducts = remember(products, searchQuery) {
         if (searchQuery.isBlank()) {
             products
         } else {
             products.filter { product ->
                 product.product_name.contains(searchQuery, ignoreCase = true) ||
-                product.product_description.contains(searchQuery, ignoreCase = true)
+                    product.product_description.contains(searchQuery, ignoreCase = true)
             }
         }
     }
@@ -1094,11 +1063,11 @@ private fun ProductSelectionDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .imePadding()
                     .padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (selectedProduct == null) {
-                    // Search bar
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
@@ -1114,24 +1083,25 @@ private fun ProductSelectionDialog(
                         } else null
                     )
 
-                    // Product list
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(200.dp)
                     ) {
                         items(filteredProducts) { product ->
-                            val productPrice = viewModel.getLatestProductPrice(product.product_id)
                             ListItem(
                                 headlineContent = { Text(product.product_name) },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { selectedProduct = product }
+                                    .clickable {
+                                        selectedProduct = product
+                                        isPerKg = viewModel.defaultIsPerKgForProductLine(product)
+                                        quantity = ""
+                                    }
                             )
                         }
                     }
                 } else {
-                    // Product details and quantity input
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1141,120 +1111,58 @@ private fun ProductSelectionDialog(
                                 text = product.product_name,
                                 style = MaterialTheme.typography.titleMedium
                             )
-
-                            val productPrice = viewModel.getLatestProductPrice(product.product_id)
-
-                            // Regular Prices Section
                             Text(
-                                text = "Regular Prices",
-                                style = MaterialTheme.typography.titleSmall,
-                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                                text = "Channel: ${SalesChannel.label(SalesChannel.normalize(orderChannel))}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Per Kg: ${CurrencyFormatter.format(productPrice?.per_kg_price ?: 0.0)}",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Text(
-                                    text = "Per Piece: ${CurrencyFormatter.format(productPrice?.per_piece_price ?: 0.0)}",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-
-                            // Discounted Prices Section
-                            if (productPrice?.discounted_per_kg_price != null || productPrice?.discounted_per_piece_price != null) {
-                                Text(
-                                    text = "Discounted Prices",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                                )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "Per Kg: ${CurrencyFormatter.format(productPrice?.discounted_per_kg_price ?: 0.0)}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                    Text(
-                                        text = "Per Piece: ${CurrencyFormatter.format(productPrice?.discounted_per_piece_price ?: 0.0)}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                }
-                            }
+                            val unitPrice = viewModel.resolveOrderLinePrice(product.product_id, orderChannel, isPerKg)
+                            Text(
+                                text = "Unit price: ${CurrencyFormatter.format(unitPrice)}",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
 
                             OutlinedTextField(
                                 value = quantity,
-                                onValueChange = { 
-                                    if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                        quantity = it
+                                onValueChange = {},
+                                label = { Text("Quantity") },
+                                readOnly = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                trailingIcon = {
+                                    IconButton(onClick = {
+                                        numericPadVisible = true
+                                        focusManager.clearFocus()
+                                    }) {
+                                        Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
                                     }
                                 },
-                                label = { Text("Quantity") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            // Price Type Selection
-                            if (productPrice?.let { price ->
-                                (isPerKg && price.discounted_per_kg_price != null) ||
-                                (!isPerKg && price.discounted_per_piece_price != null)
-                            } == true) {
+                            if (viewModel.productSupportsDualUnit(product)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Use Discounted Price")
+                                    Text(if (isPerKg) "Per kilogram" else "Per piece")
                                     Switch(
-                                        checked = useDiscountedPrice,
-                                        onCheckedChange = { useDiscountedPrice = it }
+                                        checked = isPerKg,
+                                        onCheckedChange = { isPerKg = it }
                                     )
                                 }
                             }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(if (isPerKg) "Per Kilogram" else "Per Piece")
-                                Switch(
-                                    checked = isPerKg,
-                                    onCheckedChange = { isPerKg = it }
-                                )
-                            }
-
-                            // Show total based on current selection
                             quantity.toDoubleOrNull()?.let { qty ->
-                                val currentUnitPrice = if (isPerKg) {
-                                    if (useDiscountedPrice) productPrice?.discounted_per_kg_price else productPrice?.per_kg_price
-                                } else {
-                                    if (useDiscountedPrice) productPrice?.discounted_per_piece_price else productPrice?.per_piece_price
-                                } ?: 0.0
-
-                                val total = qty * currentUnitPrice
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.End
-                                ) {
-                                    Text(
-                                        text = "Unit Price: ${CurrencyFormatter.format(currentUnitPrice)}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = if (useDiscountedPrice) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "Total: ${CurrencyFormatter.format(total)}",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
+                                val u = viewModel.resolveOrderLinePrice(product.product_id, orderChannel, isPerKg)
+                                Text(
+                                    text = "Line total: ${CurrencyFormatter.format(qty * u)}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.align(Alignment.End)
+                                )
                             }
                         }
                     }
@@ -1266,13 +1174,6 @@ private fun ProductSelectionDialog(
                 onClick = {
                     selectedProduct?.let { product ->
                         quantity.toDoubleOrNull()?.let { qty ->
-                            val productPrice = viewModel.getLatestProductPrice(product.product_id)
-                            val currentUnitPrice = if (isPerKg) {
-                                if (useDiscountedPrice) productPrice?.discounted_per_kg_price else productPrice?.per_kg_price
-                            } else {
-                                if (useDiscountedPrice) productPrice?.discounted_per_piece_price else productPrice?.per_piece_price
-                            } ?: 0.0
-
                             onProductSelected(product, qty, isPerKg)
                         }
                     }
@@ -1296,5 +1197,15 @@ private fun ProductSelectionDialog(
                 Text(if (selectedProduct == null) "Cancel" else "Back")
             }
         }
+    )
+
+    NumericPadBottomSheet(
+        visible = numericPadVisible,
+        title = "Quantity",
+        value = quantity,
+        onValueChange = { quantity = it },
+        decimalEnabled = true,
+        maxDecimalPlaces = 3,
+        onDismiss = { numericPadVisible = false }
     )
 } 

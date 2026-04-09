@@ -10,13 +10,16 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.redn.farm.data.local.dao.*
 import com.redn.farm.data.local.entity.*
-import com.redn.farm.data.local.converters.DateTimeConverter
 import com.redn.farm.data.local.converters.EnumConverters
 import com.redn.farm.data.local.security.PasswordManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+/**
+ * Room database (SYS-US-04): `@Database(version = …)` must match the latest **VERSION N**
+ * block in `docs/schema_evolution.sql` (compare to KSP `FarmDatabase_Impl.createAllTables`).
+ */
 @Database(
     entities = [
         ProductEntity::class,
@@ -29,11 +32,16 @@ import kotlinx.coroutines.launch
         FarmOperationEntity::class,
         AcquisitionEntity::class,
         RemittanceEntity::class,
-        UserEntity::class
+        UserEntity::class,
+        PricingPresetEntity::class,
+        PresetActivationLogEntity::class,
+        DayCloseEntity::class,
+        DayCloseInventoryEntity::class,
+        DayCloseAuditEntity::class,
     ],
-    version = 3
+    version = 10
 )
-@TypeConverters(DateTimeConverter::class, EnumConverters::class)
+@TypeConverters(EnumConverters::class)
 abstract class FarmDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
     abstract fun productPriceDao(): ProductPriceDao
@@ -45,6 +53,11 @@ abstract class FarmDatabase : RoomDatabase() {
     abstract fun acquisitionDao(): AcquisitionDao
     abstract fun remittanceDao(): RemittanceDao
     abstract fun userDao(): UserDao
+    abstract fun pricingPresetDao(): PricingPresetDao
+    abstract fun presetActivationLogDao(): PresetActivationLogDao
+    abstract fun dayCloseDao(): DayCloseDao
+    abstract fun dayCloseInventoryDao(): DayCloseInventoryDao
+    abstract fun dayCloseAuditDao(): DayCloseAuditDao
 
     companion object {
         const val DATABASE_NAME = "farm_database"
@@ -91,6 +104,12 @@ abstract class FarmDatabase : RoomDatabase() {
             }
         }
 
+        // Version 5+ schema: `employee_payments.is_finalized` (v5), `acquisitions.srp_custom_override` (v6),
+        // `acquisitions.spoilage_kg` (v7, BUG-PRC-04), `customers`/`product_prices` timestamps as epoch millis (v8, BUG-ARC-02),
+        // `day_closes`, `day_close_inventory`, `day_close_audit` (v9, Epic 12 EOD),
+        // `remittances.entry_type` (v10, Epic 8 DISB).
+        // Build phase: destructive migration on bump or fresh install.
+
         fun getDatabase(context: Context): FarmDatabase {
             return INSTANCE ?: synchronized(this) {
                 Log.d("FarmDatabase", "Starting database initialization...")
@@ -123,11 +142,15 @@ abstract class FarmDatabase : RoomDatabase() {
                             try {
                                 val database = getDatabase(context)
                                 val userDao = database.userDao()
+                                ensureDemoRoleUsers(userDao)
                                 val adminExists = userDao.getUserByUsername("admin")
                                 val userExists = userDao.getUserByUsername("user")
-                                
-                                Log.d("FarmDatabase", "Database opened - Admin exists: ${adminExists != null}, User exists: ${userExists != null}")
-                                
+
+                                Log.d(
+                                    "FarmDatabase",
+                                    "Database opened - Admin exists: ${adminExists != null}, User exists: ${userExists != null}"
+                                )
+
                                 if (adminExists == null && userExists == null) {
                                     Log.d("FarmDatabase", "No users found on open, creating default users")
                                     createDefaultUsers(database)
@@ -139,6 +162,7 @@ abstract class FarmDatabase : RoomDatabase() {
                     }
                 })
                 .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .fallbackToDestructiveMigration()
                 .build()
                 
                 Log.d("FarmDatabase", "Database instance built")
@@ -160,7 +184,8 @@ abstract class FarmDatabase : RoomDatabase() {
                 Log.d("FarmDatabase", "Checked existing users - Admin exists: ${existingAdmin != null}, User exists: ${existingUser != null}")
                 
                 if (existingAdmin != null || existingUser != null) {
-                    Log.d("FarmDatabase", "Users already exist, skipping creation")
+                    Log.d("FarmDatabase", "Users already exist, skipping admin/user creation")
+                    ensureDemoRoleUsers(userDao)
                     return
                 }
 
@@ -214,11 +239,47 @@ abstract class FarmDatabase : RoomDatabase() {
                     Log.e("FarmDatabase", "User verification failed. Admin exists: ${verifyAdmin != null}, User exists: ${verifyUser != null}")
                 }
 
+                ensureDemoRoleUsers(userDao)
+
             } catch (e: Exception) {
                 Log.e("FarmDatabase", "Error creating default users", e)
                 e.printStackTrace()
             }
         }
+
+        /**
+         * Demo accounts for each RBAC role (passwords are for local/dev only).
+         * Idempotent: inserts only when username is missing.
+         */
+        private suspend fun ensureDemoRoleUsers(userDao: UserDao) {
+            val seeds = listOf(
+                DemoRoleUser("store", "store123", "Store Assistant (demo)", "STORE_ASSISTANT"),
+                DemoRoleUser("purchasing", "purchase123", "Purchasing Assistant (demo)", "PURCHASING"),
+                DemoRoleUser("farmer", "farmer123", "Farmer (demo)", "FARMER")
+            )
+            for (seed in seeds) {
+                if (userDao.getUserByUsername(seed.username) != null) continue
+                userDao.insertUser(
+                    UserEntity(
+                        username = seed.username,
+                        password_hash = PasswordManager.hashPassword(seed.plainPassword),
+                        full_name = seed.fullName,
+                        role = seed.role,
+                        is_active = true,
+                        date_created = System.currentTimeMillis(),
+                        date_updated = System.currentTimeMillis()
+                    )
+                )
+                Log.d("FarmDatabase", "Seeded demo user ${seed.username} (${seed.role})")
+            }
+        }
+
+        private data class DemoRoleUser(
+            val username: String,
+            val plainPassword: String,
+            val fullName: String,
+            val role: String
+        )
 
         fun getDatabaseFile(context: Context) = context.getDatabasePath(DATABASE_NAME)
 

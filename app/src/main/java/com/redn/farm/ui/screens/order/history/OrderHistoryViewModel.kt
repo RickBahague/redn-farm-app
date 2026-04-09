@@ -1,37 +1,55 @@
 package com.redn.farm.ui.screens.order.history
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import android.content.Context
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import com.redn.farm.data.local.FarmDatabase
+import com.redn.farm.data.local.session.SessionManager
+import com.redn.farm.security.Rbac
+import com.redn.farm.data.model.Acquisition
+import com.redn.farm.data.model.Customer
 import com.redn.farm.data.model.Order
 import com.redn.farm.data.model.OrderItem
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.ProductPrice
+import com.redn.farm.data.pricing.OrderPricingResolver
+import com.redn.farm.data.pricing.defaultIsPerKgForOrderLine
+import com.redn.farm.data.repository.AcquisitionRepository
+import com.redn.farm.data.repository.CustomerRepository
 import com.redn.farm.data.repository.OrderRepository
+import com.redn.farm.data.repository.PricingPresetRepository
 import com.redn.farm.data.repository.ProductRepository
-import kotlinx.coroutines.flow.*
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import com.redn.farm.utils.MillisDateRange
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
 
-class OrderHistoryViewModel(application: Application) : AndroidViewModel(application) {
-    private val database = FarmDatabase.getDatabase(application)
-    private val orderRepository = OrderRepository(database.orderDao())
-    private val productRepository = ProductRepository(
-        database.productDao(),
-        database.productPriceDao()
-    )
+@HiltViewModel
+class OrderHistoryViewModel @Inject constructor(
+    @ApplicationContext appContext: Context,
+    private val customerRepository: CustomerRepository,
+    private val orderRepository: OrderRepository,
+    private val productRepository: ProductRepository,
+    private val acquisitionRepository: AcquisitionRepository
+) : ViewModel() {
+
+    private val sessionManager = SessionManager(appContext)
+
+    private val _activeSrpsByProduct = MutableStateFlow<Map<String, Acquisition>>(emptyMap())
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
 
-    private val _dateRange = MutableStateFlow<Pair<LocalDateTime?, LocalDateTime?>>(null to null)
+    private val _dateRange = MutableStateFlow<Pair<Long?, Long?>>(null to null)
     val dateRange = _dateRange.asStateFlow()
 
     val products = productRepository.getAllProducts()
@@ -51,11 +69,7 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
                               order.customerContact.contains(query, ignoreCase = true) ||
                               order.order_id.toString().contains(query)
             
-            val orderDateTime = LocalDateTime.ofInstant(
-                Instant.ofEpochMilli(order.order_date),
-                ZoneId.systemDefault()
-            )
-            val matchesDateRange = isWithinDateRange(orderDateTime, dateRange)
+            val matchesDateRange = MillisDateRange.contains(order.order_date, dateRange)
             
             matchesSearch && matchesDateRange
         }
@@ -90,7 +104,44 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
                 _productPrices.value = prices.associateBy { it.product_id }
             }
         }
+        viewModelScope.launch {
+            acquisitionRepository.observeAllActiveSrps().collect { list ->
+                _activeSrpsByProduct.value = list.associateBy { it.product_id }
+            }
+        }
     }
+
+    suspend fun getCustomer(customerId: Int): Customer? =
+        customerRepository.getCustomerById(customerId)
+
+    fun resolveOrderLinePrice(productId: String, channel: String, isPerKg: Boolean): Double {
+        val acq = _activeSrpsByProduct.value[productId]
+        val pp = getLatestProductPrice(productId)
+        return OrderPricingResolver.resolveUnitPrice(acq, channel, isPerKg, pp)
+    }
+
+    fun repriceOrderItems(items: List<OrderItem>, channel: String): List<OrderItem> {
+        val map = _activeSrpsByProduct.value
+        return items.map { item ->
+            val pp = getLatestProductPrice(item.product_id)
+            val acq = map[item.product_id]
+            val price = OrderPricingResolver.resolveUnitPrice(acq, channel, item.is_per_kg, pp)
+            item.copy(price_per_unit = price, total_price = price * item.quantity)
+        }
+    }
+
+    fun productSupportsDualUnit(product: Product): Boolean =
+        OrderPricingResolver.productSupportsDualUnit(
+            getLatestProductPrice(product.product_id),
+            _activeSrpsByProduct.value[product.product_id],
+        )
+
+    fun defaultIsPerKgForProduct(product: Product): Boolean =
+        !product.unit_type.equals("piece", ignoreCase = true) &&
+            !product.unit_type.equals("pieces", ignoreCase = true)
+
+    fun defaultIsPerKgForProductLine(product: Product): Boolean =
+        defaultIsPerKgForOrderLine(product, _activeSrpsByProduct.value[product.product_id])
 
     fun getLatestProductPrice(productId: String): ProductPrice? {
         return _productPrices.value[productId]
@@ -98,6 +149,7 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
 
     fun updatePaymentStatus(orderId: Int, isPaid: Boolean) {
         viewModelScope.launch {
+            if (!Rbac.canWriteOrders(sessionManager.getRole())) return@launch
             val currentOrder = orderRepository.getOrderById(orderId).first()
             currentOrder?.let {
                 val updatedOrder = it.copy(
@@ -112,6 +164,7 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
 
     fun deleteOrder(orderId: Int) {
         viewModelScope.launch {
+            if (!Rbac.canWriteOrders(sessionManager.getRole())) return@launch
             orderRepository.deleteOrder(orderId)
         }
     }
@@ -124,12 +177,20 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
         return orderRepository.getOrderItems(orderId)
     }
 
+    suspend fun getOrderSnapshotForPrint(orderId: Int): Pair<Order?, List<OrderItem>> {
+        val order = orderRepository.getOrderById(orderId).first()
+        val items = orderRepository.getOrderItems(orderId).first()
+        return order to items
+    }
+
     suspend fun updateOrder(order: Order, items: List<OrderItem>) {
+        if (!Rbac.canWriteOrders(sessionManager.getRole())) return
         orderRepository.updateOrder(order, items)
     }
 
     fun saveOrder(order: Order, items: List<OrderItem>, onComplete: () -> Unit) {
         viewModelScope.launch {
+            if (!Rbac.canWriteOrders(sessionManager.getRole())) return@launch
             updateOrder(order, items)
             onComplete()
         }
@@ -139,29 +200,17 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
         _searchQuery.value = query
     }
 
-    fun updateDateRange(range: Pair<LocalDateTime?, LocalDateTime?>) {
+    fun updateDateRange(range: Pair<Long?, Long?>) {
         _dateRange.value = range
     }
 
-    private fun isWithinDateRange(
-        date: LocalDateTime,
-        range: Pair<LocalDateTime?, LocalDateTime?>
-    ): Boolean {
-        val (start, end) = range
-        return when {
-            start == null && end == null -> true
-            start == null -> date.isBefore(end!!.plusDays(1))
-            end == null -> date.isAfter(start.minusDays(1))
-            else -> date.isAfter(start.minusDays(1)) && date.isBefore(end.plusDays(1))
-        }
-    }
-
-    fun updateOrderDate(orderId: Int, newDate: LocalDateTime) {
+    fun updateOrderDate(orderId: Int, orderDateMillis: Long) {
         viewModelScope.launch {
+            if (!Rbac.canWriteOrders(sessionManager.getRole())) return@launch
             val currentOrder = orderRepository.getOrderById(orderId).first()
             currentOrder?.let {
                 val updatedOrder = it.copy(
-                    order_date = newDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    order_date = orderDateMillis
                 )
                 val currentItems = orderRepository.getOrderItems(orderId).first()
                 updateOrder(updatedOrder, currentItems)
@@ -171,6 +220,7 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
 
     fun updateOrderDeliveryStatus(orderId: Int, isDelivered: Boolean) {
         viewModelScope.launch {
+            if (!Rbac.canWriteOrders(sessionManager.getRole())) return@launch
             val currentOrder = orderRepository.getOrderById(orderId).first()
             currentOrder?.let {
                 val updatedOrder = it.copy(
@@ -216,14 +266,5 @@ class OrderHistoryViewModel(application: Application) : AndroidViewModel(applica
 
     fun clearSummary() {
         _orderSummary.value = null
-    }
-
-    companion object {
-        val Factory: ViewModelProvider.Factory = viewModelFactory {
-            initializer {
-                val application = (this[APPLICATION_KEY] as Application)
-                OrderHistoryViewModel(application)
-            }
-        }
     }
 } 

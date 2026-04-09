@@ -1,6 +1,7 @@
 package com.redn.farm.ui.screens.order
 
 import com.redn.farm.utils.CurrencyFormatter
+import com.redn.farm.ui.components.NumericPadBottomSheet
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,44 +12,39 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Product
-import java.text.NumberFormat
-import java.util.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.foundation.BorderStroke
+import com.redn.farm.data.pricing.SalesChannel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProductSelectionDialog(
     onDismiss: () -> Unit,
-    onProductSelected: (Product, Double, Boolean, Boolean) -> Unit,
-    viewModel: TakeOrderViewModel = viewModel(factory = TakeOrderViewModel.Factory)
+    onProductSelected: (Product, Double, Boolean) -> Unit,
+    viewModel: TakeOrderViewModel = hiltViewModel()
 ) {
     var selectedProduct by remember { mutableStateOf<Product?>(null) }
     var quantity by remember { mutableStateOf("") }
     var isPerKg by remember { mutableStateOf(true) }
-    var useDiscountedPrice by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
-    
+    var numericPadVisible by remember { mutableStateOf(false) }
+
     val products by viewModel.products.collectAsState()
-    val isWideScreen = LocalConfiguration.current.screenWidthDp > 600
-    
-    // Filter products based on search query
+    val channel by viewModel.channel.collectAsState()
+    val focusManager = LocalFocusManager.current
+
     val filteredProducts = remember(products, searchQuery) {
         if (searchQuery.isBlank()) {
             products
         } else {
             products.filter { product ->
                 product.product_name.contains(searchQuery, ignoreCase = true) ||
-                product.product_description.contains(searchQuery, ignoreCase = true)
+                    product.product_description.contains(searchQuery, ignoreCase = true)
             }
         }
     }
@@ -60,11 +56,11 @@ fun ProductSelectionDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .imePadding()
                     .padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (selectedProduct == null) {
-                    // Search bar
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
@@ -81,7 +77,6 @@ fun ProductSelectionDialog(
                         singleLine = true
                     )
 
-                    // Product list
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -89,11 +84,14 @@ fun ProductSelectionDialog(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(filteredProducts) { product ->
-                            val productPrice = viewModel.getLatestProductPrice(product.product_id)
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { selectedProduct = product }
+                                    .clickable {
+                                        selectedProduct = product
+                                        isPerKg = viewModel.defaultIsPerKgForProductLine(product)
+                                        quantity = ""
+                                    }
                             ) {
                                 Column(
                                     modifier = Modifier
@@ -104,46 +102,11 @@ fun ProductSelectionDialog(
                                         text = product.product_name,
                                         style = MaterialTheme.typography.titleMedium
                                     )
-                                    
-                                    // Regular Prices
-//                                    Row(
-//                                        modifier = Modifier.fillMaxWidth(),
-//                                        horizontalArrangement = Arrangement.SpaceBetween
-//                                    ) {
-//                                        Text(
-//                                            text = "Per Kg: ${CurrencyFormatter.format(productPrice?.per_kg_price ?: 0.0)}",
-//                                            style = MaterialTheme.typography.bodyMedium
-//                                        )
-//                                        Text(
-//                                            text = "Per Piece: ${CurrencyFormatter.format(productPrice?.per_piece_price ?: 0.0)}",
-//                                            style = MaterialTheme.typography.bodyMedium
-//                                        )
-//                                    }
-//
-//                                    // Discounted Prices if available
-//                                    if (productPrice?.discounted_per_kg_price != null || productPrice?.discounted_per_piece_price != null) {
-//                                        Row(
-//                                            modifier = Modifier.fillMaxWidth(),
-//                                            horizontalArrangement = Arrangement.SpaceBetween
-//                                        ) {
-//                                            Text(
-//                                                text = "Disc/Kg: ${CurrencyFormatter.format(productPrice?.discounted_per_kg_price ?: 0.0)}",
-//                                                style = MaterialTheme.typography.bodyMedium,
-//                                                color = MaterialTheme.colorScheme.error
-//                                            )
-//                                            Text(
-//                                                text = "Disc/Pc: ${CurrencyFormatter.format(productPrice?.discounted_per_piece_price ?: 0.0)}",
-//                                                style = MaterialTheme.typography.bodyMedium,
-//                                                color = MaterialTheme.colorScheme.error
-//                                            )
-//                                        }
-//                                    }
                                 }
                             }
                         }
                     }
                 } else {
-                    // Product details and quantity input
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -154,119 +117,68 @@ fun ProductSelectionDialog(
                                 style = MaterialTheme.typography.titleMedium
                             )
 
-                            val productPrice = viewModel.getLatestProductPrice(product.product_id)
-
-                            // Regular Prices Section
                             Text(
-                                text = "Regular Prices",
-                                style = MaterialTheme.typography.titleSmall,
-                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                                text = "Channel: ${SalesChannel.label(channel)} · unit price is set from active SRP (or manual fallback).",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Per Kg: ${CurrencyFormatter.format(productPrice?.per_kg_price ?: 0.0)}",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Text(
-                                    text = "Per Piece: ${CurrencyFormatter.format(productPrice?.per_piece_price ?: 0.0)}",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
 
-                            // Discounted Prices Section
-                            if (productPrice?.discounted_per_kg_price != null || productPrice?.discounted_per_piece_price != null) {
+                            val previewPrice = viewModel.resolvePreviewUnitPrice(product.product_id, isPerKg)
+                            Text(
+                                text = "Unit price: ${CurrencyFormatter.format(previewPrice)}",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            val productPrice = viewModel.getLatestProductPrice(product.product_id)
+                            if (productPrice != null) {
                                 Text(
-                                    text = "Discounted Prices",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                                    text = "Manual fallback — kg ${CurrencyFormatter.format(productPrice.per_kg_price ?: 0.0)} · pc ${CurrencyFormatter.format(productPrice.per_piece_price ?: 0.0)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "Per Kg: ${CurrencyFormatter.format(productPrice?.discounted_per_kg_price ?: 0.0)}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                    Text(
-                                        text = "Per Piece: ${CurrencyFormatter.format(productPrice?.discounted_per_piece_price ?: 0.0)}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                }
                             }
 
                             OutlinedTextField(
                                 value = quantity,
-                                onValueChange = { 
-                                    if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                        quantity = it
+                                onValueChange = {},
+                                label = { Text("Quantity") },
+                                readOnly = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                trailingIcon = {
+                                    IconButton(onClick = {
+                                        numericPadVisible = true
+                                        focusManager.clearFocus()
+                                    }) {
+                                        Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
                                     }
                                 },
-                                label = { Text("Quantity") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            // Price Type Selection
-                            if (productPrice?.let { price ->
-                                (isPerKg && price.discounted_per_kg_price != null) ||
-                                (!isPerKg && price.discounted_per_piece_price != null)
-                            } == true) {
+                            if (viewModel.productSupportsDualUnit(product)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Use Discounted Price")
+                                    Text(if (isPerKg) "Per kilogram" else "Per piece")
                                     Switch(
-                                        checked = useDiscountedPrice,
-                                        onCheckedChange = { useDiscountedPrice = it }
+                                        checked = isPerKg,
+                                        onCheckedChange = { isPerKg = it }
                                     )
                                 }
                             }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(if (isPerKg) "Per Kilogram" else "Per Piece")
-                                Switch(
-                                    checked = isPerKg,
-                                    onCheckedChange = { isPerKg = it }
-                                )
-                            }
-
-                            // Show total based on current selection
                             quantity.toDoubleOrNull()?.let { qty ->
-                                val currentUnitPrice = if (isPerKg) {
-                                    if (useDiscountedPrice) productPrice?.discounted_per_kg_price else productPrice?.per_kg_price
-                                } else {
-                                    if (useDiscountedPrice) productPrice?.discounted_per_piece_price else productPrice?.per_piece_price
-                                } ?: 0.0
-
-                                val total = qty * currentUnitPrice
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.End
-                                ) {
-                                    Text(
-                                        text = "Unit Price: ${CurrencyFormatter.format(currentUnitPrice)}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = if (useDiscountedPrice) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "Total: ${CurrencyFormatter.format(total)}",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
+                                val unit = viewModel.resolvePreviewUnitPrice(product.product_id, isPerKg)
+                                Text(
+                                    text = "Line total: ${CurrencyFormatter.format(qty * unit)}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.align(Alignment.End)
+                                )
                             }
                         }
                     }
@@ -278,14 +190,7 @@ fun ProductSelectionDialog(
                 onClick = {
                     selectedProduct?.let { product ->
                         quantity.toDoubleOrNull()?.let { qty ->
-                            val productPrice = viewModel.getLatestProductPrice(product.product_id)
-                            val currentUnitPrice = if (isPerKg) {
-                                if (useDiscountedPrice) productPrice?.discounted_per_kg_price else productPrice?.per_kg_price
-                            } else {
-                                if (useDiscountedPrice) productPrice?.discounted_per_piece_price else productPrice?.per_piece_price
-                            } ?: 0.0
-
-                            onProductSelected(product, qty, isPerKg, useDiscountedPrice)
+                            onProductSelected(product, qty, isPerKg)
                         }
                     }
                 },
@@ -309,34 +214,14 @@ fun ProductSelectionDialog(
             }
         }
     )
-}
 
-@Composable
-private fun ProductItem(
-    product: Product,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Text(
-                text = product.product_name,
-                style = MaterialTheme.typography.titleMedium
-            )
-            if (product.product_description.isNotEmpty()) {
-                Text(
-                    text = product.product_description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-} 
+    NumericPadBottomSheet(
+        visible = numericPadVisible,
+        title = "Quantity",
+        value = quantity,
+        onValueChange = { quantity = it },
+        decimalEnabled = true,
+        maxDecimalPlaces = 3,
+        onDismiss = { numericPadVisible = false }
+    )
+}

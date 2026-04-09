@@ -8,32 +8,40 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.redn.farm.utils.PrinterUtils
+import com.redn.farm.utils.buildFarmOperationLog
+import kotlinx.coroutines.launch
 import com.redn.farm.data.model.FarmOperation
 import com.redn.farm.ui.screens.farmops.FarmOperationCard
-import com.redn.farm.ui.screens.farmops.FarmOperationDialog
 import com.redn.farm.ui.screens.farmops.FarmOperationFilters
 import com.redn.farm.ui.screens.farmops.FarmOperationsViewModel
+import java.time.Instant
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FarmOperationHistoryScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToOperationForm: (String) -> Unit,
     viewModel: FarmOperationsViewModel = hiltViewModel()
 ) {
     var showFilters by remember { mutableStateOf(false) }
-    var showEditDialog by remember { mutableStateOf<FarmOperation?>(null) }
     var showDeleteDialog by remember { mutableStateOf<FarmOperation?>(null) }
 
     val operations by viewModel.operations.collectAsState()
-    val products by viewModel.products.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedType by viewModel.selectedType.collectAsState()
     val dateRange by viewModel.dateRange.collectAsState()
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Operation History") },
@@ -78,24 +86,23 @@ fun FarmOperationHistoryScreen(
                 items(operations) { operation ->
                     FarmOperationCard(
                         operation = operation,
-                        onEditClick = { showEditDialog = operation },
-                        onDeleteClick = { showDeleteDialog = operation }
+                        onEditClick = { onNavigateToOperationForm(operation.operation_id.toString()) },
+                        onDeleteClick = { showDeleteDialog = operation },
+                        onPrintClick = {
+                            scope.launch {
+                                val ok = PrinterUtils.printMessage(
+                                    context,
+                                    buildFarmOperationLog(operation),
+                                    alignment = 0,
+                                )
+                                snackbarHostState.showSnackbar(
+                                    if (ok) "Sent to printer" else "Print failed"
+                                )
+                            }
+                        },
                     )
                 }
             }
-        }
-
-        // Edit Dialog
-        showEditDialog?.let { operation ->
-            FarmOperationDialog(
-                operation = operation,
-                products = products,
-                onDismiss = { showEditDialog = null },
-                onSave = { updatedOperation ->
-                    viewModel.updateOperation(updatedOperation)
-                    showEditDialog = null
-                }
-            )
         }
 
         // Delete confirmation dialog
@@ -126,7 +133,9 @@ fun FarmOperationHistoryScreen(
 
 @Composable
 private fun FarmOperationHistoryCard(operation: FarmOperation) {
-    val dateFormatter = DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm")
+    val dateFormatter = remember {
+        DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm").withZone(ZoneId.systemDefault())
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth()
@@ -164,12 +173,12 @@ private fun FarmOperationHistoryCard(operation: FarmOperation) {
                 )
             }
             Text(
-                text = "Operation Date: ${operation.operation_date.format(dateFormatter)}",
+                text = "Operation Date: ${dateFormatter.format(Instant.ofEpochMilli(operation.operation_date))}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "Last Updated: ${operation.date_updated.format(dateFormatter)}",
+                text = "Last Updated: ${dateFormatter.format(Instant.ofEpochMilli(operation.date_updated))}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

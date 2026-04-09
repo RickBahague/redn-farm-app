@@ -9,5 +9,6 @@ data class EmployeePayment(
     val liquidated_amount: Double? = null,
     val date_paid: Long = System.currentTimeMillis(),
     val signature: String,
-    val received_date: Long? = null
+    val received_date: Long? = null,
+    val is_finalized: Boolean = false,
 ) 

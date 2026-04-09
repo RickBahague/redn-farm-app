@@ -1,10 +1,12 @@
 package com.redn.farm.ui.components
 
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalContext
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.redn.farm.navigation.Screen
 import com.redn.farm.ui.screens.login.LoginState
@@ -13,7 +15,7 @@ import com.redn.farm.ui.screens.login.LoginViewModel
 @Composable
 fun SessionChecker(
     navController: NavHostController,
-    loginViewModel: LoginViewModel = viewModel(factory = LoginViewModel.Factory),
+    loginViewModel: LoginViewModel = hiltViewModel(LocalContext.current as ComponentActivity),
     content: @Composable () -> Unit
 ) {
     val loginState by loginViewModel.loginState.collectAsState()
@@ -21,10 +23,12 @@ fun SessionChecker(
     LaunchedEffect(loginState) {
         when (loginState) {
             is LoginState.Initial -> {
-                // If not logged in and not on login screen, navigate to login
                 if (navController.currentDestination?.route != Screen.Login.route) {
                     navController.navigate(Screen.Login.route) {
-                        popUpTo(0) { inclusive = true }
+                        popUpTo(navController.graph.id) {
+                            inclusive = true
+                        }
+                        launchSingleTop = true
                     }
                 }
             }

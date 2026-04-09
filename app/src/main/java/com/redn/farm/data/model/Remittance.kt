@@ -5,5 +5,7 @@ data class Remittance(
     val amount: Double,
     val date: Long = System.currentTimeMillis(),
     val remarks: String = "",
-    val date_updated: Long = System.currentTimeMillis()
+    val date_updated: Long = System.currentTimeMillis(),
+    /** [RemittanceEntryType.REMITTANCE] or [RemittanceEntryType.DISBURSEMENT] */
+    val entry_type: String = RemittanceEntryType.REMITTANCE,
 )

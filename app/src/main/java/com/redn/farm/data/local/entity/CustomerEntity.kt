@@ -2,7 +2,6 @@ package com.redn.farm.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-import java.time.LocalDateTime
 import com.redn.farm.data.model.CustomerType
 
 @Entity(tableName = "customers")
@@ -17,6 +16,6 @@ data class CustomerEntity(
     val city: String,
     val province: String,
     val postal_code: String,
-    val date_created: LocalDateTime = LocalDateTime.now(),
-    val date_updated: LocalDateTime = LocalDateTime.now()
-) 
+    val date_created: Long = System.currentTimeMillis(),
+    val date_updated: Long = System.currentTimeMillis()
+)

@@ -1,0 +1,196 @@
+# Epic 3 — Product Management (Completion Tracker)
+
+**Created:** 2026-04-02  
+**Source review:** `docs/user_review_product_management.md`  
+**Goal:** Convert current v3-era product management UI/data handling into v4-aligned behavior per PRD-US-01 through PRD-US-08.
+
+**Stream A (2026-04-09):** **PRD-US-01** / **PRD-US-07** closed in app — catalog SRP summary + unified price/SRP history on **ProductFormScreen**. See [`USER_STORIES.md`](./USER_STORIES.md).
+
+---
+
+## Status legend
+
+| Mark | Meaning |
+|------|---------|
+| `[x]` | Implemented in codebase |
+| `[~]` | Partial / simplified — see notes |
+| `[ ]` | Manual QA / follow-up |
+
+---
+
+## Step-by-step implementation activities (Priority Order)
+
+### Step 1 — Fix screen architecture (unblocks everything else)
+Activities:
+1. Refactor `ManageProductsScreen` to use the ViewModel’s StateFlows (`products`, `productPrices`) instead of instantiating `ProductRepository` locally.
+2. Convert `ManageProductsViewModel` to use Hilt properly (`@HiltViewModel` + `@Inject constructor`).
+3. Ensure the screen reads from the ViewModel flows so list updates after add/edit/delete.
+4. Remove unreachable/dead UI state in the screen (e.g., unused `showDeleteDialog`).
+
+Deliverables:
+- `ManageProductsScreen.kt` uses `viewModel.products.collectAsState()` and `viewModel.productPrices.collectAsState()`
+- `ManageProductsViewModel.kt` is Hilt-powered and owns repository lifecycle
+
+---
+
+### Step 2 — Fix Add Product dialog
+Activities:
+1. Remove all price inputs from the Add dialog.
+2. Add required fields:
+   - unit type picker: `kg` / `piece` / `both`
+   - category dropdown (optional)
+   - default piece count numeric field (shown only when unit type includes piece)
+3. Remove price-gated save condition (product must be savable with no price yet).
+4. Save only product attributes (unit type, category, defaults), leaving price-setting as a separate action (Step 6).
+
+Deliverables:
+- Add dialog matches PRD-US-02 / AC#1 constraints
+
+---
+
+### Step 3 — Fix Edit Product dialog
+Activities:
+1. Remove all price inputs from the Edit dialog.
+2. Add:
+   - unit type picker
+   - category
+   - default piece count
+   - active/inactive toggle
+3. Decouple product edit from price insertion:
+   - `updateProduct()` only
+   - do not call `updateProductPrice()` / insert new historical price rows during product-only edits
+
+Deliverables:
+- Editing the name/category/unit type does not pollute `product_prices` history
+
+---
+
+### Step 4 — Wire Delete and Deactivate
+Activities:
+1. Implement delete entry point:
+   - set `showDeleteDialog` from swipe action or long-press on product card
+   - confirm calls `viewModel.deleteProduct(productId)`
+2. Handle FK constraint failures gracefully:
+   - show user message if delete fails due to linked orders/acquisitions
+3. Implement deactivate/reactivate:
+   - add toggle (card or edit screen)
+   - update `is_active` in `viewModel`
+4. Ensure list reflects active/inactive changes immediately.
+
+Deliverables:
+- Delete + deactivate flows work and update the displayed list
+
+---
+
+### Step 5 — Wire Reinitialize
+Activities:
+1. Add `Icons.Default.Refresh` to the `TopAppBar` in `ManageProductsScreen`.
+2. Implement confirmation dialog → call `viewModel.reinitializeDatabase()`.
+3. Fix `DatabaseInitializer.populateDatabase()` to load:
+   - `assets/data/products.json`
+   - `assets/data/product_prices.json`
+   using the Gson parser already imported.
+4. Remove/make safe the callback’s v1-era manual table creation schema (it no longer matches Room entities).
+
+Deliverables:
+- Reinitialize reloads correct data from JSON assets
+
+---
+
+### Step 6 — Set Manual Fallback Price (separate action — PRD-US-06)
+Activities:
+1. Add a dedicated “Set Fallback Price” action accessible from the product detail/edit flow.
+2. Implement a bottom sheet or full-screen form with fields:
+   - per-kg price (optional)
+   - per-piece price (optional)
+3. No “discounted” fields in this flow (manual fallback only).
+4. Save by calling `repository.insertProductPrice()`.
+5. Clearly label in UI: “Manual fallback — used when no acquisition SRP exists.”
+
+Deliverables:
+- Admin can set fallback prices independently of product attribute edits
+
+---
+
+### Step 7 — Fix product card price display (after SRP pipeline)
+Activities:
+1. Update `ProductCard` to read active SRPs by mapping:
+   - `AcquisitionRepository.observeAllActiveSrps()` (by product ID)
+2. Apply badge logic:
+   - Active SRP exists → show “from ₱X/kg”, no badge
+   - Only manual fallback → show fallback price + amber “Manual Price” chip
+   - No price → show grey “No Price” chip
+3. Ensure per-unit labels are correct (do not show “Per kg” label for piece-only products).
+
+Deliverables:
+- Product list matches PRD-US-01 AC#2..AC#4 pricing behavior
+
+---
+
+### Step 8 — Fix filters
+Activities:
+1. Extend `ProductFilters` with:
+   - `unitType: String?`
+   - `category: String?`
+   - `activeStatus: ActiveStatus` (enum: `ALL` / `ACTIVE_ONLY` / `INACTIVE_ONLY`)
+2. Update `ProductRepository.getFilteredProducts()` to apply:
+   - search predicate includes `product_id`
+   - unit type filter
+   - category filter
+   - active status filter
+3. Update FilterDialog UI to expose the three required filters.
+4. Remove or deprecate confusing inverted semantics of `showOutOfStock`.
+
+Deliverables:
+- Filters work exactly as PRD-US-01 AC#7 expects
+
+---
+
+### Step 9 — Price history screen (PRD-US-07)
+Activities:
+1. Add repository method:
+   - `getProductPriceHistory(productId)`
+   - wire through `ProductPriceDao.getPriceHistory(productId)`
+2. Create a new screen `ProductPriceHistoryScreen.kt` (full-screen, not a card-in-dialog).
+3. For each entry:
+   - show source chip: `Computed` vs `Manual`
+   - show date
+   - show per-channel SRP values OR fallback values
+   - include preset reference for computed entries
+4. Ensure navigation entry point exists from the product card or edit flow.
+
+Deliverables:
+- Price history screen renders complete history entries and is reachable from the UI
+
+---
+
+## Completion tracker
+
+| Step | Completion | Notes |
+|------|------------|-------|
+| Step 1 — Fix screen architecture | `[x]` | Screen now consumes ViewModel StateFlows (no local repository), and ViewModel is Hilt-backed + injects repository |
+| Step 2 — Fix Add dialog | `[x]` | Remove price fields; add unit/category/default_piece_count; save no longer requires price |
+| Step 3 — Fix Edit dialog | `[x]` | Removed price fields; added unit/category/default_piece_count + active toggle; save updates product only |
+| Step 4 — Wire Delete + Deactivate | `[x]` | Delete icon + confirm dialog + FK failure snackbar; active toggle already in edit dialog; inactive badge shown on list |
+| Step 5 — Wire Reinitialize | `[x]` | Refresh icon + confirm dialog; `populateDatabase()` now loads products/prices/customers from `assets/data/*.json`; removed v1 manual CREATE TABLE SQL |
+| Step 6 — Set manual fallback price | `[x]` | Separate “Set fallback price” bottom sheet; saves per-kg/per-piece via `insertProductPrice()`; clearly labeled as manual fallback |
+| Step 7 — Fix product card price display | `[ ]` | Use active SRPs mapping + badge logic |
+| Step 8 — Fix filters | `[ ]` | Add required filters to model + apply in repo + update dialog |
+| Step 9 — Price history screen | `[ ]` | Full-screen screen + computed/manual entry rendering |
+
+---
+
+## Build / tests / manual QA (minimum)
+- `./gradlew assembleDebug` succeeds after each milestone.
+- Manual smoke after Steps 1–4:
+  - Add product (no price) -> appears in list
+  - Edit product attribute-only -> no new price history row is created
+  - Deactivate/reactivate -> list respects active filter
+  - Delete with FK constraint -> user-facing error appears
+- Manual smoke after Steps 5–7:
+  - Reinitialize reloads JSON seed set
+  - Product card displays correct active SRP / manual fallback badges
+- Manual smoke after Steps 8–9:
+  - Filters include unit type, category, active status + product_id search
+  - Price history screen shows computed/manual entries correctly
+

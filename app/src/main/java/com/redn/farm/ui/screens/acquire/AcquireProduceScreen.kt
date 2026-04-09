@@ -5,65 +5,60 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Acquisition
-import com.redn.farm.data.model.AcquisitionLocation
-import com.redn.farm.data.model.Product
+import com.redn.farm.utils.buildAcquisitionBatchReport
+import com.redn.farm.utils.buildAcquisitionReceivingSlip
 import com.redn.farm.utils.CurrencyFormatter
-import java.time.LocalDateTime
+import com.redn.farm.utils.PrinterUtils
 import java.time.format.DateTimeFormatter
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextOverflow
 import java.time.ZoneId
 import java.time.Instant
 import java.util.Locale
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AcquireProduceScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToAcquisitionForm: (String) -> Unit,
     viewModel: AcquireProduceViewModel = hiltViewModel()
 ) {
-    var showAddDialog by remember { mutableStateOf(false) }
-    var showProductSelection by remember { mutableStateOf(false) }
-    var selectedProduct by remember { mutableStateOf<Product?>(null) }
-    var acquisitionToEdit by remember { mutableStateOf<Acquisition?>(null) }
     var showFilters by remember { mutableStateOf(false) }
     
     val acquisitions by viewModel.acquisitions.collectAsState()
-    val products by viewModel.products.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedLocation by viewModel.selectedLocation.collectAsState()
     val selectedDateRange by viewModel.selectedDateRange.collectAsState()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        viewModel.userMessage.collectLatest { snackbarHostState.showSnackbar(it) }
+    }
 
     // Determine screen width for responsive layout
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
     val isWideScreen = screenWidth > 600.dp
 
-    // Add product selection dialog
-    if (showProductSelection) {
-        ProductSelectionDialog(
-            products = products,
-            onProductSelected = { product ->
-                selectedProduct = product
-                showProductSelection = false
-            },
-            onDismiss = { showProductSelection = false }
-        )
-    }
-
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Acquire Produce") },
@@ -79,7 +74,36 @@ fun AcquireProduceScreen(
                             contentDescription = "Filters"
                         )
                     }
-                    IconButton(onClick = { showAddDialog = true }) {
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                if (acquisitions.isEmpty()) {
+                                    snackbarHostState.showSnackbar("Nothing to print — adjust filters.")
+                                    return@launch
+                                }
+                                val content = buildAcquisitionBatchReport(
+                                    acquisitions = acquisitions,
+                                    searchQuery = searchQuery,
+                                    locationFilter = selectedLocation,
+                                    dateRange = selectedDateRange,
+                                )
+                                if (content == null) {
+                                    snackbarHostState.showSnackbar("List too long — narrow filters.")
+                                    return@launch
+                                }
+                                val ok = PrinterUtils.printMessage(context, content, alignment = 0)
+                                snackbarHostState.showSnackbar(
+                                    if (ok) "Sent to printer" else "Print failed"
+                                )
+                            }
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ListAlt,
+                            contentDescription = "Print filtered acquisition report",
+                        )
+                    }
+                    IconButton(onClick = { onNavigateToAcquisitionForm("new") }) {
                         Icon(Icons.Default.Add, "Add Acquisition")
                     }
                 }
@@ -101,343 +125,112 @@ fun AcquireProduceScreen(
                 )
             }
 
-            // Acquisitions grid/list based on screen width
-            if (isWideScreen) {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 300.dp),
-                    contentPadding = PaddingValues(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(
-                        items = acquisitions,
-                        key = { it.acquisition_id }
-                    ) { acquisition ->
-                        AcquisitionCard(
-                            acquisition = acquisition,
-                            onDelete = { viewModel.deleteAcquisition(acquisition) },
-                            onEdit = {
-                                acquisitionToEdit = acquisition
-                                selectedProduct = Product(
-                                    product_id = acquisition.product_id,
-                                    product_name = acquisition.product_name,
-                                    product_description = "",
-                                    unit_type = if (acquisition.is_per_kg) "kg" else "piece",
-                                    is_active = true
-                                )
-                                showAddDialog = true
-                            }
-                        )
-                    }
-                }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(1),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(
-                        items = acquisitions,
-                        key = { it.acquisition_id }
-                    ) { acquisition ->
-                        AcquisitionCard(
-                            acquisition = acquisition,
-                            onDelete = { viewModel.deleteAcquisition(acquisition) },
-                            onEdit = {
-                                acquisitionToEdit = acquisition
-                                selectedProduct = Product(
-                                    product_id = acquisition.product_id,
-                                    product_name = acquisition.product_name,
-                                    product_description = "",
-                                    unit_type = if (acquisition.is_per_kg) "kg" else "piece",
-                                    is_active = true
-                                )
-                                showAddDialog = true
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        if (showAddDialog) {
-            AcquisitionDialog(
-                selectedProduct = selectedProduct,
-                acquisitionToEdit = acquisitionToEdit,
-                onSelectProduct = { showProductSelection = true },
-                onDismiss = { 
-                    showAddDialog = false 
-                    selectedProduct = null
-                    acquisitionToEdit = null 
-                },
-                onSave = { acquisition ->
-                    if (acquisitionToEdit != null) {
-                        viewModel.updateAcquisition(acquisition)
-                    } else {
-                        viewModel.addAcquisition(acquisition)
-                    }
-                    showAddDialog = false
-                    selectedProduct = null
-                    acquisitionToEdit = null
-                }
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AcquisitionDialog(
-    selectedProduct: Product?,
-    acquisitionToEdit: Acquisition? = null,
-    onSelectProduct: () -> Unit,
-    onDismiss: () -> Unit,
-    onSave: (Acquisition) -> Unit
-) {
-    var quantity by remember { mutableStateOf(acquisitionToEdit?.quantity?.toString() ?: "") }
-    var pricePerUnit by remember { mutableStateOf(acquisitionToEdit?.price_per_unit?.toString() ?: "") }
-    var isPerKg by remember { mutableStateOf(acquisitionToEdit?.is_per_kg ?: true) }
-    var totalAmount by remember { mutableStateOf(acquisitionToEdit?.total_amount?.toString() ?: "") }
-    var location by remember { mutableStateOf(acquisitionToEdit?.location ?: AcquisitionLocation.FARM) }
-    var expanded by remember { mutableStateOf(false) }
-    
-    var selectedDate by remember { 
-        mutableStateOf(
-            if (acquisitionToEdit != null) {
-                LocalDateTime.ofInstant(
-                    Instant.ofEpochMilli(acquisitionToEdit.date_acquired),
-                    ZoneId.systemDefault()
-                )
-            } else {
-                LocalDateTime.now()
-            }
-        )
-    }
-    
-    var showDatePicker by remember { mutableStateOf(false) }
-    val dateFormatter = remember { DateTimeFormatter.ofPattern("MMM dd, yyyy", Locale.getDefault()) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (acquisitionToEdit == null) "Add Acquisition" else "Edit Acquisition") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Product Selection
-                OutlinedCard(
-                    onClick = onSelectProduct,
-                    modifier = Modifier.fillMaxWidth()
+            if (acquisitions.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(
-                            text = "Product",
-                            style = MaterialTheme.typography.labelMedium
+                        Icon(
+                            imageVector = Icons.Default.Inventory,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(48.dp)
                         )
                         Text(
-                            text = selectedProduct?.product_name ?: "Select product",
+                            text = "No acquisitions recorded",
                             style = MaterialTheme.typography.titleMedium
                         )
-                    }
-                }
-
-                // Date and Location Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Date Selection
-                    OutlinedCard(
-                        onClick = { showDatePicker = true },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp)
+                        Text(
+                            text = "Record the first acquisition to compute SRPs.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Button(
+                            onClick = { onNavigateToAcquisitionForm("new") },
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                text = "Date",
-                                style = MaterialTheme.typography.labelMedium
-                            )
-                            Text(
-                                text = dateFormatter.format(selectedDate),
-                                style = MaterialTheme.typography.titleMedium
-                            )
+                            Text("Record acquisition")
                         }
                     }
-
-                    // Location Selection
-                    ExposedDropdownMenuBox(
-                        expanded = expanded,
-                        onExpandedChange = { expanded = !expanded },
-                        modifier = Modifier.weight(1f)
+                }
+            } else {
+                // Acquisitions grid/list based on screen width
+                if (isWideScreen) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 300.dp),
+                        contentPadding = PaddingValues(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedTextField(
-                            value = location.toString(),
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Location") },
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-                            },
-                            modifier = Modifier.menuAnchor()
-                        )
-                        ExposedDropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false }
-                        ) {
-                            AcquisitionLocation.values().forEach { loc ->
-                                DropdownMenuItem(
-                                    text = { Text(loc.toString()) },
-                                    onClick = {
-                                        location = loc
-                                        expanded = false
-                                    }
+                        items(
+                            items = acquisitions,
+                            key = { it.acquisition_id }
+                        ) { acquisition ->
+                            key(acquisition.acquisition_id) {
+                                AcquisitionCard(
+                                    acquisition = acquisition,
+                                    onDelete = { viewModel.deleteAcquisition(acquisition) },
+                                    onEdit = {
+                                        onNavigateToAcquisitionForm(acquisition.acquisition_id.toString())
+                                    },
+                                    onPrint = {
+                                        scope.launch {
+                                            val content = buildAcquisitionReceivingSlip(
+                                                acquisition,
+                                                presetDisplayName = null,
+                                            )
+                                            val ok = PrinterUtils.printMessage(context, content, alignment = 0)
+                                            snackbarHostState.showSnackbar(
+                                                if (ok) "Sent to printer" else "Print failed"
+                                            )
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(1),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(
+                            items = acquisitions,
+                            key = { it.acquisition_id }
+                        ) { acquisition ->
+                            key(acquisition.acquisition_id) {
+                                AcquisitionCard(
+                                    acquisition = acquisition,
+                                    onDelete = { viewModel.deleteAcquisition(acquisition) },
+                                    onEdit = {
+                                        onNavigateToAcquisitionForm(acquisition.acquisition_id.toString())
+                                    },
+                                    onPrint = {
+                                        scope.launch {
+                                            val content = buildAcquisitionReceivingSlip(
+                                                acquisition,
+                                                presetDisplayName = null,
+                                            )
+                                            val ok = PrinterUtils.printMessage(context, content, alignment = 0)
+                                            snackbarHostState.showSnackbar(
+                                                if (ok) "Sent to printer" else "Print failed"
+                                            )
+                                        }
+                                    },
                                 )
                             }
                         }
                     }
                 }
-
-                // Quantity and Price Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = quantity,
-                        onValueChange = { 
-                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                quantity = it
-                                if (it.isNotEmpty() && pricePerUnit.isNotEmpty()) {
-                                    totalAmount = (it.toDouble() * pricePerUnit.toDouble()).toString()
-                                }
-                            }
-                        },
-                        label = { Text("Quantity") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = pricePerUnit,
-                        onValueChange = { 
-                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                pricePerUnit = it
-                                if (it.isNotEmpty() && quantity.isNotEmpty()) {
-                                    totalAmount = (it.toDouble() * quantity.toDouble()).toString()
-                                }
-                            }
-                        },
-                        label = { Text("Price/Unit") },
-                        prefix = { Text("₱") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                // Total Amount
-                OutlinedTextField(
-                    value = totalAmount,
-                    onValueChange = { 
-                        if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                            totalAmount = it
-                        }
-                    },
-                    label = { Text("Total Amount") },
-                    prefix = { Text("₱") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                ) {
-                    Text(
-                        text = if (isPerKg) "Unit - Per kg" else "Unit - Per pc",
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                    Switch(
-                        checked = isPerKg,
-                        onCheckedChange = { isPerKg = it },
-                        modifier = Modifier.height(32.dp)
-                    )
-                }
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    selectedProduct?.let { product ->
-                        onSave(
-                            Acquisition(
-                                acquisition_id = acquisitionToEdit?.acquisition_id ?: 0,
-                                product_id = product.product_id,
-                                product_name = product.product_name,
-                                quantity = quantity.toDoubleOrNull() ?: 0.0,
-                                price_per_unit = pricePerUnit.toDoubleOrNull() ?: 0.0,
-                                total_amount = totalAmount.toDoubleOrNull() ?: 0.0,
-                                is_per_kg = isPerKg,
-                                date_acquired = selectedDate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-                                location = location
-                            )
-                        )
-                    }
-                },
-                enabled = selectedProduct != null && 
-                         quantity.isNotEmpty() && 
-                         pricePerUnit.isNotEmpty() &&
-                         totalAmount.isNotEmpty()
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-
-    if (showDatePicker) {
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDatePicker = false
-                    }
-                ) {
-                    Text("OK")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text("Cancel")
-                }
-            }
-        ) {
-            DatePicker(
-                state = rememberDatePickerState(
-                    initialSelectedDateMillis = selectedDate
-                        .atZone(ZoneId.systemDefault())
-                        .toInstant()
-                        .toEpochMilli()
-                ),
-                showModeToggle = false
-            )
         }
     }
 }
@@ -446,13 +239,16 @@ private fun AcquisitionDialog(
 private fun AcquisitionCard(
     acquisition: Acquisition,
     onDelete: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onPrint: () -> Unit,
 ) {
-    val dateFormatter = remember { DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm", Locale.getDefault()) }
+    var srpExpanded by remember { mutableStateOf(false) }
+    val dateFormatter = remember {
+        DateTimeFormatter.ofPattern("MMM dd, yyyy HH:mm", Locale.getDefault())
+            .withZone(ZoneId.systemDefault())
+    }
     val formattedDate = remember(acquisition.date_acquired) {
-        val instant = Instant.ofEpochMilli(acquisition.date_acquired)
-        val dateTime = LocalDateTime.ofInstant(instant, ZoneId.systemDefault())
-        dateFormatter.format(dateTime)
+        dateFormatter.format(Instant.ofEpochMilli(acquisition.date_acquired))
     }
 
     Card(
@@ -486,6 +282,49 @@ private fun AcquisitionCard(
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
+                        //val srpLine = when {
+                        //    !acquisition.is_per_kg && acquisition.srp_online_per_piece != null ->
+                        //        "SRP online: ${CurrencyFormatter.format(acquisition.srp_online_per_piece)}/pc"
+                        //    acquisition.srp_online_per_kg != null ->
+                        //        "SRP online: ${CurrencyFormatter.format(acquisition.srp_online_per_kg)}/kg"
+                        //    else -> null
+                        //}
+                        //if (srpLine != null) {
+                        //    Text(
+                        //        text = srpLine,
+                        //        style = MaterialTheme.typography.bodySmall
+                        //    )
+                        //}
+                        if (acquisition.srp_custom_override) {
+                            Text(
+                                text = "Custom customer SRP per channel",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+                        if (acquisition.hasSrpDetail()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { srpExpanded = !srpExpanded }
+                                    .padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "All channel SRPs",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                                Icon(
+                                    imageVector = if (srpExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                    contentDescription = if (srpExpanded) "Collapse" else "Expand",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            AnimatedVisibility(visible = srpExpanded) {
+                                AcquisitionSrpExpandedDetail(acquisition = acquisition)
+                            }
+                        }
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -504,6 +343,17 @@ private fun AcquisitionCard(
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    IconButton(
+                        onClick = onPrint,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Print,
+                            contentDescription = "Print slip",
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     IconButton(
                         onClick = onEdit,
                         modifier = Modifier.size(32.dp)
@@ -532,62 +382,147 @@ private fun AcquisitionCard(
     }
 }
 
+/** BUG-ACQ-04: per-channel blocks, labeled pack tiers, aligned price rows (not inline “·” paragraphs). */
 @Composable
-private fun ProductSelectionDialog(
-    products: List<Product>,
-    onProductSelected: (Product) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Select Product") },
-        text = {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(1),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(products) { product ->
-                    ProductSelectionItem(
-                        product = product,
-                        onClick = { onProductSelected(product) }
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
+private fun AcquisitionSrpExpandedDetail(acquisition: Acquisition) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (acquisition.hasChannelSrpDetailOnline()) {
+            AcquisitionSrpChannelBlock(
+                title = "Online",
+                perKg = acquisition.srp_online_per_kg,
+                g500 = acquisition.srp_online_500g,
+                g250 = acquisition.srp_online_250g,
+                g100 = acquisition.srp_online_100g,
+                perPiece = acquisition.srp_online_per_piece,
+                isPerKg = acquisition.is_per_kg,
+            )
         }
-    )
+        if (acquisition.hasChannelSrpDetailReseller()) {
+            AcquisitionSrpChannelBlock(
+                title = "Reseller",
+                perKg = acquisition.srp_reseller_per_kg,
+                g500 = acquisition.srp_reseller_500g,
+                g250 = acquisition.srp_reseller_250g,
+                g100 = acquisition.srp_reseller_100g,
+                perPiece = acquisition.srp_reseller_per_piece,
+                isPerKg = acquisition.is_per_kg,
+            )
+        }
+        if (acquisition.hasChannelSrpDetailOffline()) {
+            AcquisitionSrpChannelBlock(
+                title = "Store",
+                perKg = acquisition.srp_offline_per_kg,
+                g500 = acquisition.srp_offline_500g,
+                g250 = acquisition.srp_offline_250g,
+                g100 = acquisition.srp_offline_100g,
+                perPiece = acquisition.srp_offline_per_piece,
+                isPerKg = acquisition.is_per_kg,
+            )
+        }
+    }
 }
 
 @Composable
-private fun ProductSelectionItem(
-    product: Product,
-    onClick: () -> Unit
+private fun AcquisitionSrpChannelBlock(
+    title: String,
+    perKg: Double?,
+    g500: Double?,
+    g250: Double?,
+    g100: Double?,
+    perPiece: Double?,
+    isPerKg: Boolean,
 ) {
+    val hasPacks = isPerKg && (g500 != null || g250 != null || g100 != null)
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp)
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
     ) {
-        Column {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Text(
-                text = product.product_name,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
             )
-            if (product.product_description.isNotEmpty()) {
+            if (isPerKg) {
+                perKg?.let {
+                    AcquisitionSrpLabeledPriceRow(
+                        label = "Per kg",
+                        valueText = "${CurrencyFormatter.format(it)}/kg",
+                    )
+                }
+            }
+            if (hasPacks) {
                 Text(
-                    text = product.product_description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    text = "Packs",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                AcquisitionSrpLabeledPriceRow(label = "500 g", amount = g500)
+                AcquisitionSrpLabeledPriceRow(label = "250 g", amount = g250)
+                AcquisitionSrpLabeledPriceRow(label = "100 g", amount = g100)
+            }
+            perPiece?.let {
+                AcquisitionSrpLabeledPriceRow(
+                    label = "Per piece",
+                    valueText = CurrencyFormatter.format(it),
                 )
             }
         }
     }
-} 
+}
+
+@Composable
+private fun AcquisitionSrpLabeledPriceRow(label: String, amount: Double?) {
+    AcquisitionSrpLabeledPriceRow(
+        label = label,
+        valueText = amount?.let { CurrencyFormatter.format(it) } ?: "—",
+    )
+}
+
+@Composable
+private fun AcquisitionSrpLabeledPriceRow(label: String, valueText: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = valueText,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+private fun Acquisition.hasChannelSrpDetailOnline(): Boolean =
+    srp_online_per_kg != null || srp_online_500g != null || srp_online_250g != null ||
+        srp_online_100g != null || srp_online_per_piece != null
+
+private fun Acquisition.hasChannelSrpDetailReseller(): Boolean =
+    srp_reseller_per_kg != null || srp_reseller_500g != null || srp_reseller_250g != null ||
+        srp_reseller_100g != null || srp_reseller_per_piece != null
+
+private fun Acquisition.hasChannelSrpDetailOffline(): Boolean =
+    srp_offline_per_kg != null || srp_offline_500g != null || srp_offline_250g != null ||
+        srp_offline_100g != null || srp_offline_per_piece != null
+
+private fun Acquisition.hasSrpDetail(): Boolean =
+    srp_online_per_kg != null || srp_reseller_per_kg != null || srp_offline_per_kg != null ||
+        srp_online_500g != null || srp_online_250g != null || srp_online_100g != null ||
+        srp_reseller_500g != null || srp_reseller_250g != null || srp_reseller_100g != null ||
+        srp_offline_500g != null || srp_offline_250g != null || srp_offline_100g != null ||
+        srp_online_per_piece != null 

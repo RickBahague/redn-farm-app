@@ -5,7 +5,6 @@ import com.redn.farm.data.local.entity.OrderEntity
 import com.redn.farm.data.local.entity.OrderItemEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
-import java.time.LocalDateTime
 
 @Dao
 interface OrderDao {
@@ -93,6 +92,156 @@ interface OrderDao {
     @Query("DELETE FROM order_items")
     suspend fun truncateOrderItems()
 
+    // ─── EOD aggregation queries (Phase 2b) ──────────────────────────────────
+
+    /**
+     * Total and collected revenue for orders whose order_date falls within [startMillis, endMillis].
+     * Used by DayCloseRepository to compute today's revenue snapshot.
+     */
+    @Query("""
+        SELECT
+            COUNT(*)               AS order_count,
+            SUM(total_amount)      AS total_sales,
+            SUM(CASE WHEN is_paid = 1 THEN total_amount ELSE 0 END) AS total_collected
+        FROM orders
+        WHERE order_date BETWEEN :startMillis AND :endMillis
+    """)
+    suspend fun getSalesSummaryOnDate(startMillis: Long, endMillis: Long): OrderSalesSummary
+
+    @Query(
+        """
+        SELECT
+            COALESCE(SUM(CASE WHEN is_paid = 1 THEN 1 ELSE 0 END), 0) AS paid_count,
+            COALESCE(SUM(CASE WHEN is_paid = 1 THEN total_amount ELSE 0 END), 0) AS paid_amount,
+            COALESCE(SUM(CASE WHEN is_paid = 0 THEN 1 ELSE 0 END), 0) AS unpaid_count,
+            COALESCE(SUM(CASE WHEN is_paid = 0 THEN total_amount ELSE 0 END), 0) AS unpaid_amount,
+            COALESCE(SUM(CASE WHEN is_delivered = 1 THEN 1 ELSE 0 END), 0) AS delivered_count
+        FROM orders
+        WHERE order_date BETWEEN :startMillis AND :endMillis
+        """
+    )
+    suspend fun getDailyOrderBreakdownOnDate(
+        startMillis: Long,
+        endMillis: Long,
+    ): DailyOrderBreakdown
+
+    /**
+     * Count and sum of orders that are still unpaid as of [endMillis].
+     */
+    @Query("""
+        SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS amount
+        FROM orders
+        WHERE is_paid = 0 AND order_date <= :endMillis
+    """)
+    suspend fun getUnpaidSummaryAsOf(endMillis: Long): UnpaidSummary
+
+    /**
+     * Per-product sold quantity (sum of order_items.quantity) for orders
+     * within [startMillis, endMillis]. Used for COGS and inventory reconciliation.
+     */
+    @Query("""
+        SELECT oi.product_id, SUM(oi.quantity) AS total_qty
+        FROM order_items oi
+        INNER JOIN orders o ON oi.order_id = o.order_id
+        WHERE o.order_date BETWEEN :startMillis AND :endMillis
+        GROUP BY oi.product_id
+    """)
+    suspend fun getSoldQtyByProductOnDate(
+        startMillis: Long,
+        endMillis: Long
+    ): List<ProductQtySummary>
+
+    /**
+     * Per-product sold quantity (all time up to and including [endMillis]).
+     * Used for the all-time running stock ledger (EOD-US-03).
+     */
+    @Query("""
+        SELECT oi.product_id, SUM(oi.quantity) AS total_qty
+        FROM order_items oi
+        INNER JOIN orders o ON oi.order_id = o.order_id
+        WHERE o.order_date <= :endMillis
+        GROUP BY oi.product_id
+    """)
+    suspend fun getTotalSoldQtyByProductUpTo(endMillis: Long): List<ProductQtySummary>
+
+    @Query(
+        """
+        SELECT channel,
+            COUNT(*) AS order_count,
+            COALESCE(SUM(total_amount), 0) AS total_sales,
+            COALESCE(SUM(CASE WHEN is_paid = 1 THEN total_amount ELSE 0 END), 0) AS total_collected
+        FROM orders
+        WHERE order_date BETWEEN :startMillis AND :endMillis
+        GROUP BY channel
+        """
+    )
+    suspend fun getSalesByChannel(startMillis: Long, endMillis: Long): List<ChannelSalesRow>
+
+    @Query(
+        """
+        SELECT oi.product_id, p.product_name,
+            SUM(oi.quantity) AS qty_sold,
+            COALESCE(SUM(oi.total_price), 0) AS revenue
+        FROM order_items oi
+        INNER JOIN orders o ON oi.order_id = o.order_id
+        INNER JOIN products p ON oi.product_id = p.product_id
+        WHERE o.order_date BETWEEN :startMillis AND :endMillis
+        GROUP BY oi.product_id
+        ORDER BY revenue DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun getTopProductsByRevenue(
+        startMillis: Long,
+        endMillis: Long,
+        limit: Int,
+    ): List<ProductRevenueRow>
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM orders
+        WHERE is_paid = 0 AND order_date BETWEEN :startMillis AND :endMillis
+        """
+    )
+    suspend fun getUnpaidOrderCountOnDate(startMillis: Long, endMillis: Long): Int
+
+    @Query(
+        """
+        SELECT COALESCE(SUM(total_amount), 0) FROM orders
+        WHERE is_paid = 1 AND channel IN ('offline', 'reseller')
+        AND order_date BETWEEN :startMillis AND :endMillis
+        """
+    )
+    suspend fun getPaidOfflineResellerTotalOnDate(startMillis: Long, endMillis: Long): Double
+
+    @Query(
+        """
+        SELECT COUNT(*) AS order_count, COALESCE(SUM(total_amount), 0) AS total_amount
+        FROM orders
+        WHERE is_paid = 1 AND channel = 'online'
+        AND order_date BETWEEN :startMillis AND :endMillis
+        """
+    )
+    suspend fun getDigitalCollectionsOnDate(startMillis: Long, endMillis: Long): DigitalCollectionsSummary
+
+    @Query("SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE is_paid = 1")
+    suspend fun getTotalCollectedAllTime(): Double
+
+    @Transaction
+    @Query(
+        """
+        SELECT o.*,
+            c.firstname AS customer_firstname,
+            c.lastname AS customer_lastname,
+            c.contact AS customer_contact
+        FROM orders o
+        INNER JOIN customers c ON o.customer_id = c.customer_id
+        WHERE o.is_paid = 0
+        ORDER BY o.order_date ASC
+        """
+    )
+    suspend fun getAllUnpaidOrdersOldestFirst(): List<OrderWithDetails>
+
     @Transaction
     suspend fun truncate() {
         truncateOrderItems()
@@ -123,4 +272,49 @@ data class OrderWithDetails(
 data class OrderItemWithProduct(
     @Embedded val orderItem: OrderItemEntity,
     val product_name: String
-) 
+)
+
+// EOD result types
+
+data class OrderSalesSummary(
+    val order_count: Int,
+    val total_sales: Double,
+    val total_collected: Double,
+)
+
+data class DailyOrderBreakdown(
+    val paid_count: Int,
+    val paid_amount: Double,
+    val unpaid_count: Int,
+    val unpaid_amount: Double,
+    val delivered_count: Int,
+)
+
+data class UnpaidSummary(
+    val count: Int,
+    val amount: Double,
+)
+
+data class ProductQtySummary(
+    val product_id: String,
+    val total_qty: Double,
+)
+
+data class ChannelSalesRow(
+    val channel: String,
+    val order_count: Int,
+    val total_sales: Double,
+    val total_collected: Double,
+)
+
+data class ProductRevenueRow(
+    val product_id: String,
+    val product_name: String,
+    val qty_sold: Double,
+    val revenue: Double,
+)
+
+data class DigitalCollectionsSummary(
+    val order_count: Int,
+    val total_amount: Double,
+)

@@ -3,11 +3,15 @@ package com.redn.farm.ui.screens.manage.products
 import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Dialpad
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FilterAlt
@@ -16,71 +20,77 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.redn.farm.data.model.Acquisition
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.ProductPrice
-import com.redn.farm.data.local.FarmDatabase
-import com.redn.farm.data.repository.ProductRepository
+import com.redn.farm.data.pricing.OrderPricingResolver
 import kotlinx.coroutines.launch
-import java.time.LocalDate
-import java.time.LocalDateTime
 import com.redn.farm.utils.CurrencyFormatter
 import androidx.compose.foundation.clickable
+import java.time.Instant
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import android.app.Application
-import androidx.lifecycle.ViewModelProvider
 import com.redn.farm.data.model.ProductFilters
+import com.redn.farm.ui.components.NumericPadBottomSheet
+
+private enum class FallbackPadTarget { PER_KG, PER_PIECE }
+
+private val productPriceDateFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMM dd, yyyy")
+
+private fun formatProductPriceDate(millis: Long): String =
+    Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(productPriceDateFormatter)
+
+/** True when any manual fallback field is a positive price (latest row only — **PRD-US-01**). */
+private fun hasManualFallbackPrice(price: ProductPrice?): Boolean {
+    if (price == null) return false
+    return listOfNotNull(
+        price.per_kg_price,
+        price.per_piece_price,
+        price.discounted_per_kg_price,
+        price.discounted_per_piece_price
+    ).any { it > 0 }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManageProductsScreen(
     onNavigateBack: () -> Unit,
-    viewModel: ManageProductsViewModel = viewModel(
-        factory = ViewModelProvider.AndroidViewModelFactory(LocalContext.current.applicationContext as Application)
-    )
+    onNavigateToProductForm: (String) -> Unit,
+    viewModel: ManageProductsViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val database = remember { FarmDatabase.getDatabase(context) }
-    val repository = remember { 
-        ProductRepository(database.productDao(), database.productPriceDao()) 
-    }
-    
-    var products by remember { mutableStateOf<List<Product>>(emptyList()) }
-    var productPrices by remember { mutableStateOf<List<ProductPrice>>(emptyList()) }
-    var showAddDialog by remember { mutableStateOf(false) }
-    var showEditDialog by remember { mutableStateOf<Product?>(null) }
-    var showDeleteDialog by remember { mutableStateOf<Product?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val products by viewModel.products.collectAsState()
+    val productPrices by viewModel.productPrices.collectAsState()
+    val activeAcquisitionByProductId by viewModel.activeAcquisitionByProductId.collectAsState()
+    val canMutate by viewModel.canMutateProducts.collectAsState()
+    var pendingDelete by remember { mutableStateOf<Product?>(null) }
+    var fallbackPriceTarget by remember { mutableStateOf<Product?>(null) }
     var showFilters by remember { mutableStateOf(false) }
+    var activeFilters by remember { mutableStateOf<ProductFilters?>(null) }
+    var filteredProducts by remember { mutableStateOf<List<Product>>(emptyList()) }
 
-    val isReinitializing by viewModel.isReinitializing.collectAsState()
-    val error by viewModel.error.collectAsState()
+    val displayProducts = activeFilters?.let { filteredProducts } ?: products
 
-    // Collect products and prices using LaunchedEffect
-    LaunchedEffect(Unit) {
-        repository.getAllProducts().collect { newProducts ->
-            products = newProducts
+    LaunchedEffect(activeFilters) {
+        if (activeFilters == null) {
+            filteredProducts = emptyList()
+            return@LaunchedEffect
         }
-    }
-
-    LaunchedEffect(Unit) {
-        repository.getAllProductPrices().collect { newPrices ->
-            productPrices = newPrices
-        }
-    }
-
-    // Refresh after reinitialization
-    LaunchedEffect(isReinitializing) {
-        if (!isReinitializing) {
-            // No need to call refreshData() as the Flow will automatically emit new values
+        viewModel.getFilteredProductsFlow(activeFilters!!).collect { newProducts ->
+            filteredProducts = newProducts
         }
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Manage Products") },
@@ -97,9 +107,10 @@ fun ManageProductsScreen(
                             contentDescription = "Filters"
                         )
                     }
-                    // Add button
-                    IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Default.Add, "Add Product")
+                    if (canMutate) {
+                        IconButton(onClick = { onNavigateToProductForm("new") }) {
+                            Icon(Icons.Default.Add, "Add Product")
+                        }
                     }
                 }
             )
@@ -113,71 +124,89 @@ fun ManageProductsScreen(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(products) { product ->
+                items(displayProducts) { product ->
                     val price = productPrices.find { it.product_id == product.product_id }
                     ProductCard(
                         product = product,
                         productPrice = price,
-                        onEditClick = { showEditDialog = product }
+                        activeAcquisition = activeAcquisitionByProductId[product.product_id],
+                        canMutate = canMutate,
+                        onEditClick = { onNavigateToProductForm(product.product_id) },
+                        onDeleteClick = { pendingDelete = product },
+                        onSetFallbackPriceClick = { fallbackPriceTarget = product }
                     )
                 }
             }
 
-            if (isReinitializing) {
-                CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            }
-
-            error?.let { errorMessage ->
-                Snackbar(
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .align(Alignment.BottomCenter)
-                ) {
-                    Text(errorMessage)
-                }
-            }
         }
 
-        showEditDialog?.let { product ->
-            EditProductDialog(
-                product = product,
-                productPrice = productPrices.find { it.product_id == product.product_id },
-                onDismiss = { showEditDialog = null },
-                onSave = { updatedProduct, updatedPrice ->
-                    scope.launch {
-                        try {
-                            repository.updateProduct(updatedProduct)
-                            repository.updateProductPrice(updatedPrice)
-                            showEditDialog = null
-                        } catch (e: Exception) {
-                            // Handle error
-                            Log.e("ManageProductsScreen", "Error updating product", e)
-                        }
+        pendingDelete?.let { product ->
+            AlertDialog(
+                onDismissRequest = { pendingDelete = null },
+                title = { Text("Delete product?") },
+                text = {
+                    Text(
+                        "This will permanently delete “${product.product_name}”. " +
+                            "If this product is referenced by orders or acquisitions, delete may fail."
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                try {
+                                    viewModel.deleteProduct(product.product_id)
+                                    snackbarHostState.showSnackbar("Deleted: ${product.product_name}")
+                                } catch (e: Exception) {
+                                    snackbarHostState.showSnackbar(
+                                        e.message ?: "Could not delete product (it may be linked to existing data)."
+                                    )
+                                } finally {
+                                    pendingDelete = null
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDelete = null }) {
+                        Text("Cancel")
                     }
                 }
             )
         }
 
-        if (showAddDialog) {
-            AddProductDialog(
-                onDismiss = { showAddDialog = false },
-                onSave = { product, price ->
+        fallbackPriceTarget?.let { product ->
+            val current = productPrices.find { it.product_id == product.product_id }
+            SetFallbackPriceSheet(
+                product = product,
+                currentPrice = current,
+                onDismiss = { fallbackPriceTarget = null },
+                onSave = { perKg, perPiece ->
                     scope.launch {
                         try {
-                            // Generate a unique product ID
-                            val productId = "P${System.currentTimeMillis()}_${(1000..9999).random()}"
-                            
-                            // Insert the product with the generated ID
-                            repository.insertProduct(product.copy(product_id = productId))
-                            
-                            // Insert the price with the same product ID
-                            repository.insertProductPrice(price.copy(product_id = productId))
-                            
-                            showAddDialog = false
+                            viewModel.insertProductPrice(
+                                ProductPrice(
+                                    product_id = product.product_id,
+                                    per_kg_price = perKg,
+                                    per_piece_price = perPiece,
+                                    discounted_per_kg_price = null,
+                                    discounted_per_piece_price = null,
+                                    date_created = System.currentTimeMillis()
+                                )
+                            )
+                            snackbarHostState.showSnackbar("Saved fallback price: ${product.product_name}")
                         } catch (e: Exception) {
-                            Log.e("ManageProductsScreen", "Error adding product", e)
+                            snackbarHostState.showSnackbar(
+                                e.message ?: "Could not save fallback price."
+                            )
+                        } finally {
+                            fallbackPriceTarget = null
                         }
                     }
                 }
@@ -188,12 +217,8 @@ fun ManageProductsScreen(
             FilterDialog(
                 onDismiss = { showFilters = false },
                 onApplyFilters = { filters ->
-                    scope.launch {
-                        // Apply filters to products list
-                        repository.getFilteredProducts(filters).collect { filteredProducts ->
-                            products = filteredProducts
-                        }
-                    }
+                    activeFilters = filters
+                    showFilters = false
                 }
             )
         }
@@ -204,67 +229,143 @@ fun ManageProductsScreen(
 private fun ProductCard(
     product: Product,
     productPrice: ProductPrice?,
-    onEditClick: () -> Unit
+    activeAcquisition: Acquisition?,
+    canMutate: Boolean,
+    onEditClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    onSetFallbackPriceClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onEditClick)
+            .clickable(enabled = canMutate, onClick = onEditClick)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            Text(
-                text = product.product_name,
-                style = MaterialTheme.typography.titleMedium
-            )
-//            Text(
-//                text = product.product_description,
-//                style = MaterialTheme.typography.bodyMedium
-//            )
-            productPrice?.let { price ->
-                // Regular Prices
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        price.per_kg_price?.let {
-                            Text(
-                                text = "Per Kg: ${CurrencyFormatter.format(it)}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = product.product_name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = product.product_id,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = buildString {
+                            append(product.unit_type)
+                            product.category?.takeIf { it.isNotBlank() }?.let { append(" · ").append(it) }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (product.product_description.isNotBlank()) {
+                        Text(
+                            text = product.product_description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (!product.is_active) {
+                        AssistChip(
+                            onClick = if (canMutate) onEditClick else { {} },
+                            enabled = canMutate,
+                            label = { Text("Inactive") }
+                        )
+                    }
+                }
+                if (canMutate) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        IconButton(onClick = onSetFallbackPriceClick) {
+                            Icon(
+                                imageVector = Icons.Default.AttachMoney,
+                                contentDescription = "Set fallback price",
+                                tint = MaterialTheme.colorScheme.primary
                             )
-                            // Show discounted price if available
-                            price.discounted_per_kg_price?.let { discounted ->
-                                Text(
-                                    text = "Disc: ${CurrencyFormatter.format(discounted)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
+                        }
+                        IconButton(onClick = onDeleteClick) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete",
+                                tint = MaterialTheme.colorScheme.error
+                            )
                         }
                     }
-                    Column(horizontalAlignment = Alignment.End) {
-                        price.per_piece_price?.let {
-                            Text(
-                                text = "Per Piece: ${CurrencyFormatter.format(it)}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            // Show discounted price if available
-                            price.discounted_per_piece_price?.let { discounted ->
+                }
+            }
+            // PRD-US-01: show acquisition SRP summary on the list; do not show manual peso amounts here (PRD-US-05).
+            val srpSummary = activeAcquisition?.let { OrderPricingResolver.catalogSrpSummaryAmounts(it) }
+            val hasAcquisitionSrp = srpSummary != null
+            val manualFallbackOnly = !hasAcquisitionSrp && hasManualFallbackPrice(productPrice)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                when {
+                    hasAcquisitionSrp && srpSummary != null -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            srpSummary.minPerKg?.let {
                                 Text(
-                                    text = "Disc: ${CurrencyFormatter.format(discounted)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
+                                    text = "From ${CurrencyFormatter.format(it)}/kg",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            srpSummary.minPerPiece?.let {
+                                Text(
+                                    text = "From ${CurrencyFormatter.format(it)}/pc",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("Acquisition SRP") },
+                        )
+                    }
+                    manualFallbackOnly -> {
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("Manual price") },
+                        )
+                        Text(
+                            text = "Open product to set or view fallback prices in history.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    else -> {
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("No price") },
+                        )
                     }
                 }
             }
@@ -274,145 +375,133 @@ private fun ProductCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EditProductDialog(
+private fun SetFallbackPriceSheet(
     product: Product,
-    productPrice: ProductPrice?,
+    currentPrice: ProductPrice?,
     onDismiss: () -> Unit,
-    onSave: (Product, ProductPrice) -> Unit
+    onSave: (perKg: Double?, perPiece: Double?) -> Unit
 ) {
-    var name by remember { mutableStateOf(product.product_name) }
-    var description by remember { mutableStateOf(product.product_description) }
-    var perKgPrice by remember { mutableStateOf(productPrice?.per_kg_price?.toString() ?: "") }
-    var perPiecePrice by remember { mutableStateOf(productPrice?.per_piece_price?.toString() ?: "") }
-    var discountedPerKgPrice by remember { mutableStateOf(productPrice?.discounted_per_kg_price?.toString() ?: "") }
-    var discountedPerPiecePrice by remember { mutableStateOf(productPrice?.discounted_per_piece_price?.toString() ?: "") }
+    var perKgStr by remember(product.product_id) { mutableStateOf(currentPrice?.per_kg_price?.toString().orEmpty()) }
+    var perPieceStr by remember(product.product_id) { mutableStateOf(currentPrice?.per_piece_price?.toString().orEmpty()) }
+    var numericPadTarget by remember { mutableStateOf<FallbackPadTarget?>(null) }
+    val focusManager = LocalFocusManager.current
 
-    AlertDialog(
+    val padVisible = numericPadTarget != null
+    val padTitle = when (numericPadTarget) {
+        FallbackPadTarget.PER_KG -> "Fallback price (per kg)"
+        FallbackPadTarget.PER_PIECE -> "Fallback price (per piece)"
+        null -> ""
+    }
+    val padValue = when (numericPadTarget) {
+        FallbackPadTarget.PER_KG -> perKgStr
+        FallbackPadTarget.PER_PIECE -> perPieceStr
+        null -> ""
+    }
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Edit Product") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                // Product Details
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Product Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("Description") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    maxLines = 2
-                )
-                
-                // Regular Prices Section
-                Text(
-                    text = "Regular Prices",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = perKgPrice,
-                        onValueChange = { 
-                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                perKgPrice = it
-                            }
-                        },
-                        label = { Text("Per kg") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        prefix = { Text("₱") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = perPiecePrice,
-                        onValueChange = { 
-                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                perPiecePrice = it
-                            }
-                        },
-                        label = { Text("Per piece") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        prefix = { Text("₱") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Set fallback price",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                text = product.product_name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "Manual fallback — used when no acquisition SRP exists.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
-                // Discounted Prices Section
-                Text(
-                    text = "Discounted Prices",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = discountedPerKgPrice,
-                        onValueChange = { 
-                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                discountedPerKgPrice = it
-                            }
-                        },
-                        label = { Text("Per kg") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        prefix = { Text("₱") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = discountedPerPiecePrice,
-                        onValueChange = { 
-                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                discountedPerPiecePrice = it
-                            }
-                        },
-                        label = { Text("Per pc") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        prefix = { Text("₱") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val updatedProduct = product.copy(
-                        product_name = name,
-                        product_description = description
-                    )
-                    val updatedPrice = ProductPrice(
-                        product_id = product.product_id,
-                        per_kg_price = perKgPrice.toDoubleOrNull(),
-                        per_piece_price = perPiecePrice.toDoubleOrNull(),
-                        discounted_per_kg_price = discountedPerKgPrice.toDoubleOrNull(),
-                        discounted_per_piece_price = discountedPerPiecePrice.toDoubleOrNull(),
-                        date_created = LocalDateTime.now()
-                    )
-                    onSave(updatedProduct, updatedPrice)
+            OutlinedTextField(
+                value = perKgStr,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Per kg (optional)") },
+                prefix = { Text("₱") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                trailingIcon = {
+                    IconButton(onClick = {
+                        numericPadTarget = FallbackPadTarget.PER_KG
+                        focusManager.clearFocus()
+                    }) {
+                        Icon(Icons.Filled.Dialpad, contentDescription = "Open numeric pad")
+                    }
                 },
-                enabled = name.isNotEmpty() && (perKgPrice.isNotEmpty() || perPiecePrice.isNotEmpty())
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = perPieceStr,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Per piece (optional)") },
+                prefix = { Text("₱") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                trailingIcon = {
+                    IconButton(onClick = {
+                        numericPadTarget = FallbackPadTarget.PER_PIECE
+                        focusManager.clearFocus()
+                    }) {
+                        Icon(Icons.Filled.Dialpad, contentDescription = "Open numeric pad")
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Cancel")
+                }
+                Button(
+                    onClick = {
+                        onSave(
+                            perKgStr.toDoubleOrNull(),
+                            perPieceStr.toDoubleOrNull()
+                        )
+                    },
+                    enabled = perKgStr.toDoubleOrNull() != null || perPieceStr.toDoubleOrNull() != null,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Save")
+                }
             }
         }
+    }
+
+    NumericPadBottomSheet(
+        visible = padVisible,
+        title = padTitle,
+        value = padValue,
+        onValueChange = { v ->
+            when (numericPadTarget) {
+                FallbackPadTarget.PER_KG -> perKgStr = v
+                FallbackPadTarget.PER_PIECE -> perPieceStr = v
+                null -> Unit
+            }
+        },
+        decimalEnabled = true,
+        maxDecimalPlaces = 2,
+        onDismiss = { numericPadTarget = null }
     )
 }
 
@@ -434,6 +523,9 @@ fun EditPriceDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState())
+                    .imePadding()
                     .padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -472,7 +564,7 @@ fun EditPriceDialog(
                             product_id = product.product_id,
                             per_kg_price = perKgPrice.toDoubleOrNull(),
                             per_piece_price = perPiecePrice.toDoubleOrNull(),
-                            date_created = LocalDateTime.now()
+                            date_created = System.currentTimeMillis()
                         )
                     )
                     onDismiss()
@@ -555,7 +647,7 @@ private fun PriceHistoryCard(prices: List<ProductPrice>) {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = price.date_created.format(DateTimeFormatter.ofPattern("MMM dd, yyyy")),
+                            text = formatProductPriceDate(price.date_created),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Row(
@@ -583,151 +675,6 @@ private fun PriceHistoryCard(prices: List<ProductPrice>) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddProductDialog(
-    onDismiss: () -> Unit,
-    onSave: (Product, ProductPrice) -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var perKgPrice by remember { mutableStateOf("") }
-    var perPiecePrice by remember { mutableStateOf("") }
-    var discountedPerKgPrice by remember { mutableStateOf("") }
-    var discountedPerPiecePrice by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add New Product") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                // Product Details
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Product Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("Description") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    maxLines = 2
-                )
-                
-                // Regular Prices Section
-                Text(
-                    text = "Regular Prices",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = perKgPrice,
-                        onValueChange = { 
-                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                perKgPrice = it
-                            }
-                        },
-                        label = { Text("Per kg") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        prefix = { Text("₱") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = perPiecePrice,
-                        onValueChange = { 
-                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                perPiecePrice = it
-                            }
-                        },
-                        label = { Text("Per piece") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        prefix = { Text("₱") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                // Discounted Prices Section
-                Text(
-                    text = "Discounted Prices",
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = discountedPerKgPrice,
-                        onValueChange = { 
-                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                discountedPerKgPrice = it
-                            }
-                        },
-                        label = { Text("Per kg") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        prefix = { Text("₱") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = discountedPerPiecePrice,
-                        onValueChange = { 
-                            if (it.isEmpty() || it.toDoubleOrNull() != null) {
-                                discountedPerPiecePrice = it
-                            }
-                        },
-                        label = { Text("Per pc") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        prefix = { Text("₱") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val newProduct = Product(
-                        product_id = "", // Empty string for new product
-                        product_name = name,
-                        product_description = description,
-                        unit_type = "", // Add default unit type
-                        is_active = true
-                    )
-                    val newPrice = ProductPrice(
-                        product_id = "", // Will be updated after product insertion
-                        per_kg_price = perKgPrice.toDoubleOrNull(),
-                        per_piece_price = perPiecePrice.toDoubleOrNull(),
-                        discounted_per_kg_price = discountedPerKgPrice.toDoubleOrNull(),
-                        discounted_per_piece_price = discountedPerPiecePrice.toDoubleOrNull(),
-                        date_created = LocalDateTime.now()
-                    )
-                    onSave(newProduct, newPrice)
-                },
-                enabled = name.isNotEmpty() && (perKgPrice.isNotEmpty() || perPiecePrice.isNotEmpty())
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
 private fun FilterDialog(
     onDismiss: () -> Unit,
     onApplyFilters: (ProductFilters) -> Unit
@@ -735,19 +682,41 @@ private fun FilterDialog(
     var searchQuery by remember { mutableStateOf("") }
     var showOutOfStock by remember { mutableStateOf(false) }
     var sortBy by remember { mutableStateOf("name") } // "name", "price"
+    var unitTypeFilter by remember { mutableStateOf("") }
+    var categoryFilter by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Filter Products") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState())
+                    .imePadding(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    label = { Text("Search") },
+                    label = { Text("Search name, ID, or description") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+                OutlinedTextField(
+                    value = unitTypeFilter,
+                    onValueChange = { unitTypeFilter = it },
+                    label = { Text("Unit type contains (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("e.g. kg, piece") }
+                )
+                OutlinedTextField(
+                    value = categoryFilter,
+                    onValueChange = { categoryFilter = it },
+                    label = { Text("Category contains (optional)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
@@ -784,7 +753,9 @@ private fun FilterDialog(
                         ProductFilters(
                             searchQuery = searchQuery,
                             showOutOfStock = showOutOfStock,
-                            sortBy = sortBy
+                            sortBy = sortBy,
+                            unitTypeFilter = unitTypeFilter,
+                            categoryFilter = categoryFilter,
                         )
                     )
                     onDismiss()

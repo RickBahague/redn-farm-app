@@ -1,23 +1,27 @@
 package com.redn.farm.ui.screens.manage.customers
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import android.content.Context
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import com.redn.farm.data.local.FarmDatabase
+import com.redn.farm.data.local.session.SessionManager
+import com.redn.farm.security.Rbac
 import com.redn.farm.data.model.Customer
 import com.redn.farm.data.repository.CustomerRepository
 import com.redn.farm.data.repository.OrderRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
-class ManageCustomersViewModel(application: Application) : AndroidViewModel(application) {
-    private val database = FarmDatabase.getDatabase(application)
-    private val repository = CustomerRepository(database.customerDao())
-    private val orderRepository = OrderRepository(database.orderDao())
+@HiltViewModel
+class ManageCustomersViewModel @Inject constructor(
+    @ApplicationContext appContext: Context,
+    private val repository: CustomerRepository,
+    private val orderRepository: OrderRepository
+) : ViewModel() {
+
+    private val sessionManager = SessionManager(appContext)
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
@@ -47,6 +51,10 @@ class ManageCustomersViewModel(application: Application) : AndroidViewModel(appl
     fun addCustomer(customer: Customer) {
         viewModelScope.launch {
             try {
+                if (!Rbac.canWriteCustomers(sessionManager.getRole())) {
+                    _uiState.value = UiState.Error("You don't have permission to add customers.")
+                    return@launch
+                }
                 _uiState.value = UiState.Loading
                 repository.addCustomer(customer)
                 _uiState.value = UiState.Success("Customer added successfully")
@@ -59,6 +67,10 @@ class ManageCustomersViewModel(application: Application) : AndroidViewModel(appl
     fun updateCustomer(customer: Customer) {
         viewModelScope.launch {
             try {
+                if (!Rbac.canWriteCustomers(sessionManager.getRole())) {
+                    _uiState.value = UiState.Error("You don't have permission to update customers.")
+                    return@launch
+                }
                 _uiState.value = UiState.Loading
                 repository.updateCustomer(customer)
                 _uiState.value = UiState.Success("Customer updated successfully")
@@ -71,8 +83,12 @@ class ManageCustomersViewModel(application: Application) : AndroidViewModel(appl
     fun deleteCustomer(customer: Customer) {
         viewModelScope.launch {
             try {
+                if (!Rbac.canWriteCustomers(sessionManager.getRole())) {
+                    _uiState.value = UiState.Error("You don't have permission to delete customers.")
+                    return@launch
+                }
                 _uiState.value = UiState.Loading
-                
+
                 // Check if customer has any orders
                 val customerOrders = orderRepository.getAllOrders().first()
                     .filter { it.customer_id == customer.customer_id }
@@ -104,14 +120,5 @@ class ManageCustomersViewModel(application: Application) : AndroidViewModel(appl
         object Loading : UiState()
         data class Success(val message: String) : UiState()
         data class Error(val message: String) : UiState()
-    }
-
-    companion object {
-        val Factory: ViewModelProvider.Factory = viewModelFactory {
-            initializer {
-                val application = (this[APPLICATION_KEY] as Application)
-                ManageCustomersViewModel(application)
-            }
-        }
     }
 } 

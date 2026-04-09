@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
-import java.time.LocalDateTime
 
 @Singleton
 class ProductRepository @Inject constructor(
@@ -56,23 +55,46 @@ class ProductRepository @Inject constructor(
         }
     }
 
-    fun getFilteredProducts(filters: ProductFilters): Flow<List<Product>> {
-        return productDao.getAllProducts().map { products ->
-            var filteredProducts = products.map { product ->
-                Product(
-                    product_id = product.product_id,
-                    product_name = product.product_name,
-                    product_description = product.product_description,
-                    unit_type = product.unit_type,
-                    is_active = product.is_active
+    /** Full manual price history for **PRD-US-07** (newest first from DAO). */
+    fun getPriceHistory(productId: String): Flow<List<ProductPrice>> {
+        return productPriceDao.getPriceHistory(productId).map { entities ->
+            entities.map { e ->
+                ProductPrice(
+                    price_id = e.price_id,
+                    product_id = e.product_id,
+                    per_kg_price = e.per_kg_price,
+                    per_piece_price = e.per_piece_price,
+                    discounted_per_kg_price = e.discounted_per_kg_price,
+                    discounted_per_piece_price = e.discounted_per_piece_price,
+                    date_created = e.date_created
                 )
             }
+        }
+    }
+
+    fun getFilteredProducts(filters: ProductFilters): Flow<List<Product>> {
+        return productDao.getAllProducts().map { products ->
+            var filteredProducts = products.map { it.toProduct() }
 
             // Apply search filter
             if (filters.searchQuery.isNotEmpty()) {
+                val q = filters.searchQuery
                 filteredProducts = filteredProducts.filter { product ->
-                    product.product_name.contains(filters.searchQuery, ignoreCase = true) ||
-                    product.product_description.contains(filters.searchQuery, ignoreCase = true)
+                    product.product_name.contains(q, ignoreCase = true) ||
+                        product.product_description.contains(q, ignoreCase = true) ||
+                        product.product_id.contains(q, ignoreCase = true)
+                }
+            }
+            if (filters.unitTypeFilter.isNotBlank()) {
+                val u = filters.unitTypeFilter.trim()
+                filteredProducts = filteredProducts.filter { product ->
+                    product.unit_type.contains(u, ignoreCase = true)
+                }
+            }
+            if (filters.categoryFilter.isNotBlank()) {
+                val c = filters.categoryFilter.trim()
+                filteredProducts = filteredProducts.filter { product ->
+                    product.category?.contains(c, ignoreCase = true) == true
                 }
             }
 
@@ -104,6 +126,8 @@ class ProductRepository @Inject constructor(
                 product_name = product.product_name,
                 product_description = product.product_description,
                 unit_type = product.unit_type,
+                category = product.category,
+                default_piece_count = product.defaultPieceCount,
                 is_active = product.is_active
             )
         )
@@ -130,6 +154,8 @@ class ProductRepository @Inject constructor(
                 product_name = product.product_name,
                 product_description = product.product_description,
                 unit_type = product.unit_type,
+                category = product.category,
+                default_piece_count = product.defaultPieceCount,
                 is_active = product.is_active
             )
         )
@@ -159,7 +185,7 @@ class ProductRepository @Inject constructor(
                 per_piece_price = productPrice.per_piece_price,
                 discounted_per_kg_price = productPrice.discounted_per_kg_price,
                 discounted_per_piece_price = productPrice.discounted_per_piece_price,
-                date_created = LocalDateTime.now() // Always use current time for new prices
+                date_created = System.currentTimeMillis()
             )
         )
     }
@@ -169,6 +195,8 @@ class ProductRepository @Inject constructor(
         product_name = product_name,
         product_description = product_description,
         unit_type = unit_type,
-        is_active = is_active
+        is_active = is_active,
+        category = category,
+        defaultPieceCount = default_piece_count
     )
 }
