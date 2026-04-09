@@ -1,6 +1,8 @@
 package com.redn.farm.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -15,6 +17,7 @@ import com.redn.farm.ui.screens.order.history.OrderHistoryScreen
 import com.redn.farm.ui.screens.order.history.EditOrderScreen
 import com.redn.farm.ui.screens.order.history.OrderDetailScreen
 import com.redn.farm.ui.screens.acquire.AcquireProduceScreen
+import com.redn.farm.ui.screens.acquire.AcquireProduceViewModel
 import com.redn.farm.ui.screens.acquire.AcquisitionFormScreen
 import com.redn.farm.ui.screens.remittance.RemittanceFormScreen
 import com.redn.farm.ui.screens.remittance.RemittanceScreen
@@ -363,10 +366,16 @@ fun NavGraph(
                 navController.getBackStackEntry(Screen.Acquire.route)
             }
             RequireRole(navController, Rbac.ROLES_ACQUIRE) {
+                val acquireVm = hiltViewModel<AcquireProduceViewModel>(acquireListEntry)
+                val canViewPresetDetail by acquireVm.canViewPresetDetail.collectAsState()
                 AcquisitionFormScreen(
                     acquisitionIdKey = acquisitionIdKey,
                     onNavigateBack = { navController.navigateUp() },
-                    viewModel = hiltViewModel(acquireListEntry)
+                    canViewPresetDetail = canViewPresetDetail,
+                    onOpenPresetDetail = { presetId ->
+                        navController.navigate(Screen.PresetDetail.createRoute(presetId))
+                    },
+                    viewModel = acquireVm,
                 )
             }
         }
@@ -664,6 +673,9 @@ fun NavGraph(
                     onNavigateToHistory = { navController.navigate(Screen.DayCloseHistory.route) },
                     onNavigateToOutstandingInventory = {
                         navController.navigate(Screen.OutstandingInventory.route)
+                    },
+                    onNavigateToOrderDetail = { orderId ->
+                        navController.navigate(Screen.OrderDetail.createRoute(orderId))
                     },
                 )
             }

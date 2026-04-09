@@ -66,6 +66,11 @@ class OrderRepository @Inject constructor(private val orderDao: OrderDao) {
         orderDao.truncate()
     }
 
+    /** Deletes **order_items** only; **orders** rows remain (BUG-02). */
+    suspend fun truncateOrderItemsOnly() {
+        orderDao.truncateOrderItems()
+    }
+
     fun getOrderById(orderId: Int): Flow<Order?> {
         return orderDao.getOrderById(orderId).map { orderWithDetails ->
             orderWithDetails?.let {

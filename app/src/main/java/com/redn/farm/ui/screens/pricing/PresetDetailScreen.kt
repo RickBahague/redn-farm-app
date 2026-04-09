@@ -1,6 +1,7 @@
 package com.redn.farm.ui.screens.pricing
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +15,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -49,6 +52,7 @@ fun PresetDetailScreen(
     onActivatePreview: (String) -> Unit,
     viewModel: PresetDetailViewModel = hiltViewModel()
 ) {
+    val loadComplete by viewModel.loadComplete.collectAsState()
     val preset by viewModel.preset.collectAsState()
     val dateFmt = androidx.compose.runtime.remember {
         SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault())
@@ -70,11 +74,37 @@ fun PresetDetailScreen(
             )
         }
     ) { padding ->
-        val p = preset
-        if (p == null) {
-            Text("Loading…", modifier = Modifier.padding(padding).padding(16.dp))
+        if (!loadComplete) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
             return@Scaffold
         }
+        if (preset == null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("Preset not found", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    "This preset is no longer in the database. It may have been deleted, or the ID on the acquisition no longer matches a saved preset.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = onNavigateBack) {
+                    Text("Go back")
+                }
+            }
+            return@Scaffold
+        }
+        val p = checkNotNull(preset)
         val haulingFeesParsed = remember(p.hauling_fees_json) {
             runCatching { PricingPresetGson.haulingFeesFromJson(p.hauling_fees_json) }.getOrNull()
         }

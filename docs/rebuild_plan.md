@@ -242,10 +242,7 @@ Work table-by-table. After each group, run `./scripts/dev.sh install` and smoke-
   - UI lets admin pick which tables to include before exporting — `bundleSelection: Set<ExportBundleTable>` with 10 entries, checkboxes, Select all/none, Export button
   - Files: `ui/screens/export/ExportScreen.kt`, `ExportViewModel.kt`, `ExportBundleTable.kt`
 
-- [x] **P6-4** SYS-US-04 — verify Room generated schema JSON matches schema_evolution.sql VERSION 4
-  - Verified against `app/schemas/com.redn.farm.data.local.FarmDatabase/4.json`
-  - All 13 tables present; all 15 SRP columns on acquisitions; indices (product_id, preset_ref, date_acquired) ✅
-  - Minor doc discrepancy (customers/product_prices `date_created` is INTEGER in Room vs TEXT in SQL reference — pre-existing from v3, non-functional)
+- [x] **P6-4** SYS-US-04 — `docs/schema_evolution.sql` **VERSION 10** matches KSP `FarmDatabase_Impl.createAllTables` (Stream D 2026-04-09); 16 logical tables + indices incl. EOD + `remittances.entry_type`
 
 ---
 

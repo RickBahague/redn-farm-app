@@ -66,8 +66,8 @@
 | Item | Status | Notes |
 |------|--------|--------|
 | Generated DDL location | `[x]` | This project uses **KSP**: `app/build/generated/ksp/debug/java/com/redn/farm/data/local/FarmDatabase_Impl.java` |
-| Manual diff | `[ ]` | Compare `_db.execSQL("CREATE TABLE...` blocks to **`docs/schema_evolution.sql`** — append **VERSION N** matching **`FarmDatabase.kt` `version =`** (currently **10**) |
-| `FarmDatabase` version | `[~]` | Update this row when bumping Room; keep **`schema_evolution.sql`** header comment in sync |
+| Manual diff | `[x]` | **VERSION 10** in **`docs/schema_evolution.sql`** matches KSP **`FarmDatabase_Impl.createAllTables`** (Stream D 2026-04-09) |
+| `FarmDatabase` version | `[x]` | **`FarmDatabase.kt` `version = 10`**; bump → refresh **VERSION N** + identity hash note in **`schema_evolution.sql`** |
 
 ---
 
@@ -83,4 +83,4 @@
 
 - Share/export intent from success dialog (share sheet).
 - Non-admin: hide or read-only Export screen if product policy requires it.
-- **USER_STORIES** **EXP-US-02**: multi-table clear with FK hints, presets + activation log, users — see [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PARTIAL_IMPLEMENTATION_PLAN.md) Stream C and [`BACKLOG.md`](./BACKLOG.md) **BUG-02**.
+- ~~**EXP-US-02** batch clear~~ — done 2026-04-09 (Stream C); see **USER_STORIES.md**.

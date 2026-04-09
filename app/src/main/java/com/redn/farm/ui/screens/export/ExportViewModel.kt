@@ -350,123 +350,43 @@ class ExportViewModel @Inject constructor(
     fun dismissMessage() {
         _exportState.value = ExportState.Idle
     }
-    
-    fun truncateCustomers() {
-        viewModelScope.launch {
-            if (!guardExport()) return@launch
-            try {
-                customerRepository.truncate()
-                _exportState.value = ExportState.Success(message = "Customers data cleared successfully")
-            } catch (e: Exception) {
-                _exportState.value = ExportState.Error("Failed to clear customers: ${e.message}")
-            }
-        }
-    }
 
-    fun truncateEmployees() {
+    /**
+     * EXP-US-02 / Stream C: clears [expanded] in FK-safe order (independent of checkbox order).
+     * Caller should merge dependency tables (e.g. Acquisitions when Products selected) before calling.
+     */
+    fun clearSelectedTables(expanded: Set<ClearableTable>) {
         viewModelScope.launch {
             if (!guardExport()) return@launch
-            try {
-                employeeRepository.truncate()
-                _exportState.value = ExportState.Success(message = "Employees data cleared successfully")
-            } catch (e: Exception) {
-                _exportState.value = ExportState.Error("Failed to clear employees: ${e.message}")
+            if (expanded.isEmpty()) {
+                _exportState.value = ExportState.Error("Select at least one table to clear")
+                return@launch
             }
-        }
-    }
-
-    fun truncateOrders() {
-        viewModelScope.launch {
-            if (!guardExport()) return@launch
             try {
-                orderRepository.truncate()
-                _exportState.value = ExportState.Success(message = "Orders data cleared successfully")
+                _exportState.value = ExportState.Loading
+                if (ClearableTable.ORDERS in expanded) orderRepository.truncate()
+                if (ClearableTable.CUSTOMERS in expanded) customerRepository.truncate()
+                if (ClearableTable.EMPLOYEE_PAYMENTS in expanded) employeePaymentRepository.truncate()
+                if (ClearableTable.EMPLOYEES in expanded) employeeRepository.truncate()
+                if (ClearableTable.ACQUISITIONS in expanded) acquisitionRepository.truncate()
+                when {
+                    ClearableTable.PRODUCTS in expanded -> productRepository.truncate()
+                    ClearableTable.PRODUCT_PRICES in expanded -> productRepository.truncateProductPrices()
+                }
+                if (ClearableTable.FARM_OPERATIONS in expanded) farmOperationRepository.truncate()
+                if (ClearableTable.REMITTANCES in expanded) remittanceRepository.truncate()
+                if (ClearableTable.PRICING_PRESETS in expanded) {
+                    pricingPresetRepository.truncatePresetsAndActivationLog()
+                }
+                if (ClearableTable.USERS_NON_SEED in expanded) userDao.deleteNonSeedUsers()
+                val summary = expanded
+                    .sortedBy { it.ordinal }
+                    .joinToString("\n") { "• ${it.label}" }
+                _exportState.value = ExportState.Success(
+                    message = "Cleared selected tables:\n$summary",
+                )
             } catch (e: Exception) {
-                _exportState.value = ExportState.Error("Failed to clear orders: ${e.message}")
-            }
-        }
-    }
-
-    fun truncateOrderItems() {
-        viewModelScope.launch {
-            if (!guardExport()) return@launch
-            try {
-                orderRepository.truncate()
-                _exportState.value = ExportState.Success(message = "Order items data cleared successfully")
-            } catch (e: Exception) {
-                _exportState.value = ExportState.Error("Failed to clear order items: ${e.message}")
-            }
-        }
-    }
-
-    fun truncateFarmOperations() {
-        viewModelScope.launch {
-            if (!guardExport()) return@launch
-            try {
-                farmOperationRepository.truncate()
-                _exportState.value = ExportState.Success(message = "Farm operations data cleared successfully")
-            } catch (e: Exception) {
-                _exportState.value = ExportState.Error("Failed to clear farm operations: ${e.message}")
-            }
-        }
-    }
-
-    fun truncateProducts() {
-        viewModelScope.launch {
-            if (!guardExport()) return@launch
-            try {
-                productRepository.truncate()
-                _exportState.value = ExportState.Success(message = "Products data cleared successfully")
-            } catch (e: Exception) {
-                _exportState.value = ExportState.Error("Failed to clear products: ${e.message}")
-            }
-        }
-    }
-
-    fun truncateProductPrices() {
-        viewModelScope.launch {
-            if (!guardExport()) return@launch
-            try {
-                productRepository.truncate()
-                _exportState.value = ExportState.Success(message = "Product prices data cleared successfully")
-            } catch (e: Exception) {
-                _exportState.value = ExportState.Error("Failed to clear product prices: ${e.message}")
-            }
-        }
-    }
-
-    fun truncateEmployeePayments() {
-        viewModelScope.launch {
-            if (!guardExport()) return@launch
-            try {
-                employeePaymentRepository.truncate()
-                _exportState.value = ExportState.Success(message = "Employee payments data cleared successfully")
-            } catch (e: Exception) {
-                _exportState.value = ExportState.Error("Failed to clear employee payments: ${e.message}")
-            }
-        }
-    }
-
-    fun truncateRemittances() {
-        viewModelScope.launch {
-            if (!guardExport()) return@launch
-            try {
-                remittanceRepository.truncate()
-                _exportState.value = ExportState.Success(message = "Remittances data cleared successfully")
-            } catch (e: Exception) {
-                _exportState.value = ExportState.Error("Failed to clear remittances: ${e.message}")
-            }
-        }
-    }
-
-    fun truncateAcquisitions() {
-        viewModelScope.launch {
-            if (!guardExport()) return@launch
-            try {
-                acquisitionRepository.truncate()
-                _exportState.value = ExportState.Success(message = "Acquisitions data cleared successfully")
-            } catch (e: Exception) {
-                _exportState.value = ExportState.Error("Failed to clear acquisitions: ${e.message}")
+                _exportState.value = ExportState.Error(e.message ?: "Clear failed")
             }
         }
     }

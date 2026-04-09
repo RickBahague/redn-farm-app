@@ -1,19 +1,29 @@
 package com.redn.farm.ui.screens.eod
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.repository.DayCloseRepository
 import com.redn.farm.data.util.InventoryFifoAllocator
+import com.redn.farm.data.local.session.SessionManager
+import com.redn.farm.utils.CurrencyFormatter
+import com.redn.farm.utils.PrinterUtils
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -32,14 +42,38 @@ fun OutstandingInventoryScreen(
     LaunchedEffect(Unit) { viewModel.load() }
 
     val uiState by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val printedBy = remember(context) {
+        SessionManager(context.applicationContext).getUsername() ?: "unknown"
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Outstanding Inventory") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            val text = viewModel.buildPrintText(printedBy)
+                            if (text == null) {
+                                scope.launch { snackbarHostState.showSnackbar("Nothing to print") }
+                            } else {
+                                scope.launch {
+                                    val ok = PrinterUtils.printMessage(context, text, alignment = 0)
+                                    snackbarHostState.showSnackbar(if (ok) "Sent to printer" else "Print failed")
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.Print, "Print")
                     }
                 }
             )
@@ -57,24 +91,35 @@ fun OutstandingInventoryScreen(
                 }
             }
             is OutstandingInventoryUiState.Ready -> {
-                if (state.lines.isEmpty()) {
+                if (state.allLineCount == 0) {
                     Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                         Text("No outstanding inventory.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                } else if (state.filteredLines.isEmpty()) {
+                    Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                        Text("No matching products for current filters.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 } else {
-                    OutstandingInventoryList(lines = state.lines, padding = padding)
+                    OutstandingInventoryList(
+                        state = state,
+                        padding = padding,
+                        viewModel = viewModel,
+                    )
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun OutstandingInventoryList(
-    lines: List<DayCloseRepository.OutstandingProductLine>,
+    state: OutstandingInventoryUiState.Ready,
     padding: PaddingValues,
+    viewModel: OutstandingInventoryViewModel,
 ) {
     val dateFmt = remember { DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault()) }
+    var searchText by remember { mutableStateOf(state.searchQuery) }
 
     LazyColumn(
         modifier = Modifier
@@ -84,15 +129,64 @@ private fun OutstandingInventoryList(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {
-            // Legend
+            Text(
+                "Total value (filtered): ${CurrencyFormatter.format(state.totalValue)}",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = searchText,
+                onValueChange = {
+                    searchText = it
+                    viewModel.setSearchQuery(it)
+                },
+                label = { Text("Search product") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("At-risk only (≥3 d)", style = MaterialTheme.typography.labelMedium)
+                Switch(
+                    checked = state.atRiskOnly,
+                    onCheckedChange = { viewModel.setAtRiskOnly(it) },
+                )
+            }
+            if (state.categories.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text("Category", style = MaterialTheme.typography.labelMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    FilterChip(
+                        selected = state.category == null,
+                        onClick = { viewModel.setCategory(null) },
+                        label = { Text("All") },
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    state.categories.forEach { cat ->
+                        FilterChip(
+                            selected = state.category == cat,
+                            onClick = {
+                                viewModel.setCategory(if (state.category == cat) null else cat)
+                            },
+                            label = { Text(cat) },
+                        )
+                        Spacer(Modifier.width(6.dp))
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AgingChip("≥3 days", AmberColor)
                 AgingChip("≥7 days", RedColor)
             }
-            Spacer(Modifier.height(4.dp))
         }
 
-        items(lines, key = { it.productId }) { line ->
+        items(state.filteredLines, key = { it.productId }) { line ->
             OutstandingProductCard(line = line, dateFmt = dateFmt)
         }
     }
@@ -126,10 +220,17 @@ private fun OutstandingProductCard(
                 Column(Modifier.weight(1f)) {
                     Text(line.productName, style = MaterialTheme.typography.titleSmall, color = agingColor)
                     Text(
-                        String.format("%.3f kg remaining", line.totalRemainingKg),
+                        String.format("%.3f kg · %s", line.totalRemainingKg, CurrencyFormatter.format(line.displayValuePhp)),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (line.usesActualFromDayClose) {
+                        Text(
+                            "Uses physical count from finalized day close",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     line.oldestUnsoldDateMillis?.let { millis ->
                         val dateStr = LocalDateTime.ofInstant(
                             Instant.ofEpochMilli(millis), ZoneId.systemDefault()
@@ -141,13 +242,15 @@ private fun OutstandingProductCard(
                         )
                     }
                 }
-                TextButton(onClick = { expanded = !expanded }) {
-                    Text(if (expanded) "Hide lots" else "View lots")
+                if (line.lots.isNotEmpty()) {
+                    TextButton(onClick = { expanded = !expanded }) {
+                        Text(if (expanded) "Hide lots" else "View lots")
+                    }
                 }
             }
 
-            if (expanded) {
-                Divider(Modifier.padding(vertical = 4.dp))
+            if (expanded && line.lots.isNotEmpty()) {
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 line.lots.filter { it.remainingQtyKg > 0 }.forEach { lot ->
                     LotRow(lot = lot, dateFmt = dateFmt)
                 }

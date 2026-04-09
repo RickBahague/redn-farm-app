@@ -96,6 +96,77 @@ interface AcquisitionDao {
         ORDER BY product_id, date_acquired ASC, created_at ASC
     """)
     suspend fun getAllAcquisitionLotsOldestFirst(): List<AcquisitionEntity>
+
+    @Query("SELECT COALESCE(SUM(total_amount), 0) FROM acquisitions")
+    suspend fun getTotalAcquisitionSpendAllTime(): Double
+
+    @Query(
+        """
+        SELECT product_id, MAX(date_acquired) AS last_acquired_millis
+        FROM acquisitions
+        GROUP BY product_id
+        """
+    )
+    suspend fun getLastAcquisitionMillisByProduct(): List<ProductLastAcquiredRow>
+
+    /**
+     * Latest acquisition unit mode per product (latest by date_acquired, tie-break created_at).
+     * Used by Day Close UI/print to label inventory quantities correctly (kg vs pc).
+     */
+    @Query(
+        """
+        SELECT a.product_id, a.is_per_kg AS is_per_kg_flag
+        FROM acquisitions a
+        WHERE a.acquisition_id = (
+            SELECT a2.acquisition_id
+            FROM acquisitions a2
+            WHERE a2.product_id = a.product_id
+            ORDER BY a2.date_acquired DESC, a2.created_at DESC
+            LIMIT 1
+        )
+        """
+    )
+    suspend fun getLatestUnitModeByProduct(): List<ProductUnitModeRow>
+
+    /**
+     * Latest acquisition details per product (date, qty, unit cost, unit mode).
+     * Used by Day Close inventory row "last acquisition" snippet (EOD-US-13).
+     */
+    @Query(
+        """
+        SELECT a.product_id,
+               a.date_acquired,
+               a.quantity,
+               a.price_per_unit,
+               a.is_per_kg AS is_per_kg_flag
+        FROM acquisitions a
+        WHERE a.acquisition_id = (
+            SELECT a2.acquisition_id
+            FROM acquisitions a2
+            WHERE a2.product_id = a.product_id
+            ORDER BY a2.date_acquired DESC, a2.created_at DESC
+            LIMIT 1
+        )
+        """
+    )
+    suspend fun getLatestAcquisitionDetailsByProduct(): List<ProductLatestAcquisitionRow>
+
+    /**
+     * Heuristic for EOD-US-01: distinct products with an acquisition on the business day
+     * but no order_items on that same day for that product.
+     */
+    @Query(
+        """
+        SELECT COUNT(DISTINCT a.product_id) FROM acquisitions a
+        WHERE a.date_acquired BETWEEN :startMillis AND :endMillis
+        AND a.product_id NOT IN (
+            SELECT DISTINCT oi.product_id FROM order_items oi
+            INNER JOIN orders o ON oi.order_id = o.order_id
+            WHERE o.order_date BETWEEN :startMillis AND :endMillis
+        )
+        """
+    )
+    suspend fun countAcquiredProductsWithNoSalesOnSameDay(startMillis: Long, endMillis: Long): Int
 }
 
 // EOD result type
@@ -106,4 +177,22 @@ data class ProductAcquisitionSummary(
     val total_cost: Double,
     val max_piece_count: Double?,
     val is_per_kg_flag: Int,  // Room maps Boolean to Int in aggregates
+)
+
+data class ProductLastAcquiredRow(
+    val product_id: String,
+    val last_acquired_millis: Long,
+)
+
+data class ProductUnitModeRow(
+    val product_id: String,
+    val is_per_kg_flag: Boolean,
+)
+
+data class ProductLatestAcquisitionRow(
+    val product_id: String,
+    val date_acquired: Long,
+    val quantity: Double,
+    val price_per_unit: Double,
+    val is_per_kg_flag: Boolean,
 )

@@ -30,4 +30,10 @@ interface UserDao {
 
     @Query("DELETE FROM users")
     suspend fun truncate()
+
+    /** EXP-US-02: remove custom accounts; keep default **admin** / **user** seed logins. */
+    @Query(
+        """DELETE FROM users WHERE LOWER(username) NOT IN ('admin', 'user')"""
+    )
+    suspend fun deleteNonSeedUsers()
 } 

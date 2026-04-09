@@ -63,4 +63,11 @@ interface PricingPresetDao {
 
     @Query("DELETE FROM pricing_presets")
     suspend fun truncate()
+
+    /** EXP-US-02 / Stream C: activation log then presets in one transaction. */
+    @Transaction
+    suspend fun truncatePresetsAndActivationLog(logDao: PresetActivationLogDao) {
+        logDao.truncate()
+        truncate()
+    }
 }

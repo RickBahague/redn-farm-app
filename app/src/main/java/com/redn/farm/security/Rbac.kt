@@ -75,6 +75,8 @@ object Rbac {
     /** D2: Only ADMIN and PURCHASING may enter physical inventory counts. */
     fun canEditInventoryCounts(role: String?) = normalizeRole(role) in setOf(ADMIN, PURCHASING)
 
+    fun canUnfinalizeDayClose(role: String?) = normalizeRole(role) == ADMIN
+
     val ROLES_PRODUCTS: Set<String> = ALL_ROLES
     val ROLES_CUSTOMERS: Set<String> = setOf(ADMIN, STORE_ASSISTANT)
     val ROLES_ORDERS_FLOW: Set<String> = setOf(ADMIN, STORE_ASSISTANT)

@@ -127,8 +127,7 @@ Users are created in `FarmDatabase`'s `onOpen` / `onCreate` callback if they don
 Located at `data/local/FarmDatabase.kt`. The **`@Database(version = …)`** value is the source of truth (currently **10**); this document is updated when the schema bumps. Singleton accessed via `FarmDatabase.getDatabase(context)`. A `clearInstance()` method exists for reinitialization scenarios. Development builds use **`fallbackToDestructiveMigration()`**; see **`docs/schema_evolution.sql`** and **`USER_STORIES.md` SYS-US-04**.
 
 **Type converters registered:**
-- `DateTimeConverter` — `LocalDateTime` ↔ `Long` (epoch seconds, UTC offset)
-- `EnumConverters` — `CustomerType`, `AcquisitionLocation`, `FarmOperationType` stored as their enum `name` strings
+- `EnumConverters` — `CustomerType`, `AcquisitionLocation`, `FarmOperationType` (and related enums) stored as their enum `name` strings
 
 ### Tables and relationships
 
@@ -154,6 +153,9 @@ employees (employee_id INT PK, autoincrement)
 
 remittances (remittance_id INT PK, autoincrement)
 
+pricing_presets (preset_id TEXT PK)
+preset_activation_log (log_id PK; append-only activation events)
+
 users (user_id INT PK, autoincrement; unique index on username)
 ```
 
@@ -161,26 +163,26 @@ users (user_id INT PK, autoincrement; unique index on username)
 
 | Table | Key fields |
 |---|---|
-| `products` | `product_id` (String), `product_name`, `product_description`, `unit_type`, `is_active` |
-| `product_prices` | `price_id` (autoincr), `product_id`, `per_kg_price?`, `per_piece_price?`, `discounted_per_kg_price?`, `discounted_per_piece_price?`, `date_created` |
-| `customers` | `customer_id`, `firstname`, `lastname`, `contact`, `customer_type` (enum), address fields, `date_created/updated` |
-| `orders` | `order_id`, `customer_id`, `total_amount`, `order_date`, `order_update_date`, `is_paid`, `is_delivered` |
+| `products` | `product_id` (String), `product_name`, `product_description`, `unit_type`, `category?`, `default_piece_count?`, `is_active` |
+| `product_prices` | `price_id` (autoincr), `product_id`, `per_kg_price?`, `per_piece_price?`, `discounted_*`, `date_created` (epoch **ms**) |
+| `customers` | `customer_id`, `firstname`, `lastname`, `contact`, `customer_type` (enum), address fields, `date_created/updated` (epoch **ms**) |
+| `orders` | `order_id`, `customer_id`, **`channel`**, `total_amount`, `order_date`, `order_update_date`, `is_paid`, `is_delivered` |
 | `order_items` | `id`, `order_id`, `product_id`, `quantity`, `price_per_unit`, `is_per_kg`, `total_price` |
 | `employees` | `employee_id`, `firstname`, `lastname`, `contact`, `date_created/updated` |
 | `employee_payments` | `payment_id`, `employee_id`, `amount`, `cash_advance_amount?`, `liquidated_amount?`, `date_paid`, `signature`, `received_date?` |
 | `farm_operations` | `operation_id`, `operation_type` (enum), `operation_date`, `details`, `area`, `weather_condition`, `personnel`, `product_id?`, `product_name` |
-| `acquisitions` | `acquisition_id`, `product_id`, `product_name`, `quantity`, `price_per_unit`, `total_amount`, `is_per_kg`, `piece_count?` (pieces per kg), preset/SRP snapshot fields, `date_acquired`, `location` (enum) — see **USER_STORIES.md** INV-US-01 / INV-US-05; **PricingReference.md** §4.3 / §4.3.1 / §5.1.1 |
-| `remittances` | `remittance_id`, `amount`, `date`, `remarks`, `date_updated`, **`entry_type`** (`REMITTANCE` \| `DISBURSEMENT`, default `REMITTANCE`) — Epic 8 |
+| `acquisitions` | `acquisition_id`, `product_id`, `product_name`, `quantity`, `price_per_unit`, `total_amount`, `is_per_kg`, `piece_count?`, `preset_ref?`, `channels_snapshot_json`, SRP columns, `spoilage_kg?`, **`srp_custom_override`**, `date_acquired`, `created_at`, `location` (enum) — INV-US-01 / INV-US-05 / **PricingReference.md** |
+| `remittances` | `remittance_id`, `amount`, `date`, `remarks`, `date_updated`, **`entry_type`** (`REMITTANCE` \| `DISBURSEMENT`) — Epic 8 |
 | `users` | `user_id`, `username` (unique), `password_hash`, `full_name`, `role`, `is_active` |
-| `day_closes` *(planned — EOD)* | See **§14.2** |
-| `day_close_inventory` *(planned — EOD)* | See **§14.2** |
-| `day_close_audit` *(planned — EOD)* | See **§14.13** |
+| `pricing_presets` | `preset_id`, `preset_name`, `saved_at`, `saved_by`, `is_active`, `activated_at/by`, `spoilage_rate`, `additional_cost_per_kg`, `hauling_weight_kg`, `hauling_fees_json`, **`channels_json`**, **`categories_json`** |
+| `preset_activation_log` | `log_id`, `activated_at`, `activated_by`, `preset_id_activated`, `preset_id_deactivated?` |
+| `day_closes` | EOD snapshot header — see **§14.2** (`business_date`, `is_finalized`, cash / margin fields, etc.) |
+| `day_close_inventory` | Per-product EOD row — see **§14.2** |
+| `day_close_audit` | EOD audit trail — see **§14.13** |
 
 ### Migrations
 
-Current phase is still build. During this build phase no migration is needed. Just recreate the full database if schema changes. 
-
-Track schema changes.
+Build phase: **`fallbackToDestructiveMigration()`** on version bumps except legacy **`MIGRATION_1_2`** / **`MIGRATION_2_3`**. Canonical DDL snapshot: **`docs/schema_evolution.sql`** **VERSION 10** (must match KSP **`FarmDatabase_Impl.createAllTables`**). See **USER_STORIES.md** SYS-US-04.
 
 ### Price history
 
@@ -266,7 +268,7 @@ All ViewModels use `StateFlow` exposed as `asStateFlow()`, collected in Composab
 - Payments record `amount` (gross wage), optional `cash_advance_amount`, optional `liquidated_amount`, and `signature` (typed name **or** Base64-encoded drawn signature from `SignatureCanvasField`)
 - **Net pay (form + each history row):** `EmployeePayment.netPayAmount()` = `amount + cash_advance_amount` (null advance as `0`). **Liquidated** stored/shown for audit and outstanding balance only — EMP-US-05
 - Add/edit: full-screen `PaymentFormScreen` on route `employee_payment_form/...`; list remains `EmployeePaymentScreen` → `employee_payments/...`
-- **History (EMP-US-06):** `EmployeePaymentScreen` — list, period filter (All / Today / Week / Month), **period summary** (totals for filtered rows), **lifetime outstanding advance** (all-time, ignores filter). Extra presets (*Last month*, custom range, etc.) remain backlog in `USER_STORIES.md`.
+- **History (EMP-US-06):** `EmployeePaymentScreen` — list, period filter (All Time / Today / This Week / This Month / Last Month / Last 3 Months / Last 6 Months / Custom Range), **period summary** (totals for filtered rows), **lifetime outstanding advance** (all-time, ignores filter).
 - `received_date` is nullable (payment may be scheduled but not yet received)
 
 ### Farm Operations

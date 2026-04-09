@@ -11,5 +11,5 @@ import javax.inject.Inject
 class DayCloseHistoryViewModel @Inject constructor(
     repo: DayCloseRepository,
 ) : ViewModel() {
-    val closes: Flow<List<DayCloseEntity>> = repo.getAllDesc()
+    val closes: Flow<List<DayCloseEntity>> = repo.getFinalizedDesc()
 }

@@ -1,5 +1,7 @@
 package com.redn.farm.ui.screens.manage.employees.payment
 
+import android.app.DatePickerDialog
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -47,6 +49,8 @@ fun EmployeePaymentScreen(
     var selectedPeriod by remember { mutableStateOf(DateFilterPeriod.ALL) }
     var isDropdownExpanded by remember { mutableStateOf(false) }
     var summaryExpanded by remember { mutableStateOf(false) }
+    var customFromMillis by remember { mutableStateOf<Long?>(null) }
+    var customToMillis by remember { mutableStateOf<Long?>(null) }
     
     val payments by viewModel.payments.collectAsState(initial = emptyList())
 
@@ -54,14 +58,9 @@ fun EmployeePaymentScreen(
         payments.filter { it.employee_id == employeeId }
     }
 
-    val periodStartMillis = remember(selectedPeriod) { startOfFilterPeriodMillis(selectedPeriod) }
-
-    val filteredPayments = remember(employeePayments, selectedPeriod, periodStartMillis) {
+    val filteredPayments = remember(employeePayments, selectedPeriod, customFromMillis, customToMillis) {
         employeePayments.filter { payment ->
-            when (selectedPeriod) {
-                DateFilterPeriod.ALL -> true
-                else -> payment.date_paid >= periodStartMillis
-            }
+            matchesPeriod(payment.date_paid, selectedPeriod, customFromMillis, customToMillis)
         }
     }
 
@@ -82,7 +81,7 @@ fun EmployeePaymentScreen(
         scope.launch {
             val content = buildEmployeePayrollSummary(
                 employeeName = employeeName,
-                periodLabel = selectedPeriod.toPayrollSummaryLabel(),
+                periodLabel = selectedPeriod.toSummaryLabel(customFromMillis, customToMillis),
                 filteredPayments = filteredPayments,
                 allEmployeePayments = employeePayments,
             )
@@ -164,10 +163,33 @@ fun EmployeePaymentScreen(
                     }
                 }
             }
+            if (selectedPeriod == DateFilterPeriod.CUSTOM_RANGE) {
+                CustomRangeControls(
+                    fromMillis = customFromMillis,
+                    toMillis = customToMillis,
+                    onPickFrom = {
+                        showDatePicker(context, customFromMillis) { picked ->
+                            customFromMillis = startOfDay(picked)
+                            if (customToMillis != null && customToMillis!! < customFromMillis!!) {
+                                customToMillis = endOfDay(picked)
+                            }
+                        }
+                    },
+                    onPickTo = {
+                        showDatePicker(context, customToMillis ?: customFromMillis) { picked ->
+                            customToMillis = endOfDay(picked)
+                        }
+                    },
+                    onClear = {
+                        customFromMillis = null
+                        customToMillis = null
+                    },
+                )
+            }
 
             EmployeePaymentSummaryBanner(
                 outstanding = lifetimeOutstanding,
-                periodLabel = selectedPeriod.label,
+                periodLabel = selectedPeriod.toSummaryLabel(customFromMillis, customToMillis),
                 paymentCount = filteredPayments.size,
                 periodNetPay = periodNetPay,
                 periodTotals = periodTotals,
@@ -224,15 +246,51 @@ enum class DateFilterPeriod(val label: String) {
     ALL("All Time"),
     TODAY("Today"),
     THIS_WEEK("This Week"),
-    THIS_MONTH("This Month")
+    THIS_MONTH("This Month"),
+    LAST_MONTH("Last Month"),
+    LAST_3_MONTHS("Last 3 Months"),
+    LAST_6_MONTHS("Last 6 Months"),
+    CUSTOM_RANGE("Custom Range")
 }
 
-private fun DateFilterPeriod.toPayrollSummaryLabel(): String = when (this) {
+private fun DateFilterPeriod.toSummaryLabel(
+    customFromMillis: Long?,
+    customToMillis: Long?,
+): String = when (this) {
     DateFilterPeriod.ALL -> "All Time"
     DateFilterPeriod.TODAY -> "Today"
     DateFilterPeriod.THIS_WEEK -> "This Week"
     DateFilterPeriod.THIS_MONTH ->
         SimpleDateFormat("MMM yyyy", Locale.getDefault()).format(Date())
+    DateFilterPeriod.LAST_MONTH -> "Last Month"
+    DateFilterPeriod.LAST_3_MONTHS -> "Last 3 Months"
+    DateFilterPeriod.LAST_6_MONTHS -> "Last 6 Months"
+    DateFilterPeriod.CUSTOM_RANGE -> {
+        val fmt = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+        val from = customFromMillis?.let { fmt.format(Date(it)) } ?: "…"
+        val to = customToMillis?.let { fmt.format(Date(it)) } ?: "…"
+        "Custom: $from - $to"
+    }
+}
+
+private fun startOfDay(epochMillis: Long): Long {
+    val cal = Calendar.getInstance()
+    cal.timeInMillis = epochMillis
+    cal.set(Calendar.HOUR_OF_DAY, 0)
+    cal.set(Calendar.MINUTE, 0)
+    cal.set(Calendar.SECOND, 0)
+    cal.set(Calendar.MILLISECOND, 0)
+    return cal.timeInMillis
+}
+
+private fun endOfDay(epochMillis: Long): Long {
+    val cal = Calendar.getInstance()
+    cal.timeInMillis = epochMillis
+    cal.set(Calendar.HOUR_OF_DAY, 23)
+    cal.set(Calendar.MINUTE, 59)
+    cal.set(Calendar.SECOND, 59)
+    cal.set(Calendar.MILLISECOND, 999)
+    return cal.timeInMillis
 }
 
 private fun startOfFilterPeriodMillis(period: DateFilterPeriod): Long {
@@ -240,27 +298,108 @@ private fun startOfFilterPeriodMillis(period: DateFilterPeriod): Long {
     when (period) {
         DateFilterPeriod.ALL -> return 0L
         DateFilterPeriod.TODAY -> {
-            cal.set(Calendar.HOUR_OF_DAY, 0)
-            cal.set(Calendar.MINUTE, 0)
-            cal.set(Calendar.SECOND, 0)
-            cal.set(Calendar.MILLISECOND, 0)
+            return startOfDay(cal.timeInMillis)
         }
         DateFilterPeriod.THIS_WEEK -> {
             cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
-            cal.set(Calendar.HOUR_OF_DAY, 0)
-            cal.set(Calendar.MINUTE, 0)
-            cal.set(Calendar.SECOND, 0)
-            cal.set(Calendar.MILLISECOND, 0)
+            return startOfDay(cal.timeInMillis)
         }
         DateFilterPeriod.THIS_MONTH -> {
             cal.set(Calendar.DAY_OF_MONTH, 1)
-            cal.set(Calendar.HOUR_OF_DAY, 0)
-            cal.set(Calendar.MINUTE, 0)
-            cal.set(Calendar.SECOND, 0)
-            cal.set(Calendar.MILLISECOND, 0)
+            return startOfDay(cal.timeInMillis)
         }
+        DateFilterPeriod.LAST_MONTH -> {
+            cal.set(Calendar.DAY_OF_MONTH, 1)
+            cal.add(Calendar.MONTH, -1)
+            return startOfDay(cal.timeInMillis)
+        }
+        DateFilterPeriod.LAST_3_MONTHS -> {
+            cal.add(Calendar.MONTH, -3)
+            return startOfDay(cal.timeInMillis)
+        }
+        DateFilterPeriod.LAST_6_MONTHS -> {
+            cal.add(Calendar.MONTH, -6)
+            return startOfDay(cal.timeInMillis)
+        }
+        DateFilterPeriod.CUSTOM_RANGE -> return 0L
     }
-    return cal.timeInMillis
+}
+
+private fun matchesPeriod(
+    paidAtMillis: Long,
+    period: DateFilterPeriod,
+    customFromMillis: Long?,
+    customToMillis: Long?,
+): Boolean {
+    return when (period) {
+        DateFilterPeriod.ALL -> true
+        DateFilterPeriod.CUSTOM_RANGE -> {
+            val from = customFromMillis ?: return true
+            val to = customToMillis ?: Long.MAX_VALUE
+            paidAtMillis in from..to
+        }
+        DateFilterPeriod.LAST_MONTH -> {
+            val cal = Calendar.getInstance()
+            cal.set(Calendar.DAY_OF_MONTH, 1)
+            val startCurrentMonth = startOfDay(cal.timeInMillis)
+            cal.add(Calendar.MONTH, -1)
+            val startLastMonth = startOfDay(cal.timeInMillis)
+            paidAtMillis in startLastMonth until startCurrentMonth
+        }
+        else -> paidAtMillis >= startOfFilterPeriodMillis(period)
+    }
+}
+
+private fun showDatePicker(
+    context: android.content.Context,
+    initialMillis: Long?,
+    onPicked: (Long) -> Unit,
+) {
+    val cal = Calendar.getInstance().apply {
+        if (initialMillis != null) timeInMillis = initialMillis
+    }
+    DatePickerDialog(
+        context,
+        { _, y, m, d ->
+            val picked = Calendar.getInstance().apply {
+                set(Calendar.YEAR, y)
+                set(Calendar.MONTH, m)
+                set(Calendar.DAY_OF_MONTH, d)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            onPicked(picked.timeInMillis)
+        },
+        cal.get(Calendar.YEAR),
+        cal.get(Calendar.MONTH),
+        cal.get(Calendar.DAY_OF_MONTH),
+    ).show()
+}
+
+@Composable
+private fun CustomRangeControls(
+    fromMillis: Long?,
+    toMillis: Long?,
+    onPickFrom: () -> Unit,
+    onPickTo: () -> Unit,
+    onClear: () -> Unit,
+) {
+    val fmt = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
+    val fromText = fromMillis?.let { fmt.format(Date(it)) } ?: "Pick start"
+    val toText = toMillis?.let { fmt.format(Date(it)) } ?: "Pick end"
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedButton(onClick = onPickFrom, modifier = Modifier.weight(1f)) { Text(fromText) }
+        OutlinedButton(onClick = onPickTo, modifier = Modifier.weight(1f)) { Text(toText) }
+        TextButton(onClick = onClear) { Text("Clear") }
+    }
 }
 
 @Composable

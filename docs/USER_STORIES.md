@@ -98,7 +98,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** an admin, **I want to** create and deactivate user accounts **so that** I control who can access the app and each saved record can be attributed to a specific user.
 
 **Actor:** Admin  
-**Status:** ✅ *(**UserManagementScreen** / **UserManagementViewModel** — create user with hashed password, activate/deactivate, admin password reset; `Rbac` gated. **AC6** preset `saved-by` / broad audit attribution: verify against pricing-preset save paths if required for compliance.)*
+**Status:** ✅ *(**UserManagementScreen** / **UserManagementViewModel** — create user with hashed password, activate/deactivate, admin password reset; `Rbac` gated. **AC6:** **`PricingPresetEditorViewModel.save`** sets **`saved_by`** from **`SessionManager.getUsername()`**; **`PresetActivationPreviewViewModel.confirmActivate`** passes the same for **`activated_by`** and the activation log — **`PricingPresetRepository.savePreset`** documents caller responsibility.)*
 
 **Acceptance criteria:**
 1. I can create a new user account with a username, full name, role, and initial password.
@@ -682,7 +682,7 @@ across **all** of that employee’s payment rows (not limited to one period). Se
 **As** an admin, **I want to** view all payments for a specific employee with a running balance of outstanding advances **so that** I always know how much advance the employee still owes back.
 
 **Actor:** Admin  
-**Status:** ✅ *(AC2b extra filter presets remain backlog; see AC2.)*
+**Status:** ✅
 
 **Net pay on each row:** Must match EMP-US-05 exactly:
 
@@ -695,12 +695,12 @@ net_pay = amount + cash_advance_amount
 **Acceptance criteria:**
 
 1. **Per-payment list (required)** — For each payment, the history shows at least: payment ID, gross wage (`amount`), cash advance (show 0 when none), liquidated (show 0 when none), **net pay** (formula above), **date paid**, **received date when set** (if unset, the UI may omit or label “Not set”), and an indication of **signature** (typed value or that an image was captured). Rows are scoped to the selected employee.
-2. **Time filter (required)** — I can limit the list by period using presets. **Implemented today:** *All Time*, *Today*, *This Week*, *This Month* (by `date_paid`). **Backlog / not yet required for ✅:** *Last month*, *Last 3 months*, *Last 6 months*, *Custom date range*.
+2. **Time filter (required)** — I can limit the list by period using presets by `date_paid`: *All Time*, *Today*, *This Week*, *This Month*, *Last month*, *Last 3 months*, *Last 6 months*, and *Custom date range*.
 3. **Period summary card** — For the **currently filtered** payments, a card shows: total gross (`sum amount`), total cash advances (`sum cash_advance_amount`), total liquidated (`sum liquidated_amount`). Implemented in `EmployeePaymentScreen` (below the outstanding card).
 4. **Lifetime outstanding advance** — Always-visible card:  
    `sum(cash_advance_amount) − sum(liquidated_amount)` over **all** that employee’s payments (ignore list filter). Implemented in `EmployeePaymentScreen`.
 
-**Implementation notes:** `PaymentCard`, period filter (AC2a), period summary (AC3), and lifetime outstanding (AC4) are in `EmployeePaymentScreen`. **Backlog (AC2b):** *Last month*, *Last 3 months*, *Last 6 months*, *Custom date range*.
+**Implementation notes:** `PaymentCard`, period filter (AC2a + AC2b including custom range controls), period summary (AC3), and lifetime outstanding (AC4) are in `EmployeePaymentScreen`.
 
 ---
 
@@ -931,7 +931,7 @@ net_pay = amount + cash_advance_amount
 **As** an admin, **I want to** truncate any data table **so that** I can reset test data before going live.
 
 **Actor:** Admin  
-**Status:** 🔧 *(per-table **Clear** actions on **ExportScreen** for customers, products, product prices, orders, order items, employees, employee payments, farm operations, remittances, acquisitions. **Not yet:** multi-table checklist with FK dependency hints, **Users** truncate, **Pricing Presets** + **preset activation log** clear-as-one, **Select All** / batch clear.)*
+**Status:** ✅ *(**ExportScreen** — admin **Clear tables (EXP-US-02)** checklist, **Select all / none**, FK dependency prompts (products→acquisitions, customers→orders, employees→payments), two-step confirm; **`ExportViewModel.clearSelectedTables`** runs deletes in safe order; **Users (except default admin & user)**; **Pricing presets & activation log** in one transaction; **BUG-02** fixed — order line items-only path is `OrderDao.truncateOrderItems` / `OrderRepository.truncateOrderItemsOnly`. **Not in scope:** day-close tables; full `users` wipe (would require re-seed outside DB callback).)*
 
 **Acceptance criteria:**
 1. The screen presents a **checklist** of all clearable tables. The admin selects one or more before confirming:
@@ -1000,7 +1000,7 @@ Top bar → Settings (admin only)
 **As** an admin, **I want to** configure the spoilage rate and hauling-based additional costs **so that** all SRP calculations automatically reflect the store's real operating costs without hardcoding them.
 
 **Actor:** Admin  
-**Status:** ✅ *(preset editor + saved snapshot on acquisitions; see **PricingPresetEditor** / **SrpCalculator** — **BUG-PRC-04** / rate vs absolute kg policy may still differ from full spec)*
+**Status:** ✅ *(preset editor + saved snapshot on acquisitions; by-weight uses preset rate with optional per-line absolute `spoilage_kg` override on acquisition, aligned with **BUG-PRC-04** implementation.)*
 
 **Canonical reference:** PricingReference.md US-6, §7.3, FR-PC-50–51
 
@@ -1077,7 +1077,7 @@ Top bar → Settings (admin only)
 **As** an admin, **I want** a complete, immutable history of all saved presets — showing which ones were active and when — **so that** I can audit how pricing policy has changed and trace any stored SRP back to the exact preset that produced it.
 
 **Actor:** Admin  
-**Status:** ✅ *(partial — **PresetHistory** / **PresetDetail** / activation log; **AC5** tap **`preset_ref`** on acquisition detail → preset record **📋** if not wired in UI)*
+**Status:** ✅ *(**PresetHistory** / **PresetDetail** / activation log; **AC5:** **`AcquisitionFormScreen`** — tappable **Preset:** link when **`preset_ref`** set and role may open **PresetDetail** (**ADMIN**); others see read-only ID; **PresetDetail** shows a clear message if the preset row is missing — Stream B 2026-04-09.)*
 
 **Canonical reference:** PricingReference.md FR-PC-54, §8.2
 
@@ -1170,82 +1170,27 @@ Top bar → Settings (admin only)
 ---
 
 ### SYS-US-04 — Schema recreate and evolution record
-**As** a developer rebuilding the app, **I want** a clean full-schema recreate that includes all new fields from planned stories, with a `schema_evolution.sql` file as the living record **so that** the database is built right from the start without incremental migration baggage.
+**As** a developer rebuilding the app, **I want** a clean full-schema recreate and a checked-in **`schema_evolution.sql`** evolution record **so that** the database layout is documented and can be diffed against Room output without relying on obsolete version targets.
 
 **Actor:** System (developer convention)  
-**Status:** 🔧 *(`docs/schema_evolution.sql` exists; **`FarmDatabase`** is **version 10** with **`fallbackToDestructiveMigration()`** — narrative below still describes an older v4 target; keep SQL file and Room version in sync manually until production migrations are defined.)*
+**Status:** ✅ *(**`FarmDatabase.kt`** `@Database(version = 10)` is the source of truth; **`docs/schema_evolution.sql`** ends with a **VERSION 10** block — full `CREATE TABLE` / index DDL copied from KSP **`FarmDatabase_Impl.createAllTables`**; older VERSION 3–9 blocks are historical. Dev builds use **`fallbackToDestructiveMigration()`** for bumps without incremental **`Migration`**; only **`MIGRATION_1_2`** and **`MIGRATION_2_3`** remain in code — Stream D 2026-04-09.)*
 
-**Decision:** For this build phase, **no production Room migrations** are committed for every bump. The database is created fresh with current entities. The `fallbackToDestructiveMigration()` strategy is used during development. When the app ships to production a proper migration strategy will be defined.
+**Policy (build phase):** Production-grade incremental migrations for every version bump are **not** committed yet. On schema bump, entities are updated, **`version`** is incremented, **`schema_evolution.sql`** gains or updates the matching **VERSION N** snapshot from generated `FarmDatabase_Impl`, and existing installs rely on **`fallbackToDestructiveMigration()`** (data loss on upgrade path) until a release migration strategy exists.
 
-**New fields added to existing tables (vs v3 schema):**
-
-| Table | New field | Type | Notes |
-|-------|-----------|------|-------|
-| `products` | `category` | String? | Links to pricing preset category (MGT-US-03) |
-| `products` | `default_piece_count` | Int? | Used to pre-fill piece count on acquisitions (PRD-US-02) |
-| `orders` | `channel` | String | `"online"` / `"reseller"` / `"offline"` (ORD-US-01) |
-| `acquisitions` | `piece_count` | Double? | Pieces per kg \(n\; may be fractional\); with per-piece **quantity** = total pieces, effective kg \(Q = quantity/n\) for INV-US-05 (**PricingReference.md** §5.1.1, **§4.3.1** CLARIF per-piece steps) |
-| `acquisitions` | `preset_ref` | String? | FK to `pricing_presets.preset_id` (INV-US-05) |
-| `acquisitions` | `spoilage_rate` | Double? | Preset snapshot at save; **per piece** SRP uses **`s_eff = 0`** (not applied in divisor — **§5.1.1**) |
-| `acquisitions` | `additional_cost_per_kg` | Double? | Snapshot value at save time |
-| `acquisitions` | `hauling_weight_kg` | Double? | Snapshot value at save time |
-| `acquisitions` | `hauling_fees_json` | String? | Snapshot: JSON array of `{label, amount}` |
-| `acquisitions` | `online_markup` | Double? | Snapshot value at save time |
-| `acquisitions` | `reseller_markup` | Double? | Snapshot value at save time |
-| `acquisitions` | `offline_markup` | Double? | Snapshot value at save time |
-| `acquisitions` | `srp_online_per_kg` | Double? | Computed (INV-US-05) |
-| `acquisitions` | `srp_reseller_per_kg` | Double? | Computed |
-| `acquisitions` | `srp_offline_per_kg` | Double? | Computed |
-| `acquisitions` | `srp_online_500g` | Double? | Computed |
-| `acquisitions` | `srp_online_250g` | Double? | Computed |
-| `acquisitions` | `srp_online_100g` | Double? | Computed |
-| `acquisitions` | `srp_reseller_500g` | Double? | Computed |
-| `acquisitions` | `srp_reseller_250g` | Double? | Computed |
-| `acquisitions` | `srp_reseller_100g` | Double? | Computed |
-| `acquisitions` | `srp_offline_500g` | Double? | Computed |
-| `acquisitions` | `srp_offline_250g` | Double? | Computed |
-| `acquisitions` | `srp_offline_100g` | Double? | Computed |
-| `acquisitions` | `srp_online_per_piece` | Double? | Computed; null if no piece_count |
-| `acquisitions` | `srp_reseller_per_piece` | Double? | Computed; null if no piece_count |
-| `acquisitions` | `srp_offline_per_piece` | Double? | Computed; null if no piece_count |
-
-**New tables:**
-
-| Table | Purpose | Key fields |
-|-------|---------|------------|
-| `pricing_presets` | Stores each saved preset configuration | `preset_id`, `preset_name`, `saved_at`, `saved_by`, `is_active`, `spoilage_rate`, `additional_cost_per_kg`, `hauling_weight_kg`, `hauling_fees_json`, `online_markup`, `reseller_markup`, `offline_markup`, `rounding_rule`, `categories_json` |
-| `preset_activation_log` | Append-only log of every activation event | `log_id`, `activated_at`, `activated_by`, `preset_id_activated`, `preset_id_deactivated` |
+**Where to look for the live column list:** `app/src/main/java/com/redn/farm/data/local/entity/*.kt` and the latest **VERSION N** section in **`docs/schema_evolution.sql`**.
 
 **`schema_evolution.sql` convention:**
 
-- File lives at `docs/schema_evolution.sql`
-- Each database version is delimited by a version header comment
-- Contains the full `CREATE TABLE` statements for that version — not diffs
-- New versions are appended at the bottom; old versions are never edited
-- Format:
-
-```sql
--- ============================================================
--- VERSION 3  (baseline — existing app before rebuild)
--- ============================================================
-CREATE TABLE IF NOT EXISTS products ( ... );
-...
-
--- ============================================================
--- VERSION 4  (rebuild — all new fields included)
--- ============================================================
-CREATE TABLE IF NOT EXISTS products ( ... );  -- includes category, default_piece_count
-CREATE TABLE IF NOT EXISTS pricing_presets ( ... );
-CREATE TABLE IF NOT EXISTS preset_activation_log ( ... );
-...
-```
+- Path: `docs/schema_evolution.sql`
+- Append **VERSION N** blocks at the bottom; do not rewrite prior version sections (historical record).
+- The **current** Room DDL is verified against:  
+  `app/build/generated/ksp/debug/java/com/redn/farm/data/local/FarmDatabase_Impl.java` → `createAllTables` (omit `room_master_table`).
 
 **Acceptance criteria:**
-1. `FarmDatabase` is set to version 4 with `fallbackToDestructiveMigration()`. No `addMigrations()` calls remain.
-2. All new fields listed above are present in their respective Room entities and annotated correctly.
-3. `docs/schema_evolution.sql` exists in the repo, contains the v3 baseline CREATE statements followed by the v4 full CREATE statements.
-4. The v4 `CREATE TABLE` statements in `schema_evolution.sql` match exactly what Room generates (verified by comparing against Room's generated schema JSON).
-5. `SYS-US-01` seed data runs cleanly against the v4 schema on a fresh install.
+1. **`FarmDatabase`** **`version`** matches the latest **VERSION N** header in **`schema_evolution.sql`** (currently **10**).
+2. **`fallbackToDestructiveMigration()`** is in use for the current build phase; incremental **`Migration`** objects beyond **1→2** and **2→3** are optional until production.
+3. **`docs/schema_evolution.sql`** includes a **VERSION 10** block whose `CREATE` statements match Room KSP output for that version (per `FarmDatabase_Impl`).
+4. **`SYS-US-01`** seeding / default users still run cleanly on a fresh install at the current version.
 
 ---
 
@@ -1286,7 +1231,7 @@ One row per product per day close. Fields: `close_id`, `product_id`, `product_na
 **As** a store assistant or admin, **I want to** start the end-of-day closing process **so that** the day's operations are formally concluded with a summary record.
 
 **Actor:** Store Assistant, Admin
-**Status:** 🔧 *(**DayCloseScreen** / **MainScreen** "Day Close"; draft vs finalized; **Rbac** — **AC4–AC6** warnings, past-date rules, admin **un-finalize** UI **📋**)*
+**Status:** ✅ *(**DayCloseScreen** / **MainScreen** "Day Close"; draft vs finalized; **AC4** warnings; **AC3** future date blocked + non-admin past date blocked; **AC6** admin **Un-finalize** on **DayCloseScreen**; **AC5** explicit Review → Confirm flow shipped via **EOD-US-11**.)*
 
 **Acceptance criteria:**
 1. A **"Close Day"** action is accessible from the main dashboard, visible only to users with `STORE_ASSISTANT` or `ADMIN` role.
@@ -1305,7 +1250,7 @@ One row per product per day close. Fields: `close_id`, `product_id`, `product_na
 **As** a store assistant, **I want to** see a summary of today's sales before confirming the close **so that** I can verify the numbers are correct.
 
 **Actor:** Store Assistant, Admin
-**Status:** 🔧 *(orders count, gross revenue, collected, unpaid snapshot — **DayCloseRepository**; **by-channel** and **by-product top** breakdowns **📋**)*
+**Status:** ✅ *(daily paid/unpaid/delivered rows now shown via **EOD-US-12**, alongside by-channel and top-products sections on **DayCloseScreen**.)*
 
 **Acceptance criteria:**
 1. The sales summary section of the Day Close screen shows:
@@ -1329,7 +1274,7 @@ One row per product per day close. Fields: `close_id`, `product_id`, `product_na
 **As** a purchasing assistant or admin, **I want to** reconcile total stock on hand against actual remaining quantities at end of day **so that** spoilage, loss, and unsold inventory are formally tracked across all acquisitions, not just today's.
 
 **Actor:** Purchasing Assistant, Admin
-**Status:** 🔧 *(inventory lines, theoretical vs actual, variance — **DayCloseInventoryEntity**; full AC set e.g. zero-stock toggle, "not counted" semantics, finalize persistence **📋** vs verify in **DayCloseRepository**)*
+**Status:** ✅ *(prior posted variance from finalized closes; **zero-theoretical** toggle; **not counted** switch + spoilage total; persist counts via **DayCloseInventoryDao.update**; finalize bulk-writes inventory; aging highlight (**AC6–7**); **AC2** last acquisition now includes date + qty + unit cost via **EOD-US-13**.)*
 
 **Background:** Acquisitions do not happen every day. A batch of 80 kg of tomatoes bought on Monday may still be selling on Wednesday and Thursday. The closing inventory must account for the full stock position — all acquisitions ever recorded minus all sales ever recorded — and reconcile that against a physical count at the end of each business day. This gives an accurate picture of what is on hand, regardless of when the stock was purchased.
 
@@ -1369,7 +1314,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** a store assistant, **I want to** reconcile the cash I collected today against what the system shows as paid **so that** any cash discrepancy is identified and recorded.
 
 **Actor:** Store Assistant, Admin
-**Status:** 🔧 *(**CashReconciliationCard** — cash on hand + remarks; full spec: remittance vs expected cash math, digital collections line, block finalize on discrepancy **📋**)*
+**Status:** ✅ *(partial — expected paid offline+reseller, remittances (**REMITTANCE**), disbursements line, digital collections, colored **expected − remitted** and **counted vs drawer expectation**; **block finalize** when cash on hand differs from drawer expectation and remarks empty; **AC3** does not require remarks solely for non-zero **expected − remitted** without a counted cash figure.)*
 
 **Acceptance criteria:**
 1. The cash reconciliation section shows:
@@ -1387,7 +1332,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** an admin, **I want to** print a thermal end-of-day summary slip **so that** I have a physical record of the day's performance for filing.
 
 **Actor:** Admin, Store Assistant
-**Status:** 📋 *(thermal **Print EOD** from **DayCloseScreen** not implemented; order/receipt printing exists elsewhere.)*
+**Status:** ✅ *(**Print draft** / **Print** on **DayCloseScreen** via **`buildEodSummary`** + **`PrinterUtils.printMessage`**; slip covers sales, channels, top products, inventory, cash, COGS/margin, outstanding orders (cap 10), wages total; footer metadata completed via **EOD-US-15**.)*
 
 **Acceptance criteria:**
 1. A **Print EOD Summary** button is available on the Day Close screen (both draft and finalized states).
@@ -1412,7 +1357,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** an admin, **I want to** view the history of past day closes **so that** I can compare daily performance and access any day's EOD record.
 
 **Actor:** Admin
-**Status:** 🔧 *(**DayCloseHistoryScreen** list + open by date; **date range filter**, **un-finalize** from UI, **re-print** **📋** — **DayCloseRepository.unfinalize** exists but no screen action yet)*
+**Status:** ✅ *(list + **All / 30 / 90 day** chips; row opens same **DayCloseScreen** (read-only when finalized); **re-print** and **un-finalize** from that screen; history rows include margin, closed by, and closed at via **EOD-US-14**.)*
 
 **Acceptance criteria:**
 1. A **Day Close History** screen is accessible from the main dashboard (admin only).
@@ -1429,7 +1374,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** an admin, **I want to** see today's revenue against the actual cost of the goods sold today **so that** I have a meaningful daily margin that reflects the real cost of what was sold, not just what was bought on that day.
 
 **Actor:** Admin
-**Status:** 🔧 *(**Cost & Margin** on **DayCloseScreen** — COGS, gross margin, negative-margin confirm dialog; **cumulative position** subsection **📋**)*
+**Status:** ✅ *(**Cost & margin** + **cumulative position** + **other outflows today** on **DayCloseScreen**; colored margin and net recovered; negative-margin confirmation copy aligned with **EOD-US-07 AC4**.)*
 
 **Background:** Comparing today's revenue to today's acquisition spend is misleading — on most days there is no acquisition, making the "procurement cost" appear as zero. The correct measure is **cost of goods sold (COGS)**: the acquisition cost attributable to the specific quantities sold today. This is derived from the acquisition pool using a weighted average cost per product, applied to today's sold quantities.
 
@@ -1471,7 +1416,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** an admin or purchasing assistant, **I want to** view all stock currently on hand across all acquisitions **so that** I know exactly what I have, what it cost, how long it has been sitting, and what is at risk of spoilage.
 
 **Actor:** Admin, Purchasing Assistant
-**Status:** 🔧 *(**OutstandingInventoryScreen** — FIFO lot aging flags; **print**, category filter, "at-risk only", finalized-close override rules **📋**)*
+**Status:** ✅ *(partial — search, category chips, **at-risk** toggle, total value, **print** via **`buildOutstandingInventoryReport`**; FIFO lots + aging colors; **AC11** uses **`actual_remaining`** when today's close is finalized; per-row **AC3** ledger fields not all shown on the card.)*
 
 **Background:** "Outstanding inventory" is distinct from the EOD-US-03 inventory close. EOD-US-03 is a reconciliation done at close time that posts spoilage. The outstanding inventory report is a **live, always-available view** of the current theoretical stock position derived from all acquisition and order records — accessible at any time during the day, not just at close. It is the answer to "what do I still have on hand right now?"
 
@@ -1522,7 +1467,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** an admin or store assistant, **I want to** see all unpaid orders as part of the day close **so that** I know exactly what receivables are open going into the next day.
 
 **Actor:** Admin, Store Assistant
-**Status:** 📋
+**Status:** ✅ *(section on **DayCloseScreen** with total, capped list, tap → **OrderDetail**; thermal section matches **EOD-US-08 AC6**.)*
 
 **Acceptance criteria:**
 1. The Day Close screen includes an **Outstanding Orders** section listing all orders where `is_paid = false` as of close time — not just today's orders but all historical unpaid orders.
@@ -1539,7 +1484,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** an admin, **I want to** see a summary of which employees worked today and what wages are due **so that** payroll is accounted for each day even if payment is made later.
 
 **Actor:** Admin
-**Status:** 📋
+**Status:** ✅ *(partial — payments today with gross, advance, net (**BUG-EMP-01** formula); **Wages / shift notes** on `day_closes.notes`; thermal uses wages total line.)*
 
 **Acceptance criteria:**
 1. The Day Close screen includes an **Employee Day Summary** section.
@@ -1548,6 +1493,78 @@ The app maintains a running balance per product using two aggregates computed di
 4. **Wages due but not yet paid** can be noted in a free-text `notes` field on the day close record — the app does not enforce payment before close.
 5. Total wages paid today = sum of `amount` from today's `employee_payments`. Shown as a summary line.
 6. Wages due today appear on the printed EOD slip as a single total line: "Employee wages paid today: PHP X,XXX.00".
+
+---
+
+### EOD-US-11 — Day close review confirmation step
+
+**As** a store assistant or admin, **I want** an explicit review step before final confirmation **so that** I can verify totals and warnings before locking the close.
+
+**Actor:** Store Assistant, Admin  
+**Status:** ✅ *(Day Close now has explicit **Review summary** state with separate **Confirm finalize** action; finalize requests are accepted only from review state.)*
+
+**Acceptance criteria:**
+1. The close flow has a visible **Review** state and a separate **Confirm finalize** action.
+2. In review state, computed summaries are visible and editable fields remain available (if role permits).
+3. Finalization is only executed from the explicit confirmation action.
+4. The state transition is clear in UI copy and button labels.
+
+---
+
+### EOD-US-12 — Complete daily sales breakdown rows
+
+**As** an admin, **I want** a full daily sales breakdown (paid, unpaid, delivered) in Day Close **so that** the close summary matches order operations at a glance.
+
+**Actor:** Admin  
+**Status:** ✅ *(implemented on **DayCloseScreen** via DAO aggregate in **OrderDao** + snapshot wiring in **DayCloseRepository**; includes paid/unpaid counts+amounts and delivered count for the business day.)*
+
+**Acceptance criteria:**
+1. Sales summary shows **paid orders count + amount** for the business day.
+2. Sales summary shows **unpaid orders count + amount** for the business day.
+3. Sales summary shows **delivered orders count** for the business day.
+4. Values match Order History for the same date window.
+
+---
+
+### EOD-US-13 — Complete last acquisition snippet in inventory close
+
+**As** a purchasing assistant or admin, **I want** each inventory row to show full last-acquisition details **so that** I can reconcile aging and cost context without leaving Day Close.
+
+**Actor:** Purchasing Assistant, Admin  
+**Status:** ✅ *(last acquisition date + quantity + unit cost snippet now shown on Day Close inventory rows via latest-acquisition snapshot in **DayCloseRepository** and row rendering in **DayCloseScreen**.)*
+
+**Acceptance criteria:**
+1. Each inventory row shows last acquisition **date**, **quantity**, and **cost per unit**.
+2. For products with no acquisition history, row shows a clear placeholder (e.g., "No acquisition data").
+3. Values are sourced from the most recent acquisition for that product by business date/time.
+
+---
+
+### EOD-US-14 — History list completeness for closed records
+
+**As** an admin, **I want** richer metadata in Day Close History rows **so that** I can compare closed days without opening each record.
+
+**Actor:** Admin  
+**Status:** ✅ *(History rows now show total sales, total orders, gross margin, closed by, and closed at; list uses finalized closes and keeps All/30/90-day filters.)*
+
+**Acceptance criteria:**
+1. Each history row shows business date, total sales, total orders, gross margin, closed by, and closed at.
+2. Sorting remains descending by business date.
+3. Existing range filters continue to work with the enriched row data.
+
+---
+
+### EOD-US-15 — EOD slip footer close metadata
+
+**As** an admin, **I want** finalized EOD slips to include close metadata **so that** printed records can be audited without opening the app.
+
+**Actor:** Admin  
+**Status:** ✅ *(`buildEodSummary` footer now prints **Printed by / Printed at** for drafts and **Closed by / Closed at** for finalized slips; wired from **DayCloseViewModel** + `DayCloseEntity.closed_by/closed_at`.)*
+
+**Acceptance criteria:**
+1. Finalized EOD slip footer includes **closed by** and **closed at**.
+2. Draft slip footer includes **printed by** and **printed at** and keeps the draft banner.
+3. Footer formatting remains legible within the 58mm thermal line width.
 
 ---
 
@@ -1577,7 +1594,7 @@ The app maintains a running balance per product using two aggregates computed di
 ### NFR-US-05 — SRP computation is near-instant
 **As** a purchasing assistant, **I want** SRP values to appear as I type without noticeable lag **so that** the acquisition form feels responsive.
 
-**Status:** 📋
+**Status:** ✅ *(acquisition form SRP preview now debounces at 200ms and executes preview computation off the UI thread path.)*
 
 **Acceptance criteria:**
 1. SRP computation triggered by changes to quantity, price per unit, or piece count completes and updates the UI within **200ms** of the last keystroke.

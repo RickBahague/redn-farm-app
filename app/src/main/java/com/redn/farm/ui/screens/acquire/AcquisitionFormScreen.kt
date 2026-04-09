@@ -73,7 +73,9 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 private enum class AcquisitionNumericPadTarget {
     QUANTITY,
@@ -84,6 +86,8 @@ private enum class AcquisitionNumericPadTarget {
     CUSTOM_SRP_RESELLER,
     CUSTOM_SRP_OFFLINE,
 }
+
+private const val SRP_PREVIEW_DEBOUNCE_MS = 200L
 
 /**
  * BUG-ACQ-02: quantity required; then either **total** or **price/unit** (or both).
@@ -121,6 +125,8 @@ private fun resolveAcquisitionQuantityPriceTotal(
 fun AcquisitionFormScreen(
     acquisitionIdKey: String,
     onNavigateBack: () -> Unit,
+    canViewPresetDetail: Boolean,
+    onOpenPresetDetail: (String) -> Unit = {},
     viewModel: AcquireProduceViewModel,
 ) {
     val isNew = acquisitionIdKey == "new"
@@ -268,7 +274,7 @@ fun AcquisitionFormScreen(
         spoilageKgStr,
     ) {
         previewLoading = true
-        delay(280)
+        delay(SRP_PREVIEW_DEBOUNCE_MS)
         val product = selectedProduct
         val resolved = resolveAcquisitionQuantityPriceTotal(quantity, pricePerUnit, totalAmount)
         if (product == null || resolved == null) {
@@ -303,7 +309,9 @@ fun AcquisitionFormScreen(
             srp_reseller_per_kg = if (useCustomCustomerSrp) cr else null,
             srp_offline_per_kg = if (useCustomCustomerSrp) cf else null,
         )
-        pricingPreview = viewModel.previewDraftPricing(draft)
+        pricingPreview = withContext(Dispatchers.Default) {
+            viewModel.previewDraftPricing(draft)
+        }
         previewLoading = false
     }
 
@@ -751,6 +759,33 @@ fun AcquisitionFormScreen(
                 onExpandedChange = { srpPreviewExpanded = it },
                 isCustomOverride = useCustomCustomerSrp,
             )
+
+            val savedPresetRef = existing?.preset_ref?.trim().orEmpty()
+            if (savedPresetRef.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        "Pricing preset (saved with this lot)",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (canViewPresetDetail) {
+                        TextButton(onClick = { onOpenPresetDetail(savedPresetRef) }) {
+                            Text("Preset: $savedPresetRef")
+                        }
+                    } else {
+                        Text(
+                            "Preset: $savedPresetRef",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
 
             Row(
                 modifier = Modifier

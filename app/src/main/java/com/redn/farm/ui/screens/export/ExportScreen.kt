@@ -47,8 +47,10 @@ fun ExportScreen(
     // State for export confirmation dialogs
     var showExportDialog by remember { mutableStateOf<String?>(null) }
     
-    // State for truncate confirmation dialogs
-    var showTruncateDialog by remember { mutableStateOf<String?>(null) }
+    var clearTableSelection by remember { mutableStateOf(emptySet<ClearableTable>()) }
+    var showClearDependencyDialog by remember { mutableStateOf(false) }
+    var clearDependencyAdditions by remember { mutableStateOf<Set<ClearableTable>?>(null) }
+    var showClearFinalConfirm by remember { mutableStateOf<Set<ClearableTable>?>(null) }
     
     // State for export success dialog: label + one or more files
     var showExportSuccessDialog by remember { mutableStateOf<Pair<String, List<File>>?>(null) }
@@ -77,47 +79,6 @@ fun ExportScreen(
                         }
                     ) {
                         Text("Generate")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancel")
-                    }
-                }
-            )
-        }
-    }
-
-    // Truncate Confirmation Dialog
-    @Composable
-    fun TruncateConfirmationDialog(
-        tableName: String?,
-        onConfirm: () -> Unit,
-        onDismiss: () -> Unit
-    ) {
-        if (tableName != null) {
-            AlertDialog(
-                onDismissRequest = onDismiss,
-                icon = { Icon(Icons.Default.Close, contentDescription = null) },
-                title = { Text("Clear ${tableName}") },
-                text = { 
-                    Column {
-                        Text("WARNING: This action cannot be undone!")
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Are you sure you want to clear all ${tableName.lowercase()} data?")
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            onConfirm()
-                            onDismiss()
-                        },
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
-                    ) {
-                        Text("Clear Data")
                     }
                 },
                 dismissButton = {
@@ -222,25 +183,79 @@ fun ExportScreen(
         onDismiss = { showAcquisitionsConfirmation = false }
     )
 
-    // Render truncate confirmation dialog
-    TruncateConfirmationDialog(
-        tableName = showTruncateDialog,
-        onConfirm = {
-            when (showTruncateDialog) {
-                "Customers" -> viewModel.truncateCustomers()
-                "Employees" -> viewModel.truncateEmployees()
-                "Orders" -> viewModel.truncateOrders()
-                "Order Items" -> viewModel.truncateOrderItems()
-                "Farm Operations" -> viewModel.truncateFarmOperations()
-                "Products" -> viewModel.truncateProducts()
-                "Product Prices" -> viewModel.truncateProductPrices()
-                "Employee Payments" -> viewModel.truncateEmployeePayments()
-                "Remittances" -> viewModel.truncateRemittances()
-                "Acquisitions" -> viewModel.truncateAcquisitions()
-            }
-        },
-        onDismiss = { showTruncateDialog = null }
-    )
+    if (showClearDependencyDialog && clearDependencyAdditions != null) {
+        val add = clearDependencyAdditions!!
+        AlertDialog(
+            onDismissRequest = {
+                showClearDependencyDialog = false
+                clearDependencyAdditions = null
+            },
+            title = { Text("Include dependent tables?") },
+            text = {
+                Text(ClearableTable.dependencyPromptMessage(add))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearFinalConfirm = clearTableSelection + add
+                        showClearDependencyDialog = false
+                        clearDependencyAdditions = null
+                    }
+                ) {
+                    Text("Add & continue")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showClearDependencyDialog = false
+                        clearDependencyAdditions = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    showClearFinalConfirm?.let { toClear ->
+        AlertDialog(
+            onDismissRequest = { showClearFinalConfirm = null },
+            icon = {
+                Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+            },
+            title = { Text("Clear selected tables?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "This permanently deletes data. It cannot be undone.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text("The following will be cleared:", style = MaterialTheme.typography.labelLarge)
+                    toClear.sortedBy { it.ordinal }.forEach { t ->
+                        Text("• ${t.label}", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearSelectedTables(toClear)
+                        showClearFinalConfirm = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) {
+                    Text("Clear permanently")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearFinalConfirm = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 
     // Render export success dialog
     showExportSuccessDialog?.let { (dataType, files) ->
@@ -491,9 +506,79 @@ fun ExportScreen(
                             }
                         }
                     }
+
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = "Clear tables (EXP-US-02)",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                text = "Select tables to truncate. Dependent tables are suggested automatically. Clears run in a safe order.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                TextButton(onClick = { clearTableSelection = ClearableTable.entries.toSet() }) {
+                                    Text("Select all")
+                                }
+                                TextButton(onClick = { clearTableSelection = emptySet() }) {
+                                    Text("Select none")
+                                }
+                            }
+                            ClearableTable.entries.forEach { table ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Checkbox(
+                                        checked = table in clearTableSelection,
+                                        onCheckedChange = { checked ->
+                                            clearTableSelection =
+                                                if (checked) clearTableSelection + table else clearTableSelection - table
+                                        },
+                                    )
+                                    Text(
+                                        text = table.label,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.padding(start = 4.dp),
+                                    )
+                                }
+                            }
+                            val n = clearTableSelection.size
+                            Button(
+                                onClick = {
+                                    if (clearTableSelection.isEmpty()) return@Button
+                                    val add = ClearableTable.suggestedDependencyAdditions(clearTableSelection)
+                                    if (add != null) {
+                                        clearDependencyAdditions = add
+                                        showClearDependencyDialog = true
+                                    } else {
+                                        showClearFinalConfirm = clearTableSelection
+                                    }
+                                },
+                                enabled = n > 0,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error,
+                                    contentColor = MaterialTheme.colorScheme.onError,
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(if (n == 0) "Clear selected tables…" else "Clear $n table(s)…")
+                            }
+                        }
+                    }
                 }
 
-                // Export Section with Clear Data buttons
+                // Export Section (CSV only)
                 Card(
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -513,158 +598,62 @@ fun ExportScreen(
                             style = MaterialTheme.typography.titleSmall,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ActionButton(
-                                text = "Users",
-                                icon = { Icon(Icons.Default.Person, contentDescription = null) },
-                                onClick = { showExportDialog = "Users" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            Spacer(modifier = Modifier.width(120.dp))
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ActionButton(
-                                text = "Customers",
-                                icon = { Icon(Icons.Default.PeopleAlt, contentDescription = null) },
-                                onClick = { showExportDialog = "Customers" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            ActionButton(
-                                text = "Clear",
-                                icon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
-                                onClick = { showTruncateDialog = "Customers" },
-                                modifier = Modifier.width(120.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ActionButton(
-                                text = "Employees",
-                                icon = { Icon(Icons.Default.Badge, contentDescription = null) },
-                                onClick = { showExportDialog = "Employees" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            ActionButton(
-                                text = "Clear",
-                                icon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
-                                onClick = { showTruncateDialog = "Employees" },
-                                modifier = Modifier.width(120.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            )
-                        }
-                        
+                        ActionButton(
+                            text = "Users",
+                            icon = { Icon(Icons.Default.Person, contentDescription = null) },
+                            onClick = { showExportDialog = "Users" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        ActionButton(
+                            text = "Customers",
+                            icon = { Icon(Icons.Default.PeopleAlt, contentDescription = null) },
+                            onClick = { showExportDialog = "Customers" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        ActionButton(
+                            text = "Employees",
+                            icon = { Icon(Icons.Default.Badge, contentDescription = null) },
+                            onClick = { showExportDialog = "Employees" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
                         // Orders
                         Text(
                             text = "Orders",
                             style = MaterialTheme.typography.titleSmall,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ActionButton(
-                                text = "Orders",
-                                icon = { Icon(Icons.Default.Receipt, contentDescription = null) },
-                                onClick = { showExportDialog = "Orders" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            ActionButton(
-                                text = "Clear",
-                                icon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
-                                onClick = { showTruncateDialog = "Orders" },
-                                modifier = Modifier.width(120.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ActionButton(
-                                text = "Order Items",
-                                icon = { Icon(Icons.Default.ListAlt, contentDescription = null) },
-                                onClick = { showExportDialog = "Order Items" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            ActionButton(
-                                text = "Clear",
-                                icon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
-                                onClick = { showTruncateDialog = "Order Items" },
-                                modifier = Modifier.width(120.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            )
-                        }
-                        
+                        ActionButton(
+                            text = "Orders",
+                            icon = { Icon(Icons.Default.Receipt, contentDescription = null) },
+                            onClick = { showExportDialog = "Orders" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        ActionButton(
+                            text = "Order Items",
+                            icon = { Icon(Icons.Default.ListAlt, contentDescription = null) },
+                            onClick = { showExportDialog = "Order Items" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
                         // Farm Operations
                         Text(
                             text = "Farm Operations",
                             style = MaterialTheme.typography.titleSmall,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ActionButton(
-                                text = "FarmOps",
-                                icon = { Icon(Icons.Default.Agriculture, contentDescription = null) },
-                                onClick = { showExportDialog = "Farm Operations" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            ActionButton(
-                                text = "Clear",
-                                icon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
-                                onClick = { showTruncateDialog = "Farm Operations" },
-                                modifier = Modifier.width(120.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ActionButton(
-                                text = "Inventory",
-                                icon = { Icon(Icons.Default.ShoppingBag, contentDescription = null) },
-                                onClick = { showExportDialog = "Acquisitions" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            ActionButton(
-                                text = "Clear",
-                                icon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
-                                onClick = { showTruncateDialog = "Acquisitions" },
-                                modifier = Modifier.width(120.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            )
-                        }
+                        ActionButton(
+                            text = "FarmOps",
+                            icon = { Icon(Icons.Default.Agriculture, contentDescription = null) },
+                            onClick = { showExportDialog = "Farm Operations" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        ActionButton(
+                            text = "Inventory (Acquisitions)",
+                            icon = { Icon(Icons.Default.ShoppingBag, contentDescription = null) },
+                            onClick = { showExportDialog = "Acquisitions" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
 
                         // Products
                         Text(
@@ -672,97 +661,37 @@ fun ExportScreen(
                             style = MaterialTheme.typography.titleSmall,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ActionButton(
-                                text = "Products",
-                                icon = { Icon(Icons.Default.Inventory2, contentDescription = null) },
-                                onClick = { showExportDialog = "Products" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            ActionButton(
-                                text = "Clear",
-                                icon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
-                                onClick = { showTruncateDialog = "Products" },
-                                modifier = Modifier.width(120.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ActionButton(
-                                text = "Prices",
-                                icon = { Icon(Icons.Default.PriceChange, contentDescription = null) },
-                                onClick = { showExportDialog = "Product Prices" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            ActionButton(
-                                text = "Clear",
-                                icon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
-                                onClick = { showTruncateDialog = "Product Prices" },
-                                modifier = Modifier.width(120.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            )
-                        }
-                        
+                        ActionButton(
+                            text = "Products",
+                            icon = { Icon(Icons.Default.Inventory2, contentDescription = null) },
+                            onClick = { showExportDialog = "Products" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        ActionButton(
+                            text = "Prices",
+                            icon = { Icon(Icons.Default.PriceChange, contentDescription = null) },
+                            onClick = { showExportDialog = "Product Prices" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
                         // Payments & Transactions
                         Text(
                             text = "Payments & Transactions",
                             style = MaterialTheme.typography.titleSmall,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ActionButton(
-                                text = "Employee",
-                                icon = { Icon(Icons.Default.Payments, contentDescription = null) },
-                                onClick = { showExportDialog = "Employee Payments" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            ActionButton(
-                                text = "Clear",
-                                icon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
-                                onClick = { showTruncateDialog = "Employee Payments" },
-                                modifier = Modifier.width(120.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            ActionButton(
-                                text = "Remittance",
-                                icon = { Icon(Icons.Default.AccountBalance, contentDescription = null) },
-                                onClick = { showExportDialog = "Remittances" },
-                                modifier = Modifier.weight(1f)
-                            )
-                            ActionButton(
-                                text = "Clear",
-                                icon = { Icon(Icons.Default.DeleteForever, contentDescription = null) },
-                                onClick = { showTruncateDialog = "Remittances" },
-                                modifier = Modifier.width(120.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            )
-                        }
+                        ActionButton(
+                            text = "Employee payments",
+                            icon = { Icon(Icons.Default.Payments, contentDescription = null) },
+                            onClick = { showExportDialog = "Employee Payments" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        ActionButton(
+                            text = "Remittances",
+                            icon = { Icon(Icons.Default.AccountBalance, contentDescription = null) },
+                            onClick = { showExportDialog = "Remittances" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             }

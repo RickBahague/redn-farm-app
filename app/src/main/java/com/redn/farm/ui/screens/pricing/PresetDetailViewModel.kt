@@ -23,9 +23,13 @@ class PresetDetailViewModel @Inject constructor(
     private val _preset = MutableStateFlow<PricingPresetEntity?>(null)
     val preset: StateFlow<PricingPresetEntity?> = _preset.asStateFlow()
 
+    private val _loadComplete = MutableStateFlow(false)
+    val loadComplete: StateFlow<Boolean> = _loadComplete.asStateFlow()
+
     init {
         viewModelScope.launch {
             _preset.value = repository.getPresetById(presetId)
+            _loadComplete.value = true
         }
     }
 

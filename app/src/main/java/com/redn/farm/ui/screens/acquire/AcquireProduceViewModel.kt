@@ -74,6 +74,11 @@ class AcquireProduceViewModel @Inject constructor(
     private val _userMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val userMessage: SharedFlow<String> = _userMessage.asSharedFlow()
 
+    /** Same gate as **ProductFormScreen** preset links — only **ADMIN** may open **PresetDetail**. */
+    val canViewPresetDetail: StateFlow<Boolean> = MutableStateFlow(
+        Rbac.canManageSettingsAndPricing(sessionManager.getRole())
+    ).asStateFlow()
+
     init {
         viewModelScope.launch {
             acquisitionRepository.getAllAcquisitions().collect {

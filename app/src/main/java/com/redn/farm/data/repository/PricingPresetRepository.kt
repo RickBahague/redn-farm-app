@@ -26,7 +26,8 @@ class PricingPresetRepository @Inject constructor(
         pricingPresetDao.getActivePresetOnce()
 
     /**
-     * Inserts a new row; caller must set [PricingPresetEntity.is_active] = false.
+     * Inserts a new row; caller must set [PricingPresetEntity.is_active] = false and
+     * [PricingPresetEntity.saved_by] to the logged-in username (**AUTH-US-04** AC6).
      */
     suspend fun savePreset(preset: PricingPresetEntity) {
         require(!preset.is_active) { "New presets must be saved inactive" }
@@ -58,5 +59,10 @@ class PricingPresetRepository @Inject constructor(
             "Cannot delete the active pricing preset. Activate another preset first."
         }
         pricingPresetDao.deleteById(presetId)
+    }
+
+    /** Admin reset: clears **preset_activation_log** then **pricing_presets** (EXP-US-02). */
+    suspend fun truncatePresetsAndActivationLog() {
+        pricingPresetDao.truncatePresetsAndActivationLog(presetActivationLogDao)
     }
 }

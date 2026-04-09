@@ -1,6 +1,7 @@
 # Employee epic (EMP-US-*) — implementation tracker
 
 **Canon:** [`USER_STORIES.md`](./USER_STORIES.md) Epic 5 (Employees & Payroll).
+**Maintenance:** For cross-doc status sync, use the **Canonical status table** in [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PARTIAL_IMPLEMENTATION_PLAN.md).
 
 **Single net pay definition (EMP-US-05 + EMP-US-06 rows):**
 
@@ -34,7 +35,7 @@ Treat null `cash_advance_amount` as `0`. **`liquidated_amount` is not included**
 |------------|--------|--------|
 | AC1 Per-payment fields + net pay = EMP-US-05 formula | `[x]` | `PaymentCard` → `netPayAmount()` |
 | AC2a Filter: All / Today / Week / Month | `[x]` | `DateFilterPeriod` by `date_paid` |
-| AC2b Filter: last month, 3/6 months, custom range | `[ ]` | Backlog per `USER_STORIES.md` |
+| AC2b Filter: last month, 3/6 months, custom range | `[x]` | `EmployeePaymentScreen` includes Last Month, Last 3 Months, Last 6 Months, and Custom Range (start/end pickers) |
 | AC3 Period summary card (sums for filtered rows) | `[x]` | `EmployeePaymentScreen` — gross / advances / liquidated for filtered rows |
 | AC4 Lifetime outstanding advance (always visible) | `[x]` | `EmployeePaymentScreen` — all-time sums, ignores filter |
 
@@ -42,7 +43,7 @@ Treat null `cash_advance_amount` as `0`. **`liquidated_amount` is not included**
 
 **Tests:** `EmployeePaymentAggregatesTest` (period totals + lifetime outstanding).
 
-**Story status in USER_STORIES.md:** ✅ with AC2b remaining backlog.
+**Story status in USER_STORIES.md:** ✅ (AC2b shipped).
 
 ---
 
@@ -55,4 +56,4 @@ Treat null `cash_advance_amount` as `0`. **`liquidated_amount` is not included**
 
 ---
 
-*Last updated: 2026-04-02 — BUG-EMP-01 fixed in code (`netPayAmount()`). EMP-US-06 AC2b backlog.*
+*Last updated: 2026-04-09 — EMP-US-06 AC2b shipped (extra presets + custom range).*

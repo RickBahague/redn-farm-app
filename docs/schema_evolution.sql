@@ -6,9 +6,10 @@
 --   • Each version block contains the FULL CREATE TABLE statements
 --     for that version — not diffs.
 --   • Append new versions at the bottom; never edit past versions.
---   • Version numbers must match FarmDatabase.kt @Database(version = N) (currently 10 — update when bumping Room).
---   • Verify v4+ CREATE statements against Room's generated schema JSON
---     (build/generated/source/kapt/.../FarmDatabase_Impl.java) per SYS-US-04.
+--   • Version numbers must match FarmDatabase.kt @Database(version = N) (currently **10**).
+--   • For the **current** full DDL, compare **VERSION 10** below to Room KSP output:
+--     `app/build/generated/ksp/debug/java/com/redn/farm/data/local/FarmDatabase_Impl.java`
+--     method `createAllTables` (exclude `room_master_table` / identity hash inserts).
 -- ============================================================
 
 
@@ -376,7 +377,53 @@ CREATE TABLE IF NOT EXISTS `preset_activation_log` (
 -- No incremental 7→8 migration in code; dev relies on `fallbackToDestructiveMigration()`.
 
 -- ============================================================
--- VERSION 10  (Epic 8 — remittances & disbursements)
+-- VERSION 10  (canonical snapshot — Epic 8 remittances/disbursements + Epic 12 EOD + prior entities)
 -- ============================================================
--- `remittances.entry_type` TEXT NOT NULL DEFAULT 'REMITTANCE'  — values `REMITTANCE` | `DISBURSEMENT`.
--- Room v10; dev upgrade via `fallbackToDestructiveMigration()` until incremental migration is defined.
+-- Copied from Room KSP `FarmDatabase_Impl.createAllTables` (Delegate version 10).
+-- Regenerate when bumping `@Database(version = …)` in FarmDatabase.kt.
+-- Omitted: `room_master_table` and `INSERT OR REPLACE INTO room_master_table` (Room internal).
+-- Identity hash at time of copy: 1111361e8906001e5cf00b1f17818ed8
+--
+-- Dev upgrades: `fallbackToDestructiveMigration()` for version jumps without an incremental
+-- `Migration` (see FarmDatabase.kt — only MIGRATION_1_2 and MIGRATION_2_3 are defined).
+
+CREATE TABLE IF NOT EXISTS `products` (`product_id` TEXT NOT NULL, `product_name` TEXT NOT NULL, `product_description` TEXT NOT NULL, `unit_type` TEXT NOT NULL, `category` TEXT, `default_piece_count` INTEGER, `is_active` INTEGER NOT NULL, PRIMARY KEY(`product_id`));
+
+CREATE TABLE IF NOT EXISTS `product_prices` (`price_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `product_id` TEXT NOT NULL, `per_kg_price` REAL, `per_piece_price` REAL, `discounted_per_kg_price` REAL, `discounted_per_piece_price` REAL, `date_created` INTEGER NOT NULL, FOREIGN KEY(`product_id`) REFERENCES `products`(`product_id`) ON UPDATE NO ACTION ON DELETE CASCADE );
+
+CREATE TABLE IF NOT EXISTS `customers` (`customer_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `firstname` TEXT NOT NULL, `lastname` TEXT NOT NULL, `contact` TEXT NOT NULL, `customer_type` TEXT NOT NULL, `address` TEXT NOT NULL, `city` TEXT NOT NULL, `province` TEXT NOT NULL, `postal_code` TEXT NOT NULL, `date_created` INTEGER NOT NULL, `date_updated` INTEGER NOT NULL);
+
+CREATE TABLE IF NOT EXISTS `orders` (`order_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `customer_id` INTEGER NOT NULL, `channel` TEXT NOT NULL, `total_amount` REAL NOT NULL, `order_date` INTEGER NOT NULL, `order_update_date` INTEGER NOT NULL, `is_paid` INTEGER NOT NULL, `is_delivered` INTEGER NOT NULL, FOREIGN KEY(`customer_id`) REFERENCES `customers`(`customer_id`) ON UPDATE NO ACTION ON DELETE RESTRICT );
+
+CREATE TABLE IF NOT EXISTS `order_items` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `order_id` INTEGER NOT NULL, `product_id` TEXT NOT NULL, `quantity` REAL NOT NULL, `price_per_unit` REAL NOT NULL, `is_per_kg` INTEGER NOT NULL, `total_price` REAL NOT NULL, FOREIGN KEY(`order_id`) REFERENCES `orders`(`order_id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`product_id`) REFERENCES `products`(`product_id`) ON UPDATE NO ACTION ON DELETE RESTRICT );
+
+CREATE TABLE IF NOT EXISTS `employees` (`employee_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `firstname` TEXT NOT NULL, `lastname` TEXT NOT NULL, `contact` TEXT NOT NULL, `date_created` INTEGER NOT NULL, `date_updated` INTEGER NOT NULL);
+
+CREATE TABLE IF NOT EXISTS `employee_payments` (`payment_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `employee_id` INTEGER NOT NULL, `amount` REAL NOT NULL, `cash_advance_amount` REAL, `liquidated_amount` REAL, `date_paid` INTEGER NOT NULL, `signature` TEXT NOT NULL, `received_date` INTEGER, `is_finalized` INTEGER NOT NULL, FOREIGN KEY(`employee_id`) REFERENCES `employees`(`employee_id`) ON UPDATE NO ACTION ON DELETE RESTRICT );
+
+CREATE TABLE IF NOT EXISTS `farm_operations` (`operation_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `operation_type` TEXT NOT NULL, `operation_date` INTEGER NOT NULL, `details` TEXT NOT NULL, `area` TEXT NOT NULL, `weather_condition` TEXT NOT NULL, `personnel` TEXT NOT NULL, `product_id` TEXT, `product_name` TEXT NOT NULL, `date_created` INTEGER NOT NULL, `date_updated` INTEGER NOT NULL, FOREIGN KEY(`product_id`) REFERENCES `products`(`product_id`) ON UPDATE NO ACTION ON DELETE SET NULL );
+CREATE INDEX IF NOT EXISTS `index_farm_operations_product_id` ON `farm_operations` (`product_id`);
+
+CREATE TABLE IF NOT EXISTS `acquisitions` (`acquisition_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `product_id` TEXT NOT NULL, `product_name` TEXT NOT NULL, `quantity` REAL NOT NULL, `price_per_unit` REAL NOT NULL, `total_amount` REAL NOT NULL, `is_per_kg` INTEGER NOT NULL, `piece_count` REAL, `date_acquired` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, `location` TEXT NOT NULL, `preset_ref` TEXT, `spoilage_rate` REAL, `spoilage_kg` REAL, `additional_cost_per_kg` REAL, `hauling_weight_kg` REAL, `hauling_fees_json` TEXT, `channels_snapshot_json` TEXT, `srp_online_per_kg` REAL, `srp_reseller_per_kg` REAL, `srp_offline_per_kg` REAL, `srp_online_500g` REAL, `srp_online_250g` REAL, `srp_online_100g` REAL, `srp_reseller_500g` REAL, `srp_reseller_250g` REAL, `srp_reseller_100g` REAL, `srp_offline_500g` REAL, `srp_offline_250g` REAL, `srp_offline_100g` REAL, `srp_online_per_piece` REAL, `srp_reseller_per_piece` REAL, `srp_offline_per_piece` REAL, `srp_custom_override` INTEGER NOT NULL, FOREIGN KEY(`product_id`) REFERENCES `products`(`product_id`) ON UPDATE NO ACTION ON DELETE RESTRICT );
+CREATE INDEX IF NOT EXISTS `index_acquisitions_product_id` ON `acquisitions` (`product_id`);
+CREATE INDEX IF NOT EXISTS `index_acquisitions_preset_ref` ON `acquisitions` (`preset_ref`);
+CREATE INDEX IF NOT EXISTS `index_acquisitions_date_acquired` ON `acquisitions` (`date_acquired`);
+
+CREATE TABLE IF NOT EXISTS `remittances` (`remittance_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `amount` REAL NOT NULL, `date` INTEGER NOT NULL, `remarks` TEXT NOT NULL, `date_updated` INTEGER NOT NULL, `entry_type` TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS `users` (`user_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `username` TEXT NOT NULL, `password_hash` TEXT NOT NULL, `full_name` TEXT NOT NULL, `role` TEXT NOT NULL, `is_active` INTEGER NOT NULL, `date_created` INTEGER NOT NULL, `date_updated` INTEGER NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS `index_users_username` ON `users` (`username`);
+
+CREATE TABLE IF NOT EXISTS `pricing_presets` (`preset_id` TEXT NOT NULL, `preset_name` TEXT NOT NULL, `saved_at` INTEGER NOT NULL, `saved_by` TEXT NOT NULL, `is_active` INTEGER NOT NULL, `activated_at` INTEGER, `activated_by` TEXT, `spoilage_rate` REAL NOT NULL, `additional_cost_per_kg` REAL NOT NULL, `hauling_weight_kg` REAL NOT NULL, `hauling_fees_json` TEXT NOT NULL, `channels_json` TEXT NOT NULL, `categories_json` TEXT NOT NULL, PRIMARY KEY(`preset_id`));
+
+CREATE TABLE IF NOT EXISTS `preset_activation_log` (`log_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `activated_at` INTEGER NOT NULL, `activated_by` TEXT NOT NULL, `preset_id_activated` TEXT NOT NULL, `preset_id_deactivated` TEXT);
+
+CREATE TABLE IF NOT EXISTS `day_closes` (`close_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `business_date` INTEGER NOT NULL, `closed_by` TEXT NOT NULL, `closed_at` INTEGER, `is_finalized` INTEGER NOT NULL, `total_orders` INTEGER NOT NULL, `total_sales_amount` REAL NOT NULL, `total_collected` REAL NOT NULL, `snapshot_all_unpaid_count` INTEGER, `snapshot_all_unpaid_amount` REAL, `gross_revenue_today` REAL, `collected_revenue_today` REAL, `total_cogs_today` REAL, `gross_margin_amount` REAL, `gross_margin_percent` REAL, `cash_on_hand` REAL, `cash_reconciliation_remarks` TEXT, `notes` TEXT);
+CREATE UNIQUE INDEX IF NOT EXISTS `index_day_closes_business_date` ON `day_closes` (`business_date`);
+CREATE INDEX IF NOT EXISTS `index_day_closes_is_finalized_business_date` ON `day_closes` (`is_finalized`, `business_date`);
+
+CREATE TABLE IF NOT EXISTS `day_close_inventory` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `close_id` INTEGER NOT NULL, `product_id` TEXT NOT NULL, `product_name` TEXT NOT NULL, `total_acquired_all_time` REAL NOT NULL, `total_sold_through_close_date` REAL NOT NULL, `prior_posted_variance` REAL NOT NULL, `adjusted_theoretical_remaining` REAL NOT NULL, `sold_this_close_date` REAL NOT NULL, `actual_remaining` REAL, `variance_qty` REAL, `weighted_avg_cost_per_unit` REAL NOT NULL, `variance_cost` REAL, `is_counted` INTEGER NOT NULL, FOREIGN KEY(`close_id`) REFERENCES `day_closes`(`close_id`) ON UPDATE NO ACTION ON DELETE CASCADE );
+CREATE INDEX IF NOT EXISTS `index_day_close_inventory_close_id_product_id` ON `day_close_inventory` (`close_id`, `product_id`);
+
+CREATE TABLE IF NOT EXISTS `day_close_audit` (`audit_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `close_id` INTEGER NOT NULL, `action` TEXT NOT NULL, `username` TEXT NOT NULL, `at_millis` INTEGER NOT NULL, `note` TEXT, FOREIGN KEY(`close_id`) REFERENCES `day_closes`(`close_id`) ON UPDATE NO ACTION ON DELETE CASCADE );
+CREATE INDEX IF NOT EXISTS `index_day_close_audit_close_id` ON `day_close_audit` (`close_id`);

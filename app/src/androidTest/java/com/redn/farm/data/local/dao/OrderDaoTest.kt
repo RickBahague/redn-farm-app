@@ -18,9 +18,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Regression tests for:
- *   BUG-02 — ExportViewModel.truncateOrderItems() calls orderRepository.truncate()
- *             which deletes orders AND items, not just items.
+ * Regression tests for BUG-02 (fixed): order line items can be cleared without deleting orders.
  *
  * Run with: ./gradlew connectedAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.redn.farm.data.local.dao.OrderDaoTest
  */
@@ -110,27 +108,18 @@ class OrderDaoTest {
         )
     }
 
-    // -------------------------------------------------------------------------
-    // BUG-02 — regression test that must PASS after the fix is applied.
-    // Currently this test fails to compile because truncateOrderItemsOnly()
-    // does not exist yet. Uncomment after adding the method.
-    // -------------------------------------------------------------------------
-
-    /*
     @Test
-    fun truncateOrderItemsOnly_preservesOrders() = runTest {
-        val (_, _) = insertSeedData()
+    fun truncateOrderItems_preservesOrders_BUG02() = runTest {
+        insertSeedData()
 
-        // After the fix: this should only clear order_items, not orders
-        orderDao.truncateOrderItemsOnly()
+        orderDao.truncateOrderItems()
 
         val ordersAfter = orderDao.getAllOrders().first()
-        assertEquals("Orders must survive truncateOrderItemsOnly()", 1, ordersAfter.size)
+        assertEquals("Orders must survive truncateOrderItems()", 1, ordersAfter.size)
 
         val itemsAfter = orderDao.getAllOrderItems().first()
-        assertTrue("Order items should be empty after truncateOrderItemsOnly()", itemsAfter.isEmpty())
+        assertTrue("Order items should be empty after truncateOrderItems()", itemsAfter.isEmpty())
     }
-    */
 
     // -------------------------------------------------------------------------
     // Existing correct behaviour — protect against regressions

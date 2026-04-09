@@ -1,24 +1,47 @@
 # Epic 12 — End of Day Operations (EOD-US-*) Implementation Tracker
 
-**Canon:** [`USER_STORIES.md`](./USER_STORIES.md) Epic 12 (EOD-US-01 to EOD-US-10)  
+**Canon:** [`USER_STORIES.md`](./USER_STORIES.md) Epic 12 (EOD-US-01 onward, including EOD-US-11 to EOD-US-15 follow-ups)  
+**Maintenance:** For cross-doc status sync, use the **Canonical status table** in [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PARTIAL_IMPLEMENTATION_PLAN.md).  
 **Readiness report:** See `docs/bugs.md` and inline notes below  
-**Created:** 2026-04-07 · **Snapshot updated:** 2026-04-09  
+**Created:** 2026-04-07 · **Snapshot updated:** 2026-04-09 (Stream E implementation pass)  
 **DB version (current app):** `FarmDatabase` **v10** (day close entities landed in v9+; verify in `FarmDatabase.kt`).
 
 ---
 
 ## Implementation snapshot (2026-04-09)
 
-Substantial code exists under `app/src/main/java/com/redn/farm/ui/screens/eod/` and `data/repository/DayCloseRepository.kt`. The **phase checklists below** are the original build plan; many items are **done in code** while **USER_STORIES.md** still marks several EOD stories **🔧** or **📋**. Use this table as a coarse map; for **what remains to ship**, follow [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PARTIAL_IMPLEMENTATION_PLAN.md) **Stream E**.
+Substantial code exists under `app/src/main/java/com/redn/farm/ui/screens/eod/` and `data/repository/DayCloseRepository.kt`. Stream E and its follow-up slice are shipped; **USER_STORIES.md** is the source of truth for final acceptance status. The phase checklists below are retained as historical implementation records.
+
+**Cross-reference:** Stream E follow-up work is now formalized in [`USER_STORIES.md`](./USER_STORIES.md) as **EOD-US-11** to **EOD-US-15**.
+
+### Stream E follow-up execution slice (completed)
+
+This order was executed and mirrored in [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PARTIAL_IMPLEMENTATION_PLAN.md):
+
+1. **EOD-US-12** — add explicit daily paid/unpaid/delivered rows in Day Close sales summary.
+2. **EOD-US-13** — complete last-acquisition snippet (date + qty + unit cost) in inventory row.
+3. **EOD-US-15** — finalize EOD thermal footer metadata (`closed_by` / `closed_at`; draft `printed_by` / `printed_at`).
+4. **EOD-US-14** — enrich Day Close History row metadata (margin, closed by, closed at).
+5. **EOD-US-11** — implement explicit Review → Confirm finalize flow.
+
+**Execution note:** This section is historical (completed); the phase checklists below are retained as implementation history/reference.
+
+| Story | Primary files | Validation steps | Status |
+|-------|---------------|------------------|--------|
+| **EOD-US-12** | `data/local/dao/OrderDao.kt`, `data/repository/DayCloseRepository.kt`, `ui/screens/eod/DayCloseScreen.kt`, `ui/screens/eod/DayCloseViewModel.kt` | `./gradlew assembleDebug` ✅; verify paid/unpaid/delivered rows on Day Close match Order History for same business date | `[x]` |
+| **EOD-US-13** | `data/local/dao/AcquisitionDao.kt`, `data/repository/DayCloseRepository.kt`, `ui/screens/eod/DayCloseScreen.kt` | `./gradlew assembleDebug` ✅; verify last-acquisition snippet includes date + qty + unit cost and fallback for missing data | `[x]` |
+| **EOD-US-15** | `utils/ThermalPrintBuilders.kt`, `ui/screens/eod/DayCloseViewModel.kt`, `ui/screens/eod/DayCloseScreen.kt` | `./gradlew assembleDebug` ✅; print draft + finalized EOD slips and verify footer metadata fields | `[x]` |
+| **EOD-US-14** | `ui/screens/eod/DayCloseHistoryScreen.kt`, `ui/screens/eod/DayCloseHistoryViewModel.kt`, `data/repository/DayCloseRepository.kt` | `./gradlew assembleDebug` ✅; verify history rows show margin/closed by/closed at and date filters still work | `[x]` |
+| **EOD-US-11** | `ui/screens/eod/DayCloseScreen.kt`, `ui/screens/eod/DayCloseViewModel.kt`, `data/repository/DayCloseRepository.kt` | `./gradlew assembleDebug` ✅; verify explicit Review → Confirm flow and existing finalize guards remain intact | `[x]` |
 
 | Area | In codebase (high level) | Typical gaps vs USER_STORIES |
 |------|-------------------------|------------------------------|
 | Schema / DAOs / repository | `DayCloseEntity`, inventory, audit, `DayCloseRepository`, FIFO helper, date windowing | Fine-tune aggregates, finalize persistence for all fields |
 | Navigation / RBAC | `DayClose`, `DayCloseHistory`, `OutstandingInventory` routes; dashboard tiles; `Rbac` day-close roles | Optional dedicated read-only **day close detail** route |
-| **DayCloseScreen** | Sales summary (partial), COGS/margin, inventory list + counts, cash card, finalize, negative-margin dialog | Warnings AC4, channel/product breakdown, full cash math, cumulative margin, un-finalize UI, print |
-| **DayCloseHistoryScreen** | List + open by date | Date filter, detail vs edit, re-print, un-finalize |
-| **OutstandingInventoryScreen** | FIFO lots, aging colors | Search/filter/at-risk, print, finalized-close override |
-| Thermal EOD / outstanding print | — | **EOD-US-05**, **EOD-US-10** print — see Phase 5 below |
+| **DayCloseScreen** | Warnings, channel + top products, cumulative + outflows, full cash card, inventory (prior variance, toggle, persist, finalize bulk write), outstanding orders, employees, notes, print, admin un-finalize, explicit Review → Confirm finalize | Remaining gaps tracked outside this tracker (if any) |
+| **DayCloseHistoryScreen** | List + All/30d/90d filter + open by date → **DayCloseScreen**; richer row metadata (sales/orders/margin/closed by/at) | Remaining gaps tracked outside this tracker (if any) |
+| **OutstandingInventoryScreen** | Search, category, at-risk, total value, print, FIFO + **AC11** actual override | Per-row full ledger columns (optional) |
+| Thermal EOD / outstanding print | **`buildEodSummary` (PRN-09)**, **`buildOutstandingInventoryReport` (PRN-10)** | Device QA on Sunmi |
 
 ---
 
@@ -230,14 +253,13 @@ These methods are added to existing DAOs but consumed only by `DayCloseRepositor
 
 | Task | Status | Notes |
 |------|--------|-------|
-| `buildEodSummary(dayClose, inventoryLines, topProducts, unpaidOrders, employeeSummary, cogsData): String` | `[ ]` | 58mm, 32 cols; sections: header, sales, channels, top 5 products, inventory (per product: theoretical / actual / variance), cash reconciliation, COGS / margin, outstanding orders (max 10 rows), employee wages total, footer |
-| `buildEodSummary` header: print "DRAFT — NOT FINAL" if `!dayClose.isFinalized` | `[ ]` | EOD-US-05 AC3 |
-| `buildEodSummary` outstanding orders section: if `unpaidOrders.size > 10`, print count + total only | `[ ]` | EOD-US-08 AC6 |
-| `buildOutstandingInventoryReport(lines, printedBy, asOfMillis): String` | `[ ]` | Header: "Outstanding Inventory — as of [date time]"; per product: name, qty on hand (unit), days on hand, value; total value; footer: printed by |
-| Wire "Print Draft" / "Print Final" buttons in `DayCloseScreen` to `buildEodSummary` → `PrinterUtils.printMessage()` | `[ ]` | EOD-US-05 AC4 |
-| Wire "Re-print" button in `DayCloseDetailScreen` | `[ ]` | EOD-US-06 AC4 |
-| Wire "Print Outstanding Inventory" button in `OutstandingInventoryScreen` | `[ ]` | EOD-US-10 AC10 |
-| Add PRN-08 (EOD Summary) and PRN-09 (Outstanding Inventory) entries to `docs/printing.md` | `[ ]` | |
+| `buildEodSummary(...): String` | `[x]` | **`ThermalPrintBuilders.kt`** — PRN-09; draft banner, channels, top 5, inventory, cash, COGS/margin, unpaid cap 10, wages |
+| `buildEodSummary` header: print "DRAFT — NOT FINAL" if draft | `[x]` | EOD-US-05 AC3 |
+| `buildEodSummary` outstanding orders section: if `> 10`, tail as count + note | `[x]` | EOD-US-08 AC6 |
+| `buildOutstandingInventoryReport(...): String` | `[x]` | PRN-10 |
+| Wire print in `DayCloseScreen` | `[x]` | EOD-US-05 AC4 |
+| Wire print in `OutstandingInventoryScreen` | `[x]` | EOD-US-10 AC10 |
+| `docs/printing.md` PRN-09 / PRN-10 | `[x]` | |
 
 ---
 
@@ -386,4 +408,4 @@ Run after all phases complete. Each row maps to a specific acceptance criterion.
 
 ---
 
-*Last updated: 2026-04-07 — Initial tracker created from readiness report.*
+*Last updated: 2026-04-09 — Stream E + EOD-US-11..15 follow-up shipped; tracker headings synced to completed status.*

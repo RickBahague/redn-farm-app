@@ -41,18 +41,10 @@ acquisitions.filter { acquisition ->
 
 ---
 
-### [ ] BUG-02 · "Truncate Order Items" deletes the entire orders table
-**File:** `ui/screens/export/ExportViewModel.kt:255`
+### [x] BUG-02 · "Truncate Order Items" deleted the entire orders table *(fixed 2026-04-09 — Stream C)*
+**Was:** per-row clear called `orderRepository.truncate()` for "Order Items".
 
-```kotlin
-fun truncateOrderItems() {
-    viewModelScope.launch {
-        orderRepository.truncate()  // ← deletes orders AND order_items
-```
-
-`OrderRepository.truncate()` calls `orderDao.truncate()` which runs `DELETE FROM order_items` then `DELETE FROM orders`. The intent was to delete only `order_items`. This silently wipes all order records.
-
-**Fix:** Add a dedicated `truncateOrderItems()` to `OrderDao` and `OrderRepository`, then call only that.
+**Fix:** `OrderRepository.truncateOrderItemsOnly()` → `orderDao.truncateOrderItems()`; batch clear uses full `truncate()` only for **Orders & order items** together. Instrumented test `OrderDaoTest.truncateOrderItems_preservesOrders_BUG02`.
 
 ---
 

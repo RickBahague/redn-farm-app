@@ -404,6 +404,195 @@ private fun wrapThermalDetails(text: String): List<String> {
     return lines
 }
 
+// ─── EOD / Outstanding inventory (PRN-08, PRN-09) ────────────────────────────
+
+data class ThermalEodChannelRow(val label: String, val orderCount: Int, val amount: Double)
+data class ThermalEodProductRow(val name: String, val qtySold: Double, val revenue: Double)
+data class ThermalEodInventoryRow(
+    val name: String,
+    val theoreticalQty: Double,
+    val actualQty: Double?,
+    val varianceQty: Double?,
+    val unitLabel: String,
+)
+data class ThermalEodUnpaidRow(val orderId: Int, val customer: String, val amount: Double)
+
+/**
+ * PRN-08 — End of Day summary (58 mm, 32 columns). Pass [isDraft] true when the close is not finalized.
+ */
+fun buildEodSummary(
+    isDraft: Boolean,
+    businessDateMillis: Long,
+    totalOrders: Int,
+    grossRevenue: Double,
+    collected: Double,
+    unpaidAllCount: Int?,
+    unpaidAllAmount: Double?,
+    channels: List<ThermalEodChannelRow>,
+    topProducts: List<ThermalEodProductRow>,
+    inventory: List<ThermalEodInventoryRow>,
+    totalVarianceCost: Double,
+    expectedCash: Double,
+    remitted: Double,
+    cashOnHand: Double?,
+    remarks: String?,
+    cogs: Double,
+    margin: Double,
+    marginPct: Double?,
+    wagesToday: Double,
+    unpaidOrders: List<ThermalEodUnpaidRow>,
+    unpaidOrdersExtraCount: Int,
+    outstandingPrintedTotal: Double,
+    printedBy: String,
+    printedAtMillis: Long = System.currentTimeMillis(),
+    closedBy: String? = null,
+    closedAtMillis: Long? = null,
+): String = buildString {
+    appendLine(thermalDividerHeavy())
+    appendLine(centerThermalLine("REDN GREENS FRESH"))
+    if (isDraft) {
+        appendLine(centerThermalLine("DRAFT — NOT FINAL"))
+    }
+    appendLine(centerThermalLine("END OF DAY REPORT"))
+    appendLine(thermalDividerHeavy())
+    appendLine(formatThermalLine("Date:", formatThermalDate(businessDateMillis)))
+    appendLine(thermalDividerLight())
+    appendLine("SALES")
+    appendLine(formatThermalLine("Orders", totalOrders.toString()))
+    appendLine(formatThermalLine("Gross", CurrencyFormatter.format(grossRevenue)))
+    appendLine(formatThermalLine("Collected", CurrencyFormatter.format(collected)))
+    unpaidAllCount?.let {
+        appendLine(formatThermalLine("Unpaid #", it.toString()))
+    }
+    unpaidAllAmount?.let {
+        appendLine(formatThermalLine("Unpaid amt", CurrencyFormatter.format(it)))
+    }
+    appendLine(thermalDividerLight())
+    appendLine("BY CHANNEL")
+    if (channels.isEmpty()) {
+        appendLine("—")
+    } else {
+        channels.forEach { ch ->
+            appendLine(formatThermalLine(ch.label.take(14), "${ch.orderCount} · ${CurrencyFormatter.format(ch.amount)}"))
+        }
+    }
+    appendLine(thermalDividerLight())
+    appendLine("TOP PRODUCTS (rev)")
+    if (topProducts.isEmpty()) {
+        appendLine("—")
+    } else {
+        topProducts.forEach { p ->
+            appendLine(p.name.take(THERMAL_LINE_WIDTH))
+            appendLine(
+                formatThermalLine(
+                    "  qty ${"%.2f".format(p.qtySold)}",
+                    CurrencyFormatter.format(p.revenue),
+                ),
+            )
+        }
+    }
+    appendLine(thermalDividerLight())
+    appendLine("INVENTORY CLOSE")
+    inventory.forEach { row ->
+        appendLine(row.name.take(THERMAL_LINE_WIDTH))
+        appendLine(
+            formatThermalLine(
+                " th",
+                "%.2f %s".format(row.theoreticalQty, row.unitLabel),
+            ),
+        )
+        appendLine(
+            formatThermalLine(
+                " act",
+                row.actualQty?.let { "%.2f %s".format(it, row.unitLabel) } ?: "—",
+            ),
+        )
+        row.varianceQty?.let { v ->
+            appendLine(formatThermalLine(" var", "%.2f %s".format(v, row.unitLabel)))
+        }
+    }
+    appendLine(formatThermalLine("Var cost", CurrencyFormatter.format(totalVarianceCost)))
+    appendLine(thermalDividerLight())
+    appendLine("CASH")
+    appendLine(formatThermalLine("Exp cash", CurrencyFormatter.format(expectedCash)))
+    appendLine(formatThermalLine("Remitted", CurrencyFormatter.format(remitted)))
+    cashOnHand?.let {
+        appendLine(formatThermalLine("On hand", CurrencyFormatter.format(it)))
+    }
+    remarks?.takeIf { it.isNotBlank() }?.let { r ->
+        appendLine("Remarks:")
+        wrapThermalWords(r, THERMAL_LINE_WIDTH).forEach { appendLine(it.take(THERMAL_LINE_WIDTH)) }
+    }
+    appendLine(thermalDividerLight())
+    appendLine(formatThermalLine("COGS", CurrencyFormatter.format(cogs)))
+    appendLine(
+        formatThermalLine(
+            "Margin",
+            marginPct?.let { "${CurrencyFormatter.format(margin)} (${"%.1f".format(it)}%)" }
+                ?: CurrencyFormatter.format(margin),
+        ),
+    )
+    appendLine(thermalDividerLight())
+    appendLine("OUTSTANDING ORDERS")
+    if (unpaidOrders.isEmpty() && unpaidOrdersExtraCount == 0) {
+        appendLine("—")
+    } else {
+        unpaidOrders.forEach { u ->
+            appendLine("#${u.orderId} ${u.customer.take(12)}")
+            appendLine(formatThermalLine(" amt", CurrencyFormatter.format(u.amount)))
+        }
+        if (unpaidOrdersExtraCount > 0) {
+            appendLine("+$unpaidOrdersExtraCount more (see app)")
+            appendLine(formatThermalLine("Listed total", CurrencyFormatter.format(outstandingPrintedTotal)))
+        }
+    }
+    appendLine(thermalDividerLight())
+    appendLine(formatThermalLine("Wages today", CurrencyFormatter.format(wagesToday)))
+    appendLine(thermalDividerHeavy())
+    if (isDraft) {
+        appendLine(formatThermalLine("Printed by", printedBy.take(18)))
+        appendLine(formatThermalLine("Printed at", formatThermalDate(printedAtMillis)))
+    } else {
+        appendLine(formatThermalLine("Closed by", (closedBy ?: printedBy).take(18)))
+        appendLine(
+            formatThermalLine(
+                "Closed at",
+                closedAtMillis?.let { formatThermalDate(it) } ?: formatThermalDate(printedAtMillis),
+            ),
+        )
+    }
+    appendLine(thermalDividerHeavy())
+}
+
+/**
+ * PRN-09 — Outstanding inventory report.
+ */
+fun buildOutstandingInventoryReport(
+    lines: List<Triple<String, Double, Int>>,
+    totalValue: Double,
+    printedBy: String,
+    asOfMillis: Long = System.currentTimeMillis(),
+    titleExtra: String? = null,
+): String = buildString {
+    appendLine(thermalDividerHeavy())
+    appendLine(centerThermalLine("REDN GREENS FRESH"))
+    appendLine(centerThermalLine("OUTSTANDING INV."))
+    titleExtra?.let { appendLine(centerThermalLine(it.take(THERMAL_LINE_WIDTH))) }
+    appendLine(thermalDividerHeavy())
+    appendLine(formatThermalLine("As of", formatThermalDate(asOfMillis)))
+    appendLine(thermalDividerLight())
+    lines.forEach { (name, qtyKg, days) ->
+        appendLine(name.take(THERMAL_LINE_WIDTH))
+        appendLine(formatThermalLine(" qty kg", "%.3f".format(qtyKg)))
+        appendLine(formatThermalLine(" days", days.toString()))
+        appendLine(thermalDividerLight())
+    }
+    appendLine(formatThermalLine("TOTAL VALUE", CurrencyFormatter.format(totalValue)))
+    appendLine(thermalDividerHeavy())
+    appendLine(formatThermalLine("Printed by", printedBy.take(18)))
+    appendLine(thermalDividerHeavy())
+}
+
 fun buildEmployeePayrollSummary(
     employeeName: String,
     periodLabel: String,

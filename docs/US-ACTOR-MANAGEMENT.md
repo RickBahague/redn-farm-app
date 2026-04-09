@@ -14,7 +14,7 @@ See [USER_STORIES.md](./USER_STORIES.md) for full acceptance criteria.
 | AUTH-US-04 | Manage user accounts | 📋 |
 | AUTH-US-05 | Change own password | 📋 |
 | SYS-US-01 | First-time database initialization | ✅ |
-| SYS-US-04 | Schema recreate and evolution record | 📋 |
+| SYS-US-04 | Schema recreate and evolution record | ✅ |
 | SYS-US-02 | Main dashboard navigation hub | ✅ |
 | SYS-US-03 | About screen | ✅ |
 | MGT-US-00 | Settings screen and Pricing Presets navigation | 📋 |

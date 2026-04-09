@@ -1,5 +1,6 @@
 package com.redn.farm.ui.screens.eod
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -8,21 +9,32 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.local.entity.DayCloseEntity
 import com.redn.farm.data.local.entity.DayCloseInventoryEntity
+import com.redn.farm.data.pricing.SalesChannel
+import com.redn.farm.data.repository.DayCloseRepository
 import com.redn.farm.utils.CurrencyFormatter
+import com.redn.farm.utils.PrinterUtils
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
+import kotlin.math.abs
+
+private val AmberInventoryAging = Color(0xFFFFA000)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +45,7 @@ fun DayCloseScreen(
     onNavigateBack: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToOutstandingInventory: () -> Unit,
+    onNavigateToOrderDetail: (Int) -> Unit,
     viewModel: DayCloseViewModel = hiltViewModel(),
 ) {
     LaunchedEffect(businessDateMillis) {
@@ -43,6 +56,8 @@ fun DayCloseScreen(
     val event by viewModel.events.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showNegativeMarginDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     LaunchedEffect(event) {
         when (val e = event) {
@@ -58,6 +73,10 @@ fun DayCloseScreen(
                 snackbarHostState.showSnackbar("Day close finalized")
                 viewModel.consumeEvent()
             }
+            is DayCloseEvent.CashRemarksRequired -> {
+                snackbarHostState.showSnackbar("Enter reconciliation remarks when cash on hand differs from expected drawer.")
+                viewModel.consumeEvent()
+            }
             null -> Unit
         }
     }
@@ -66,7 +85,7 @@ fun DayCloseScreen(
         AlertDialog(
             onDismissRequest = { showNegativeMarginDialog = false },
             title = { Text("Negative margin") },
-            text = { Text("Gross margin is negative. Finalize anyway?") },
+            text = { Text("Today's COGS exceeds collected revenue. Finalize anyway?") },
             confirmButton = {
                 TextButton(onClick = {
                     showNegativeMarginDialog = false
@@ -118,13 +137,25 @@ fun DayCloseScreen(
             is DayCloseUiState.Ready -> {
                 DayCloseReadyContent(
                     state = state,
-                    username = username,
                     padding = padding,
                     onRefreshInventory = { viewModel.refreshInventorySnapshot(username) },
-                    onEnterCount = { idx, kg -> viewModel.enterActualCount(idx, kg) },
+                    onEnterCount = { pid, kg -> viewModel.enterActualCount(pid, kg) },
+                    onSetCounted = { pid, counted -> viewModel.setLineCounted(pid, counted) },
                     onSaveCash = { cash, remarks -> viewModel.saveCash(cash, remarks, username) },
+                    onSaveNotes = { notes -> viewModel.saveNotes(notes, username) },
+                    onReview = { viewModel.startReview() },
+                    onCancelReview = { viewModel.cancelReview() },
                     onFinalize = { viewModel.requestFinalize(username) },
+                    onUnfinalize = { viewModel.unfinalize(username) },
                     onOutstandingInventory = onNavigateToOutstandingInventory,
+                    onOrderClick = onNavigateToOrderDetail,
+                    onPrint = {
+                        val text = viewModel.buildEodPrintText(username) ?: return@DayCloseReadyContent
+                        scope.launch {
+                            val ok = PrinterUtils.printMessage(context, text, alignment = 0)
+                            snackbarHostState.showSnackbar(if (ok) "Sent to printer" else "Print failed")
+                        }
+                    },
                 )
             }
         }
@@ -134,19 +165,60 @@ fun DayCloseScreen(
 @Composable
 private fun DayCloseReadyContent(
     state: DayCloseUiState.Ready,
-    username: String,
     padding: PaddingValues,
     onRefreshInventory: () -> Unit,
-    onEnterCount: (Int, Double) -> Unit,
+    onEnterCount: (String, Double) -> Unit,
+    onSetCounted: (String, Boolean) -> Unit,
     onSaveCash: (Double?, String?) -> Unit,
+    onSaveNotes: (String?) -> Unit,
+    onReview: () -> Unit,
+    onCancelReview: () -> Unit,
     onFinalize: () -> Unit,
+    onUnfinalize: () -> Unit,
     onOutstandingInventory: () -> Unit,
+    onOrderClick: (Int) -> Unit,
+    onPrint: () -> Unit,
 ) {
     val dateFmt = remember { DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault()) }
     val dateLabel = remember(state.close.business_date) {
         LocalDateTime.ofInstant(
             Instant.ofEpochMilli(state.close.business_date), ZoneId.systemDefault()
         ).format(dateFmt)
+    }
+    var showZeroTheoretical by remember { mutableStateOf(false) }
+
+    val nowMillis = remember { System.currentTimeMillis() }
+    val displayInventory = remember(state.inventoryLines, showZeroTheoretical) {
+        if (showZeroTheoretical) state.inventoryLines
+        else state.inventoryLines.filter { line ->
+            abs(line.adjusted_theoretical_remaining) > 1e-6 ||
+                abs(line.sold_this_close_date) > 1e-6 ||
+                abs(line.total_acquired_all_time) > 1e-6
+        }
+    }
+
+    val spoilageTotal = remember(state.inventoryLines) {
+        state.inventoryLines
+            .filter { it.is_counted }
+            .sumOf { line ->
+                val v = line.variance_qty
+                if (v != null && v > 0) line.variance_cost ?: 0.0 else 0.0
+            }
+    }
+
+    val snap = state.snapshot
+    val drawerExpected = snap.expectedCashFromOrders - snap.remittedToday
+    val diffExpectedRemitted = snap.expectedCashFromOrders - snap.remittedToday
+
+    val marginColor = when {
+        (state.close.gross_margin_amount ?: 0.0) < 0 -> MaterialTheme.colorScheme.error
+        (state.close.gross_margin_amount ?: 0.0) > 0 -> Color(0xFF2E7D32)
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    val netRecoveredColor = when {
+        snap.cumulative.netRecovered < 0 -> MaterialTheme.colorScheme.error
+        snap.cumulative.netRecovered > 0 -> Color(0xFF2E7D32)
+        else -> MaterialTheme.colorScheme.onSurface
     }
 
     LazyColumn(
@@ -156,51 +228,147 @@ private fun DayCloseReadyContent(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // ── Header ──────────────────────────────────────────────────────────
         item {
             Text(
                 text = dateLabel,
                 style = MaterialTheme.typography.titleLarge,
             )
-            if (state.close.is_finalized) {
-                AssistChip(
-                    onClick = {},
-                    label = { Text("Finalized") },
-                    leadingIcon = { Icon(Icons.Default.Check, null, Modifier.size(16.dp)) }
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (state.close.is_finalized) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("Finalized") },
+                        leadingIcon = { Icon(Icons.Default.Check, null, Modifier.size(16.dp)) }
+                    )
+                }
+                FilledTonalButton(onClick = onPrint) {
+                    Icon(Icons.Default.Print, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (state.close.is_finalized) "Print" else "Print draft")
+                }
             }
         }
 
-        // ── Sales Summary (EOD-US-01 / EOD-US-02) ────────────────────────
+        // Warnings (EOD-US-01 AC4)
+        item {
+            if (snap.unpaidTodayCount > 0 || snap.acquisitionsNoSalesCount > 0) {
+                DayCloseSectionCard(title = "Warnings") {
+                    if (snap.unpaidTodayCount > 0) {
+                        AssistChip(onClick = {}, label = { Text("${snap.unpaidTodayCount} unpaid order(s) today") })
+                    }
+                    if (snap.acquisitionsNoSalesCount > 0) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "${snap.acquisitionsNoSalesCount} product(s) acquired today with no sales recorded today.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+
         item {
             DayCloseSectionCard(title = "Sales Summary") {
+                val daily = snap.dailyBreakdown
                 DayCloseRow("Orders", state.close.total_orders.toString())
-                DayCloseRow("Gross Revenue", CurrencyFormatter.format(state.close.gross_revenue_today ?: 0.0))
+                DayCloseRow("Gross revenue", CurrencyFormatter.format(state.close.gross_revenue_today ?: 0.0))
                 DayCloseRow("Collected", CurrencyFormatter.format(state.close.collected_revenue_today ?: 0.0))
+                DayCloseRow("Paid orders (today)", "${daily.paid_count} · ${CurrencyFormatter.format(daily.paid_amount)}")
+                DayCloseRow("Unpaid orders (today)", "${daily.unpaid_count} · ${CurrencyFormatter.format(daily.unpaid_amount)}")
+                DayCloseRow("Delivered orders (today)", daily.delivered_count.toString())
+                DayCloseRow(
+                    "Outstanding (today)",
+                    CurrencyFormatter.format(snap.outstandingRevenueToday),
+                )
                 state.close.snapshot_all_unpaid_count?.let { count ->
-                    DayCloseRow("Unpaid Orders", "$count")
+                    DayCloseRow("All unpaid orders (#)", "$count")
                 }
                 state.close.snapshot_all_unpaid_amount?.let { amt ->
-                    DayCloseRow("Unpaid Amount", CurrencyFormatter.format(amt))
+                    DayCloseRow("All unpaid amount", CurrencyFormatter.format(amt))
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("By channel", style = MaterialTheme.typography.labelMedium)
+                if (snap.byChannel.isEmpty()) {
+                    Text("—", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    snap.byChannel.forEach { row ->
+                        val label = SalesChannel.label(SalesChannel.normalize(row.channel))
+                        DayCloseRow(
+                            label,
+                            "${row.order_count} · ${CurrencyFormatter.format(row.total_sales)}",
+                        )
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("Top products (revenue)", style = MaterialTheme.typography.labelMedium)
+                if (snap.topProducts.isEmpty()) {
+                    Text("—", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    snap.topProducts.forEach { p ->
+                        DayCloseRow(
+                            p.product_name.take(28),
+                            "${"%.2f".format(p.qty_sold)} kg · ${CurrencyFormatter.format(p.revenue)}",
+                        )
+                    }
                 }
             }
         }
 
-        // ── COGS / Margin (EOD-US-07) ─────────────────────────────────────
         item {
-            DayCloseSectionCard(title = "Cost & Margin") {
-                DayCloseRow("COGS (WAC-based)", CurrencyFormatter.format(state.close.total_cogs_today ?: 0.0))
+            DayCloseSectionCard(title = "Cost & margin") {
+                DayCloseRow("COGS (WAC)", CurrencyFormatter.format(state.close.total_cogs_today ?: 0.0))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(
+                        "Gross margin",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        state.close.gross_margin_amount?.let { amt ->
+                            val pct = state.close.gross_margin_percent?.let { " (${String.format("%.1f", it)}%)" } ?: ""
+                            "${CurrencyFormatter.format(amt)}$pct"
+                        } ?: "—",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = marginColor,
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Text("Cumulative position", style = MaterialTheme.typography.labelMedium)
                 DayCloseRow(
-                    "Gross Margin",
-                    state.close.gross_margin_amount?.let { amt ->
-                        val pct = state.close.gross_margin_percent?.let { " (${String.format("%.1f", it)}%%)" } ?: ""
-                        "${CurrencyFormatter.format(amt)}$pct"
-                    } ?: "—"
+                    "Acquisition investment (all time)",
+                    CurrencyFormatter.format(snap.cumulative.totalAcquisitionInvestment),
                 )
+                DayCloseRow(
+                    "Collected revenue (all time)",
+                    CurrencyFormatter.format(snap.cumulative.totalRevenueCollectedAllTime),
+                )
+                DayCloseRow(
+                    "Outstanding inventory value",
+                    CurrencyFormatter.format(snap.cumulative.outstandingInventoryValue),
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(
+                        "Net recovered",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        CurrencyFormatter.format(snap.cumulative.netRecovered),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = netRecoveredColor,
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Text("Other outflows (today)", style = MaterialTheme.typography.labelMedium)
+                DayCloseRow("Wages paid", CurrencyFormatter.format(snap.wagesTotalToday))
+                DayCloseRow("Sales remittances", CurrencyFormatter.format(snap.remittedToday))
+                DayCloseRow("Disbursements", CurrencyFormatter.format(snap.disbursementsToday))
             }
         }
 
-        // ── Inventory Close (EOD-US-03 / EOD-US-04 / EOD-US-05) ──────────
         item {
             DayCloseSectionCard(title = "Inventory") {
                 Row(
@@ -208,26 +376,47 @@ private fun DayCloseReadyContent(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "${state.inventoryLines.size} products",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    TextButton(onClick = onRefreshInventory) { Text("Refresh") }
+                    Column {
+                        Text(
+                            "${displayInventory.size} products shown",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Spoilage cost (counted, +var): ${CurrencyFormatter.format(spoilageTotal)}",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    Row {
+                        FilterChip(
+                            selected = showZeroTheoretical,
+                            onClick = { showZeroTheoretical = !showZeroTheoretical },
+                            label = { Text("Zero theoretical") },
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(
+                            onClick = onRefreshInventory,
+                            enabled = !state.close.is_finalized,
+                        ) { Text("Refresh") }
+                    }
                 }
             }
         }
 
-        // Inventory lines
-        itemsIndexed(state.inventoryLines) { idx, line ->
+        itemsIndexed(displayInventory, key = { _, line -> line.product_id }) { _, line ->
+            val unitLabel = snap.inventoryUnitByProduct[line.product_id] ?: "kg"
             InventoryLineCard(
                 line = line,
+                unitLabel = unitLabel,
+                lastAcqDetail = snap.lastAcqDetailByProduct[line.product_id],
+                lastAcqMillis = snap.lastAcqMillisByProduct[line.product_id],
+                nowMillis = nowMillis,
                 canEdit = state.canEditInventoryCounts && !state.close.is_finalized,
-                onEnterCount = { kg -> onEnterCount(idx, kg) },
+                onEnterCount = { kg -> onEnterCount(line.product_id, kg) },
+                onSetCounted = { counted -> onSetCounted(line.product_id, counted) },
             )
         }
 
-        // ── Outstanding Inventory teaser (EOD-US-10, D6) ──────────────────
         item {
             OutlinedCard(onClick = onOutstandingInventory, modifier = Modifier.fillMaxWidth()) {
                 Row(
@@ -238,33 +427,196 @@ private fun DayCloseReadyContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Outstanding Inventory", style = MaterialTheme.typography.titleSmall)
-                    Text("View full report →", style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        "View full report →",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }
 
-        // ── Cash Reconciliation (EOD-US-06) ───────────────────────────────
         item {
             CashReconciliationCard(
                 close = state.close,
+                expectedCashOrders = snap.expectedCashFromOrders,
+                remittedToday = snap.remittedToday,
+                disbursementsToday = snap.disbursementsToday,
+                digitalCount = snap.digital.order_count,
+                digitalTotal = snap.digital.total_amount,
+                drawerExpected = drawerExpected,
+                diffExpectedRemitted = diffExpectedRemitted,
                 canEdit = !state.close.is_finalized,
                 onSave = onSaveCash,
             )
         }
 
-        // ── Finalize button (EOD-US-08) ───────────────────────────────────
+        item {
+            DayCloseSectionCard(title = "Outstanding orders (unpaid)") {
+                val cap = 15
+                val head = snap.unpaidOrders.take(cap)
+                val more = (snap.unpaidOrders.size - cap).coerceAtLeast(0)
+                val totalOutstanding = snap.unpaidOrders.sumOf { it.order.total_amount }
+                DayCloseRow("Count", snap.unpaidOrders.size.toString())
+                DayCloseRow("Total", CurrencyFormatter.format(totalOutstanding))
+                head.forEach { od ->
+                    val daysOld = ChronoUnit.DAYS.between(
+                        Instant.ofEpochMilli(od.order.order_date).atZone(ZoneId.systemDefault()).toLocalDate(),
+                        Instant.ofEpochMilli(state.close.business_date).atZone(ZoneId.systemDefault()).toLocalDate(),
+                    )
+                    Card(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .clickable { onOrderClick(od.order.order_id) }
+                    ) {
+                        Column(Modifier.padding(8.dp)) {
+                            Text(
+                                "#${od.order.order_id} · ${od.customerName}",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                "${SalesChannel.label(SalesChannel.normalize(od.order.channel))} · ${CurrencyFormatter.format(od.order.total_amount)}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                "Age: $daysOld d",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                if (more > 0) {
+                    Text(
+                        "…and $more more (see list in app)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        item {
+            DayCloseSectionCard(title = "Employee payments (today)") {
+                if (snap.employeePayments.isEmpty()) {
+                    Text(
+                        "No employee payments recorded today.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    snap.employeePayments.forEach { row ->
+                        val p = row.payment
+                        val net = p.amount + (p.cash_advance_amount ?: 0.0)
+                        Text(row.employeeName, style = MaterialTheme.typography.titleSmall)
+                        DayCloseRow("Gross wage", CurrencyFormatter.format(p.amount))
+                        p.cash_advance_amount?.takeIf { it != 0.0 }?.let { adv ->
+                            DayCloseRow("Cash advance", CurrencyFormatter.format(adv))
+                        }
+                        DayCloseRow("Net pay", CurrencyFormatter.format(net))
+                        Spacer(Modifier.height(4.dp))
+                    }
+                    DayCloseRow("Total wages", CurrencyFormatter.format(snap.wagesTotalToday))
+                }
+            }
+        }
+
+        item {
+            EmployeeNotesCard(
+                notes = state.close.notes,
+                canEdit = !state.close.is_finalized,
+                onSaveNotes = onSaveNotes,
+            )
+        }
+
         item {
             Spacer(Modifier.height(8.dp))
-            Button(
-                onClick = onFinalize,
-                enabled = !state.close.is_finalized,
+            if (state.close.is_finalized && state.isAdmin) {
+                OutlinedButton(
+                    onClick = onUnfinalize,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Un-finalize (admin)") }
+                Spacer(Modifier.height(8.dp))
+            }
+            if (!state.close.is_finalized && !state.inReviewStep) {
+                OutlinedButton(
+                    onClick = onReview,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Review summary")
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            if (!state.close.is_finalized && state.inReviewStep) {
+                Text(
+                    "Review mode: verify all sections, then confirm finalize.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = onCancelReview,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Back to edit")
+                    }
+                    Button(
+                        onClick = onFinalize,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Confirm finalize")
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            if (state.close.is_finalized) {
+                Button(
+                    onClick = {},
+                    enabled = false,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                ) {
+                    Text("Finalized")
+                }
+            } else {
+                Spacer(Modifier.navigationBarsPadding())
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmployeeNotesCard(
+    notes: String?,
+    canEdit: Boolean,
+    onSaveNotes: (String?) -> Unit,
+) {
+    var notesText by remember { mutableStateOf(notes ?: "") }
+    DayCloseSectionCard(title = "Wages / shift notes") {
+        Text(
+            "Optional notes on wages due or shift handover (saved on the day close record).",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (canEdit) {
+            OutlinedTextField(
+                value = notesText,
+                onValueChange = { notesText = it },
+                label = { Text("Notes") },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
-            ) {
-                Text(if (state.close.is_finalized) "Finalized" else "Finalize Day Close")
-            }
+                    .padding(top = 8.dp),
+                minLines = 2,
+            )
+            TextButton(
+                onClick = { onSaveNotes(notesText.ifBlank { null }) },
+                modifier = Modifier.align(Alignment.End)
+            ) { Text("Save notes") }
+        } else {
+            Text(notes ?: "—", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -273,8 +625,11 @@ private fun DayCloseReadyContent(
 private fun DayCloseSectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
             content()
         }
     }
@@ -283,8 +638,11 @@ private fun DayCloseSectionCard(title: String, content: @Composable ColumnScope.
 @Composable
 private fun DayCloseRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Text(value, style = MaterialTheme.typography.bodySmall)
     }
 }
@@ -292,28 +650,72 @@ private fun DayCloseRow(label: String, value: String) {
 @Composable
 private fun InventoryLineCard(
     line: DayCloseInventoryEntity,
+    unitLabel: String,
+    lastAcqDetail: DayCloseRepository.LastAcquisitionDetail?,
+    lastAcqMillis: Long?,
+    nowMillis: Long,
     canEdit: Boolean,
     onEnterCount: (Double) -> Unit,
+    onSetCounted: (Boolean) -> Unit,
 ) {
-    var countText by remember(line.id) { mutableStateOf(line.actual_remaining?.toString() ?: "") }
+    var countText by remember(line.product_id, line.actual_remaining, line.is_counted) {
+        mutableStateOf(line.actual_remaining?.toString() ?: "")
+    }
+
+    val agingDays = lastAcqMillis?.let { ((nowMillis - it) / (24 * 60 * 60 * 1000)).toInt() } ?: 0
+    val agingHighlight = agingDays >= 3
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(line.product_name, style = MaterialTheme.typography.titleSmall)
-            DayCloseRow("Theoretical (adj.)", String.format("%.3f kg", line.adjusted_theoretical_remaining))
-            DayCloseRow("Sold today", String.format("%.3f kg", line.sold_this_close_date))
+            Text(
+                line.product_name,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (agingHighlight) AmberInventoryAging else MaterialTheme.colorScheme.onSurface,
+            )
+            DayCloseRow("Acquired (all time, $unitLabel)", String.format("%.3f", line.total_acquired_all_time))
+            DayCloseRow("Sold through close ($unitLabel)", String.format("%.3f", line.total_sold_through_close_date))
+            DayCloseRow("Prior posted var. ($unitLabel)", String.format("%.3f", line.prior_posted_variance))
+            DayCloseRow("Theoretical (adj.)", String.format("%.3f %s", line.adjusted_theoretical_remaining, unitLabel))
+            DayCloseRow("Sold today", String.format("%.3f %s", line.sold_this_close_date, unitLabel))
+            val lastMs = lastAcqDetail?.dateMillis ?: lastAcqMillis
+            lastMs?.let { ms ->
+                val fmt = remember { DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault()) }
+                val d = remember(ms) {
+                    LocalDateTime.ofInstant(Instant.ofEpochMilli(ms), ZoneId.systemDefault()).format(fmt)
+                }
+                DayCloseRow("Last acquisition", d)
+            }
+            lastAcqDetail?.let { detail ->
+                DayCloseRow(
+                    "Last qty / cost",
+                    "${String.format("%.3f", detail.quantity)} ${detail.unitLabel} @ " +
+                        "${CurrencyFormatter.format(detail.pricePerUnit)}/${detail.unitLabel}",
+                )
+            }
             line.variance_qty?.let { v ->
                 DayCloseRow(
                     "Variance",
-                    String.format("%.3f kg (${CurrencyFormatter.format(line.variance_cost ?: 0.0)})", v)
+                    String.format("%.3f %s (${CurrencyFormatter.format(line.variance_cost ?: 0.0)})", v, unitLabel)
                 )
             }
-            if (canEdit) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Include in count", style = MaterialTheme.typography.bodySmall)
+                Switch(
+                    checked = line.is_counted,
+                    onCheckedChange = onSetCounted,
+                    enabled = canEdit,
+                )
+            }
+            if (line.is_counted && canEdit) {
                 Spacer(Modifier.height(4.dp))
                 OutlinedTextField(
                     value = countText,
                     onValueChange = { countText = it },
-                    label = { Text("Actual count (kg)") },
+                    label = { Text("Actual count ($unitLabel)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
@@ -325,9 +727,11 @@ private fun InventoryLineCard(
                         }
                     }
                 )
+            } else if (!line.is_counted) {
+                Text("Excluded from spoilage total", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
             } else {
                 line.actual_remaining?.let {
-                    DayCloseRow("Actual count", String.format("%.3f kg", it))
+                    DayCloseRow("Actual count", String.format("%.3f %s", it, unitLabel))
                 }
             }
         }
@@ -337,32 +741,95 @@ private fun InventoryLineCard(
 @Composable
 private fun CashReconciliationCard(
     close: DayCloseEntity,
+    expectedCashOrders: Double,
+    remittedToday: Double,
+    disbursementsToday: Double,
+    digitalCount: Int,
+    digitalTotal: Double,
+    drawerExpected: Double,
+    diffExpectedRemitted: Double,
     canEdit: Boolean,
     onSave: (Double?, String?) -> Unit,
 ) {
     var cashText by remember { mutableStateOf(close.cash_on_hand?.toString() ?: "") }
     var remarksText by remember { mutableStateOf(close.cash_reconciliation_remarks ?: "") }
 
-    DayCloseSectionCard(title = "Cash Reconciliation") {
-        DayCloseRow("Collected", CurrencyFormatter.format(close.collected_revenue_today ?: 0.0))
+    val diffColor = when {
+        abs(diffExpectedRemitted) < 0.01 -> Color(0xFF2E7D32)
+        diffExpectedRemitted > 0 -> Color(0xFF2E7D32)
+        else -> MaterialTheme.colorScheme.error
+    }
+    val counted = close.cash_on_hand
+    val drawerVsHandColor = if (counted == null) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        when {
+            abs(counted - drawerExpected) < 0.01 -> Color(0xFF2E7D32)
+            counted > drawerExpected -> Color(0xFF2E7D32)
+            else -> MaterialTheme.colorScheme.error
+        }
+    }
+
+    DayCloseSectionCard(title = "Cash reconciliation") {
+        Text(
+            "Expected cash from orders = paid offline + reseller today.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        DayCloseRow("Expected (paid off+res)", CurrencyFormatter.format(expectedCashOrders))
+        DayCloseRow("Remitted today", CurrencyFormatter.format(remittedToday))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                "Expected − remitted",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                CurrencyFormatter.format(diffExpectedRemitted),
+                style = MaterialTheme.typography.bodySmall,
+                color = diffColor,
+            )
+        }
+        DayCloseRow("Drawer expectation", CurrencyFormatter.format(drawerExpected))
+        DayCloseRow("Disbursements (info)", CurrencyFormatter.format(disbursementsToday))
+        Spacer(Modifier.height(4.dp))
+        Text("Digital collections (online)", style = MaterialTheme.typography.labelMedium)
+        DayCloseRow("Orders", digitalCount.toString())
+        DayCloseRow("Amount", CurrencyFormatter.format(digitalTotal))
+
         if (canEdit) {
             OutlinedTextField(
                 value = cashText,
                 onValueChange = { cashText = it },
-                label = { Text("Cash on hand") },
+                label = { Text("Cash on hand (counted)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp),
                 singleLine = true,
             )
+            counted?.let { c ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(
+                        "Counted vs drawer exp.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        CurrencyFormatter.format(c - drawerExpected),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = drawerVsHandColor,
+                    )
+                }
+            }
             OutlinedTextField(
                 value = remarksText,
                 onValueChange = { remarksText = it },
-                label = { Text("Remarks") },
+                label = { Text("Reconciliation remarks") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 4.dp),
+                minLines = 2,
             )
             TextButton(
                 onClick = { onSave(cashText.toDoubleOrNull(), remarksText.ifBlank { null }) },

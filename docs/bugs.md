@@ -15,6 +15,55 @@
 
 ---
 
+## BUG-EOD-01 — Day Close inventory + EOD print show per-piece items as kg
+
+### Report
+- **Screens:** `DayCloseScreen` inventory section and EOD thermal print (`buildEodSummary`)
+- **Symptom:** Products acquired/sold in **per-piece mode** are rendered as `kg` in inventory rows and print output.
+- **Impact:** Operators can misread stock position and spoilage variance for per-piece items; printed EOD records become unit-inaccurate.
+
+### Current behavior *(historical, pre-fix)*
+- UI labels were hard-coded to `kg` in Day Close inventory rows (theoretical, sold today, actual, variance).
+- Thermal EOD builder printed inventory quantities as `kg` regardless of product unit mode.
+
+### Expected behavior
+- Inventory and print should display the **correct unit per product**:
+  - per-kg products → `kg`
+  - per-piece products → `pc` (or `pcs`, consistent with app style)
+- Unit label must be consistent between Day Close UI and EOD thermal output for the same product.
+
+### Suspected root cause
+- `DayCloseInventoryEntity` stores normalized quantity fields and does not currently carry a display unit token.
+- `DayCloseScreen` and `ThermalPrintBuilders.buildEodSummary` format labels as `kg` unconditionally.
+
+### Fix direction
+- Add unit context to day-close inventory lines (e.g., `display_unit` or derive from product/acquisition mode in repository).
+- Update Day Close inventory row rendering to use the per-product unit label.
+- Update thermal EOD inventory section to print quantities with the same per-product unit label.
+- Add regression checks for mixed-unit days (kg + piece products together).
+
+### Candidate files
+- `app/src/main/java/com/redn/farm/data/repository/DayCloseRepository.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/eod/DayCloseScreen.kt`
+- `app/src/main/java/com/redn/farm/utils/ThermalPrintBuilders.kt`
+- `app/src/main/java/com/redn/farm/data/local/entity/DayCloseInventoryEntity.kt` *(if schema field is introduced)*
+
+### Verification target
+- Mixed dataset (at least one per-kg + one per-piece product) shows correct unit labels in:
+  - Day Close inventory rows
+  - Printed EOD slip inventory section
+
+### Fix *(implemented 2026-04-09)*
+- Added latest acquisition unit-mode query in `AcquisitionDao` and wired per-product unit labels (`kg` / `pc`) into `DayCloseRepository.EodUiSnapshot`.
+- Updated `DayCloseScreen` inventory rendering to use per-product unit labels instead of hard-coded `kg`.
+- Updated thermal EOD inventory print (`buildEodSummary`) to print per-product unit labels for theoretical, actual, and variance lines.
+- Kept quantity math unchanged; fix is unit labeling in UI/print output.
+
+### Verification
+- `./gradlew assembleDebug` ✅
+
+---
+
 ## BUG-ACQ-01 — Acquire: tapping numeric inputs shows no keyboard
 
 ### Report

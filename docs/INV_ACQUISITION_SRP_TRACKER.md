@@ -2,7 +2,7 @@
 
 **Canon:** [`USER_STORIES.md`](./USER_STORIES.md) Epic 5 (Inventory & Acquisitions), **ORD-US-08** (active price list).
 
-**Related gaps:** Acquisition → preset deep link (**MGT-US-05** AC5) — see [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PARTIAL_IMPLEMENTATION_PLAN.md) **Stream B**. (**PRD-US-01** / **PRD-US-07** catalog + history: done 2026-04-09.)
+**Related gaps:** ~~Acquisition → preset deep link (**MGT-US-05** AC5)~~ — done 2026-04-09 (**`AcquisitionFormScreen`** → **PresetDetail**). (**PRD-US-01** / **PRD-US-07** catalog + history: done 2026-04-09.)
 
 **Pricing canon:** [`PricingReference.md`](./PricingReference.md) **§4.3**, **§4.3.1** / [`pricing_clarif.md`](./pricing_clarif.md) (CLARIF-01 — **by-weight spoilage:** **rate** or **absolute kg** per line 10; **per-piece B** = **(pieces / n) × additional costs** = **`Q × A_spec`** lot hauling; **per-piece share** **`B/P_tot = A_spec/n`**; per-piece spoilage **not** applied in SRP, **`Q_sell = Q`**), **§5.1.1**, **FR-PC-10–14** — pipeline **INV-US-05**: \(C_{\text{bulk}} = B/Q_{\text{sell}}\), **\(C = C_{\text{bulk}} + A\)**, then channel markup/margin, fees, rounding; **per-piece** uses **`quantity`** = total pieces, **`piece_count`** = pieces/kg → **\(Q = \text{quantity}/n\)**; **`s_eff = 0`** for SRP on per-piece rows. **BUG-PRC-03** *(closed):* per-piece **SRP** = **(A + B/total_quantity)** × (1+μ). **BUG-PRC-04** *(closed):* **by-weight** optional **`spoilage_kg`** on acquisition — **`SrpCalculator.Input.spoilageKg`**, **`AcquisitionEntity.spoilage_kg`**, form “Unsellable kg”, **`SrpCalculatorTest`**; DB v7. Preset remains rate-only; absolute kg is **per-line** override.
 

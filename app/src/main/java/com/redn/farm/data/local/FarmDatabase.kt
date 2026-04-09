@@ -16,6 +16,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+/**
+ * Room database (SYS-US-04): `@Database(version = …)` must match the latest **VERSION N**
+ * block in `docs/schema_evolution.sql` (compare to KSP `FarmDatabase_Impl.createAllTables`).
+ */
 @Database(
     entities = [
         ProductEntity::class,

@@ -119,7 +119,7 @@ Gross Est: PHP 28,450.00
 
 ---
 
-### CUR-03 — Recommended slips (PRN-01–08) — **implemented**; PRN-09–10 — **planned (Epic 12)**
+### CUR-03 — Recommended slips (PRN-01–10) — **implemented** (PRN-09/10 = Epic 12 EOD, 2026-04-09)
 
 | ID | Screen / trigger | Main files |
 |----|------------------|------------|
@@ -131,8 +131,8 @@ Gross Est: PHP 28,450.00
 | PRN-05 | `FarmOperationsScreen` + `FarmOperationHistoryScreen` → card **Print** icon | `FarmOperationCard.kt`, `buildFarmOperationLog` |
 | PRN-06 | `EmployeePaymentScreen` → **Print Summary** (under period filter) | `EmployeePaymentScreen.kt`, `buildEmployeePayrollSummary` |
 | PRN-07 | `OrderHistoryScreen` → order card **Print** (loads order + items via `getOrderSnapshotForPrint`) | `OrderHistoryScreen.kt`, `OrderHistoryViewModel.kt` |
-| PRN-09 | **Day Close** / **Day Close Detail** → **Print EOD Summary** (`[ ]` planned) | `ThermalPrintBuilders.kt` → `buildEodSummary`, **EOD-US-05** |
-| PRN-10 | **Outstanding Inventory** → **Print** (`[ ]` planned) | `ThermalPrintBuilders.kt` → `buildOutstandingInventoryReport`, **EOD-US-10** |
+| PRN-09 | **DayCloseScreen** → **Print draft** / **Print** (EOD summary) | `DayCloseScreen.kt`, `DayCloseViewModel.kt`, `ThermalPrintBuilders.kt` → `buildEodSummary` |
+| PRN-10 | **OutstandingInventoryScreen** → app bar **Print** | `OutstandingInventoryScreen.kt`, `OutstandingInventoryViewModel.kt`, `ThermalPrintBuilders.kt` → `buildOutstandingInventoryReport` |
 
 **Design reference:** **`DESIGN.md` §14.7**, §14.9 (metric labels on slip), §14.17.
 
@@ -418,9 +418,9 @@ Prepared by: __________________
 
 ### PRN-09 — End of Day summary (thermal)
 **Priority:** P1 (Epic 12)  
-**Status:** `[ ]` not implemented  
-**Screens:** `DayCloseScreen` (route TBD, e.g. `day_close`) and read-only **Day Close Detail** — **Print EOD Summary** button (**EOD-US-05**). Available in **draft** and **finalized** state.  
-**Trigger:** `OutlinedButton` / `TextButton` → `PrinterUtils.printMessage(context, text, alignment = 0)` with body from **`ThermalPrintBuilders.buildEodSummary(...)`** (new).  
+**Status:** `[x]` implemented (**2026-04-09**)  
+**Screens:** `DayCloseScreen` (`day_close/{businessDateMillis}`) — **Print draft** / **Print** (**EOD-US-05**). Available in **draft** and **finalized** state.  
+**Trigger:** `FilledTonalButton` → `DayCloseViewModel.buildEodPrintText` → **`ThermalPrintBuilders.buildEodSummary`** → `PrinterUtils.printMessage(context, text, alignment = 0)`.  
 **Who uses it:** Admin or store assistant files a physical end-of-day record.
 
 **Header / status**
@@ -455,9 +455,9 @@ Prepared by: __________________
 
 ### PRN-10 — Outstanding Inventory report (thermal)
 **Priority:** P1 (Epic 12)  
-**Status:** `[ ]` not implemented  
-**Screen:** **Outstanding Inventory** (route TBD, e.g. `outstanding_inventory`) — **Print Outstanding Inventory** (**EOD-US-10**).  
-**Trigger:** App bar or footer **Print** → **`buildOutstandingInventoryReport(...)`** (new) + `printMessage(..., alignment = 0)`.  
+**Status:** `[x]` implemented (**2026-04-09**)  
+**Screen:** **OutstandingInventoryScreen** (`outstanding_inventory`) — app bar **Print** (**EOD-US-10**).  
+**Trigger:** App bar **Print** → **`OutstandingInventoryViewModel.buildPrintText`** → **`buildOutstandingInventoryReport`** + `printMessage(..., alignment = 0)`.  
 **Who uses it:** Admin or purchasing assistant prints current stock position.
 
 **Content**
@@ -510,6 +510,8 @@ The current `printMessage()` sends a single raw string with centre-alignment app
 | PRN-06 | Employee Period Summary | P2 | `[x]` |
 | PRN-07 | Order Quick Reprint (history card) | P2 | `[x]` |
 | PRN-08 | Acquisition batch report (filtered list) | P1 | `[x]` |
+| PRN-09 | End of Day summary (thermal) | P1 | `[x]` |
+| PRN-10 | Outstanding Inventory report (thermal) | P1 | `[x]` |
 
 ### `PrinterUtils` enhancements
 
@@ -521,7 +523,7 @@ The current `printMessage()` sends a single raw string with centre-alignment app
 | PU-04 | Error feedback — snackbars on new print entry points + order detail | P1 | `[~]` |
 | PU-05 | Printer connection state in ViewModel (optional) | P2 | `[ ]` |
 
-*Last checklist update: 2026-04-03 — PRN-01–08 shipped; **PRN-09/PRN-10** added for Epic 12 (EOD) — spec only, not implemented; PU-03/PU-05 backlog.*
+*Last checklist update: 2026-04-09 — PRN-01–10 shipped (PRN-09/10 EOD); PU-03/PU-05 backlog.*
 
 ### PU-01 — Left-align support
 

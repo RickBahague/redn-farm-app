@@ -1,10 +1,18 @@
 package com.redn.farm.data.repository
 
 import com.redn.farm.data.local.dao.AcquisitionDao
+import com.redn.farm.data.local.dao.ChannelSalesRow
 import com.redn.farm.data.local.dao.DayCloseAuditDao
 import com.redn.farm.data.local.dao.DayCloseDao
 import com.redn.farm.data.local.dao.DayCloseInventoryDao
+import com.redn.farm.data.local.dao.DailyOrderBreakdown
+import com.redn.farm.data.local.dao.DigitalCollectionsSummary
+import com.redn.farm.data.local.dao.EmployeePaymentDao
+import com.redn.farm.data.local.dao.EmployeePaymentWithEmployee
 import com.redn.farm.data.local.dao.OrderDao
+import com.redn.farm.data.local.dao.OrderWithDetails
+import com.redn.farm.data.local.dao.ProductDao
+import com.redn.farm.data.local.dao.ProductRevenueRow
 import com.redn.farm.data.local.dao.RemittanceDao
 import com.redn.farm.data.local.entity.DayCloseAuditEntity
 import com.redn.farm.data.local.entity.DayCloseEntity
@@ -12,6 +20,7 @@ import com.redn.farm.data.local.entity.DayCloseInventoryEntity
 import com.redn.farm.data.util.DateWindowHelper
 import com.redn.farm.data.util.InventoryFifoAllocator
 import kotlinx.coroutines.flow.Flow
+import kotlin.math.max
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,6 +32,8 @@ class DayCloseRepository @Inject constructor(
     private val orderDao: OrderDao,
     private val acquisitionDao: AcquisitionDao,
     private val remittanceDao: RemittanceDao,
+    private val productDao: ProductDao,
+    private val employeePaymentDao: EmployeePaymentDao,
 ) {
 
     // ─── Read ─────────────────────────────────────────────────────────────────
@@ -68,47 +79,62 @@ class DayCloseRepository @Inject constructor(
     // ─── Inventory snapshot ───────────────────────────────────────────────────
 
     /**
-     * Builds the inventory lines for a day close from aggregated data.
-     *
-     * Called when entering the inventory section for the first time (or on refresh).
-     * Existing rows for the close are replaced.
-     *
-     * Algorithm:
-     *   1. Load all acquisition aggregates (total qty, total cost) per product.
-     *   2. Load all sold qty per product up to end of [businessDateMillis].
-     *   3. Load prior posted variance: sum of variance_qty from all *finalized* closes
-     *      with business_date < start of [businessDateMillis].
-     *   4. Compute adjusted_theoretical_remaining = acquired − sold − prior_variance.
-     *   5. Compute WAC = total_cost / total_qty_kg (D1: per-piece converted to kg).
+     * If there are no rows yet for this close, builds and inserts the ledger (EOD-US-03).
+     * Does not delete existing rows (preserves in-progress counts).
+     */
+    suspend fun ensureInventorySeeded(
+        closeId: Int,
+        businessDateMillis: Long,
+        username: String,
+    ): List<DayCloseInventoryEntity> {
+        val existing = dayCloseInventoryDao.getByCloseId(closeId)
+        if (existing.isNotEmpty()) return existing
+        val rows = computeInventoryRows(closeId, businessDateMillis)
+        dayCloseInventoryDao.insertAll(rows)
+        audit(closeId, "ENTER_COUNTS", username, "Inventory snapshot seeded")
+        return rows
+    }
+
+    /**
+     * Rebuilds inventory from aggregated data (drops existing rows for this close).
      */
     suspend fun buildInventorySnapshot(
         closeId: Int,
         businessDateMillis: Long,
         username: String,
     ): List<DayCloseInventoryEntity> {
+        dayCloseInventoryDao.deleteByCloseId(closeId)
+        val rows = computeInventoryRows(closeId, businessDateMillis)
+        dayCloseInventoryDao.insertAll(rows)
+        audit(closeId, "ENTER_COUNTS", username, "Inventory snapshot rebuilt")
+        return rows
+    }
+
+    private suspend fun computeInventoryRows(
+        closeId: Int,
+        businessDateMillis: Long,
+    ): List<DayCloseInventoryEntity> {
         val start = DateWindowHelper.startOfDay(businessDateMillis)
         val end = DateWindowHelper.endOfDay(businessDateMillis)
 
-        // 1. Acquisition aggregates (all time)
         val acqSummaries = acquisitionDao.getTotalAcquiredByProduct()
             .associateBy { it.product_id }
 
-        // 2. Total sold by product up to end of this business day
         val soldUpTo = orderDao.getTotalSoldQtyByProductUpTo(end)
             .associateBy { it.product_id }
 
-        // 2b. Sold specifically on this business day (for COGS line)
         val soldToday = orderDao.getSoldQtyByProductOnDate(start, end)
             .associateBy { it.product_id }
 
-        // 3. Prior posted variance: SUM(variance_qty) for finalized closes before today
-        //    Queried directly from previously saved inventory rows.
-        //    (Loaded per-product below.)
+        val priorMap = dayCloseInventoryDao.getPriorPostedVarianceByProduct(start)
+            .associate { it.product_id to it.total_variance }
+
+        val nameMap = productDao.getAllProductIdNames()
+            .associate { it.product_id to it.product_name }
 
         val rows = mutableListOf<DayCloseInventoryEntity>()
 
         for ((productId, acq) in acqSummaries) {
-            // D1: convert per-piece quantity to kg
             val totalAcquiredKg = if (acq.is_per_kg_flag != 0) {
                 acq.total_qty
             } else {
@@ -119,19 +145,16 @@ class DayCloseRepository @Inject constructor(
             val totalSoldKg = soldUpTo[productId]?.total_qty ?: 0.0
             val soldTodayKg = soldToday[productId]?.total_qty ?: 0.0
 
-            // WAC in same unit as acquired (kg)
             val wac = if (totalAcquiredKg > 0) acq.total_cost / totalAcquiredKg else 0.0
 
-            // Prior posted variance comes from persisted rows (already in db from previous closes).
-            // We approximate here as 0 on first build; DayCloseViewModel may inject actuals.
-            val priorVariance = 0.0
+            val priorVariance = priorMap[productId] ?: 0.0
 
             val theoretical = totalAcquiredKg - totalSoldKg - priorVariance
 
             rows += DayCloseInventoryEntity(
                 close_id = closeId,
                 product_id = productId,
-                product_name = acq.product_id, // resolved by ViewModel via product lookup
+                product_name = nameMap[productId] ?: productId,
                 total_acquired_all_time = totalAcquiredKg,
                 total_sold_through_close_date = totalSoldKg,
                 prior_posted_variance = priorVariance,
@@ -141,10 +164,11 @@ class DayCloseRepository @Inject constructor(
             )
         }
 
-        dayCloseInventoryDao.deleteByCloseId(closeId)
-        dayCloseInventoryDao.insertAll(rows)
-        audit(closeId, "ENTER_COUNTS", username, "Inventory snapshot rebuilt")
         return rows
+    }
+
+    suspend fun updateInventoryLine(line: DayCloseInventoryEntity) {
+        dayCloseInventoryDao.update(line)
     }
 
     // ─── Revenue and COGS snapshot ────────────────────────────────────────────
@@ -162,7 +186,6 @@ class DayCloseRepository @Inject constructor(
         val salesSummary = orderDao.getSalesSummaryOnDate(start, end)
         val unpaidSummary = orderDao.getUnpaidSummaryAsOf(end)
 
-        // Gather today's sold quantities and WAC
         val soldToday = orderDao.getSoldQtyByProductOnDate(start, end)
             .associateBy { it.product_id }
         val acqSummaries = acquisitionDao.getTotalAcquiredByProduct()
@@ -202,6 +225,113 @@ class DayCloseRepository @Inject constructor(
         return updated
     }
 
+    // ─── EOD screen aggregates (Stream E) ─────────────────────────────────────
+
+    data class CumulativePosition(
+        val totalAcquisitionInvestment: Double,
+        val totalRevenueCollectedAllTime: Double,
+        val outstandingInventoryValue: Double,
+        val netRecovered: Double,
+    )
+
+    data class LastAcquisitionDetail(
+        val dateMillis: Long,
+        val quantity: Double,
+        val pricePerUnit: Double,
+        val unitLabel: String,
+    )
+
+    data class EodUiSnapshot(
+        val dailyBreakdown: DailyOrderBreakdown,
+        val byChannel: List<ChannelSalesRow>,
+        val topProducts: List<ProductRevenueRow>,
+        val expectedCashFromOrders: Double,
+        val remittedToday: Double,
+        val disbursementsToday: Double,
+        val digital: DigitalCollectionsSummary,
+        val unpaidTodayCount: Int,
+        val acquisitionsNoSalesCount: Int,
+        val unpaidOrders: List<OrderWithDetails>,
+        val employeePayments: List<EmployeePaymentWithEmployee>,
+        val wagesTotalToday: Double,
+        val cumulative: CumulativePosition,
+        val lastAcqMillisByProduct: Map<String, Long>,
+        val lastAcqDetailByProduct: Map<String, LastAcquisitionDetail>,
+        val inventoryUnitByProduct: Map<String, String>,
+        val outstandingRevenueToday: Double,
+    )
+
+    suspend fun loadEodUiSnapshot(
+        businessDateMillis: Long,
+        theoreticalInventoryLines: List<DayCloseInventoryEntity>,
+    ): EodUiSnapshot {
+        val start = DateWindowHelper.startOfDay(businessDateMillis)
+        val end = DateWindowHelper.endOfDay(businessDateMillis)
+
+        val dailyBreakdown = orderDao.getDailyOrderBreakdownOnDate(start, end)
+        val sales = orderDao.getSalesSummaryOnDate(start, end)
+        val byChannel = orderDao.getSalesByChannel(start, end)
+        val topProducts = orderDao.getTopProductsByRevenue(start, end, limit = 5)
+        val expectedCash = orderDao.getPaidOfflineResellerTotalOnDate(start, end)
+        val remitted = remittanceDao.getSumRemittancesOnDate(start, end)
+        val disbursementsToday = remittanceDao.getSumDisbursementsOnDate(start, end)
+        val digital = orderDao.getDigitalCollectionsOnDate(start, end)
+        val unpaidTodayCount = orderDao.getUnpaidOrderCountOnDate(start, end)
+        val acquisitionsNoSalesCount =
+            acquisitionDao.countAcquiredProductsWithNoSalesOnSameDay(start, end)
+        val unpaidOrders = orderDao.getAllUnpaidOrdersOldestFirst()
+        val employeePayments = employeePaymentDao.getPaymentsOnDate(start, end)
+        val wagesTotalToday = employeePayments.sumOf { it.payment.amount }
+
+        val totalAcquisitionInvestment = acquisitionDao.getTotalAcquisitionSpendAllTime()
+        val totalRevenueCollectedAllTime = orderDao.getTotalCollectedAllTime()
+        val outstandingInventoryValue = theoreticalInventoryLines.sumOf { line ->
+            max(0.0, line.adjusted_theoretical_remaining) * line.weighted_avg_cost_per_unit
+        }
+        val netRecovered = totalRevenueCollectedAllTime - totalAcquisitionInvestment
+
+        val lastAcqMillisByProduct = acquisitionDao.getLastAcquisitionMillisByProduct()
+            .associate { it.product_id to it.last_acquired_millis }
+        val lastAcqDetailByProduct = acquisitionDao.getLatestAcquisitionDetailsByProduct()
+            .associate { row ->
+                row.product_id to LastAcquisitionDetail(
+                    dateMillis = row.date_acquired,
+                    quantity = row.quantity,
+                    pricePerUnit = row.price_per_unit,
+                    unitLabel = if (row.is_per_kg_flag) "kg" else "pc",
+                )
+            }
+        val inventoryUnitByProduct = acquisitionDao.getLatestUnitModeByProduct()
+            .associate { row -> row.product_id to if (row.is_per_kg_flag) "kg" else "pc" }
+
+        val outstandingRevenueToday = sales.total_sales - sales.total_collected
+
+        return EodUiSnapshot(
+            dailyBreakdown = dailyBreakdown,
+            byChannel = byChannel,
+            topProducts = topProducts,
+            expectedCashFromOrders = expectedCash,
+            remittedToday = remitted,
+            disbursementsToday = disbursementsToday,
+            digital = digital,
+            unpaidTodayCount = unpaidTodayCount,
+            acquisitionsNoSalesCount = acquisitionsNoSalesCount,
+            unpaidOrders = unpaidOrders,
+            employeePayments = employeePayments,
+            wagesTotalToday = wagesTotalToday,
+            cumulative = CumulativePosition(
+                totalAcquisitionInvestment = totalAcquisitionInvestment,
+                totalRevenueCollectedAllTime = totalRevenueCollectedAllTime,
+                outstandingInventoryValue = outstandingInventoryValue,
+                netRecovered = netRecovered,
+            ),
+            lastAcqMillisByProduct = lastAcqMillisByProduct,
+            lastAcqDetailByProduct = lastAcqDetailByProduct,
+            inventoryUnitByProduct = inventoryUnitByProduct,
+            outstandingRevenueToday = outstandingRevenueToday,
+        )
+    }
+
     // ─── Cash reconciliation ──────────────────────────────────────────────────
 
     suspend fun saveCashReconciliation(
@@ -219,9 +349,23 @@ class DayCloseRepository @Inject constructor(
         return updated
     }
 
-    // ─── Finalize ─────────────────────────────────────────────────────────────
+    // ─── Finalize / unfinalize ─────────────────────────────────────────────────
 
-    suspend fun finalize(close: DayCloseEntity, username: String): DayCloseEntity {
+    /**
+     * Persists [inventoryLines] for this close, then marks the close finalized.
+     */
+    suspend fun finalize(
+        close: DayCloseEntity,
+        inventoryLines: List<DayCloseInventoryEntity>,
+        username: String,
+    ): DayCloseEntity {
+        dayCloseInventoryDao.deleteByCloseId(close.close_id)
+        val rows = inventoryLines.map { line ->
+            line.copy(close_id = close.close_id, id = 0)
+        }
+        if (rows.isNotEmpty()) {
+            dayCloseInventoryDao.insertAll(rows)
+        }
         val finalized = close.copy(
             is_finalized = true,
             closed_at = System.currentTimeMillis(),
@@ -254,16 +398,28 @@ class DayCloseRepository @Inject constructor(
 
     /**
      * Builds the outstanding inventory report using FIFO lot allocation.
-     * Returns lots for all products that have remaining stock.
-     *
-     * [agingAmberDays] and [agingRedDays] control the thresholds for aging flags.
+     * When today's day close for [businessDateMillis] is finalized, per-product
+     * [DayCloseInventoryEntity.actual_remaining] overrides FIFO remaining (AC11).
      */
     suspend fun buildOutstandingInventory(
         businessDateMillis: Long,
         agingAmberDays: Int = 3,
         agingRedDays: Int = 7,
     ): List<OutstandingProductLine> {
+        val dayStart = DateWindowHelper.startOfDay(businessDateMillis)
         val end = DateWindowHelper.endOfDay(businessDateMillis)
+
+        val todayClose = dayCloseDao.getByDate(dayStart)
+        val actualKgByProduct: Map<String, Double> =
+            if (todayClose?.is_finalized == true) {
+                dayCloseInventoryDao.getByCloseId(todayClose.close_id)
+                    .mapNotNull { line ->
+                        line.actual_remaining?.let { line.product_id to it }
+                    }
+                    .toMap()
+            } else {
+                emptyMap()
+            }
 
         val allLots = acquisitionDao.getAllAcquisitionLotsOldestFirst()
         val soldUpTo = orderDao.getTotalSoldQtyByProductUpTo(end)
@@ -276,9 +432,28 @@ class DayCloseRepository @Inject constructor(
             val totalSoldKg = soldUpTo[productId]?.total_qty ?: 0.0
             val result = InventoryFifoAllocator.allocate(lots, totalSoldKg, now)
 
-            if (result.totalRemainingKg <= 0) return@mapNotNull null
+            val actualOverride = actualKgByProduct[productId]
+            val totalRemainingKg = actualOverride ?: result.totalRemainingKg
+            val useFifoLots = actualOverride == null
 
-            val agingFlag = result.oldestUnsoldDateMillis?.let { oldest ->
+            if (totalRemainingKg <= 0) return@mapNotNull null
+
+            val fifoValuePhp = result.lots.sumOf { it.remainingQtyKg * it.pricePerUnit }
+            val displayValuePhp = when {
+                actualOverride != null && result.totalRemainingKg > 1e-9 ->
+                    actualOverride * (fifoValuePhp / result.totalRemainingKg)
+                actualOverride != null ->
+                    lots.maxByOrNull { it.date_acquired }?.let { actualOverride * it.price_per_unit }
+                        ?: 0.0
+                else -> fifoValuePhp
+            }
+
+            val agingSourceMillis = when {
+                !useFifoLots -> todayClose?.closed_at ?: result.oldestUnsoldDateMillis
+                else -> result.oldestUnsoldDateMillis
+            }
+
+            val agingFlag = agingSourceMillis?.let { oldest ->
                 val days = ((now - oldest) / MS_PER_DAY).toInt()
                 when {
                     days >= agingRedDays -> AgingFlag.RED
@@ -290,12 +465,16 @@ class DayCloseRepository @Inject constructor(
             OutstandingProductLine(
                 productId = productId,
                 productName = lots.first().product_name,
-                totalRemainingKg = result.totalRemainingKg,
-                oldestUnsoldDateMillis = result.oldestUnsoldDateMillis,
+                totalRemainingKg = totalRemainingKg,
+                displayValuePhp = displayValuePhp,
+                oldestUnsoldDateMillis = agingSourceMillis,
                 agingFlag = agingFlag,
-                lots = result.lots,
+                lots = if (useFifoLots) result.lots else emptyList(),
+                usesActualFromDayClose = actualOverride != null,
             )
-        }.sortedByDescending { it.agingFlag.ordinal }
+        }.sortedByDescending { line ->
+            line.oldestUnsoldDateMillis?.let { (now - it) / MS_PER_DAY } ?: 0L
+        }
     }
 
     // ─── Audit helper ─────────────────────────────────────────────────────────
@@ -319,20 +498,11 @@ class DayCloseRepository @Inject constructor(
         val productId: String,
         val productName: String,
         val totalRemainingKg: Double,
+        val displayValuePhp: Double,
         val oldestUnsoldDateMillis: Long?,
         val agingFlag: AgingFlag,
         val lots: List<InventoryFifoAllocator.LotResult>,
-    )
-
-    // Intermediate type used inside buildInventorySnapshot — not exposed externally
-    private data class InventoryLine(
-        val productId: String,
-        val productName: String,
-        val totalAcquiredKg: Double,
-        val totalSoldKg: Double,
-        val priorVariance: Double,
-        val soldTodayKg: Double,
-        val wac: Double,
+        val usesActualFromDayClose: Boolean = false,
     )
 
     companion object {
