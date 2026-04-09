@@ -3,7 +3,7 @@
 **Canon:** [`USER_STORIES.md`](./USER_STORIES.md) Epic 12 (EOD-US-01 onward, including EOD-US-11 to EOD-US-15 follow-ups)  
 **Maintenance:** For cross-doc status sync, use the **Canonical status table** in [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PARTIAL_IMPLEMENTATION_PLAN.md).  
 **Readiness report:** See `docs/bugs.md` and inline notes below  
-**Created:** 2026-04-07 · **Snapshot updated:** 2026-04-09 (Stream E implementation pass)  
+**Created:** 2026-04-07 · **Snapshot updated:** 2026-04-09 (Stream E + closure verification pass)  
 **DB version (current app):** `FarmDatabase` **v10** (day close entities landed in v9+; verify in `FarmDatabase.kt`).
 
 ---
@@ -34,13 +34,23 @@ This order was executed and mirrored in [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PAR
 | **EOD-US-14** | `ui/screens/eod/DayCloseHistoryScreen.kt`, `ui/screens/eod/DayCloseHistoryViewModel.kt`, `data/repository/DayCloseRepository.kt` | `./gradlew assembleDebug` ✅; verify history rows show margin/closed by/closed at and date filters still work | `[x]` |
 | **EOD-US-11** | `ui/screens/eod/DayCloseScreen.kt`, `ui/screens/eod/DayCloseViewModel.kt`, `data/repository/DayCloseRepository.kt` | `./gradlew assembleDebug` ✅; verify explicit Review → Confirm flow and existing finalize guards remain intact | `[x]` |
 
+### Closure slice for remaining partials (completed)
+
+Manual verification is complete for the former partials in canon: **EOD-US-04**, **EOD-US-09**, **EOD-US-10**.
+
+| Story | Primary files | Validation steps | Status |
+|-------|---------------|------------------|--------|
+| **EOD-US-04** | `ui/screens/eod/DayCloseViewModel.kt`, `ui/screens/eod/DayCloseScreen.kt`, `app/src/test/java/com/redn/farm/ui/screens/eod/DayCloseViewModelCashGuardTest.kt` | `./gradlew :app:testDebugUnitTest --tests "*DayCloseViewModel*"` ✅; manual finalize-guard discrepancy/remarks scenarios ✅ | `[x]` |
+| **EOD-US-10** | `data/repository/DayCloseRepository.kt`, `ui/screens/eod/OutstandingInventoryScreen.kt`, `ui/screens/eod/OutstandingInventoryViewModel.kt`, `utils/ThermalPrintBuilders.kt` | `./gradlew assembleDebug` ✅; manual AC3 ledger fields + filter/sort/print checks ✅ | `[x]` |
+| **EOD-US-09** | `ui/screens/eod/DayCloseScreen.kt`, `utils/ThermalPrintBuilders.kt` | `./gradlew assembleDebug` ✅; manual employee summary labels/notes UX/thermal wages line checks ✅ | `[x]` |
+
 | Area | In codebase (high level) | Typical gaps vs USER_STORIES |
 |------|-------------------------|------------------------------|
 | Schema / DAOs / repository | `DayCloseEntity`, inventory, audit, `DayCloseRepository`, FIFO helper, date windowing | Fine-tune aggregates, finalize persistence for all fields |
 | Navigation / RBAC | `DayClose`, `DayCloseHistory`, `OutstandingInventory` routes; dashboard tiles; `Rbac` day-close roles | Optional dedicated read-only **day close detail** route |
 | **DayCloseScreen** | Warnings, channel + top products, cumulative + outflows, full cash card, inventory (prior variance, toggle, persist, finalize bulk write), outstanding orders, employees, notes, print, admin un-finalize, explicit Review → Confirm finalize | Remaining gaps tracked outside this tracker (if any) |
 | **DayCloseHistoryScreen** | List + All/30d/90d filter + open by date → **DayCloseScreen**; richer row metadata (sales/orders/margin/closed by/at) | Remaining gaps tracked outside this tracker (if any) |
-| **OutstandingInventoryScreen** | Search, category, at-risk, total value, print, FIFO + **AC11** actual override | Per-row full ledger columns (optional) |
+| **OutstandingInventoryScreen** | Search, category, at-risk, total value, print, FIFO + **AC11** actual override, per-row ledger columns | Device QA on print formatting |
 | Thermal EOD / outstanding print | **`buildEodSummary` (PRN-09)**, **`buildOutstandingInventoryReport` (PRN-10)** | Device QA on Sunmi |
 
 ---

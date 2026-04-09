@@ -547,7 +547,7 @@ fun buildEodSummary(
         }
     }
     appendLine(thermalDividerLight())
-    appendLine(formatThermalLine("Wages today", CurrencyFormatter.format(wagesToday)))
+    appendLine(formatThermalLine("Employee wages paid today", CurrencyFormatter.format(wagesToday)))
     appendLine(thermalDividerHeavy())
     if (isDraft) {
         appendLine(formatThermalLine("Printed by", printedBy.take(18)))
@@ -583,8 +583,8 @@ fun buildOutstandingInventoryReport(
     appendLine(thermalDividerLight())
     lines.forEach { (name, qtyKg, days) ->
         appendLine(name.take(THERMAL_LINE_WIDTH))
-        appendLine(formatThermalLine(" qty kg", "%.3f".format(qtyKg)))
-        appendLine(formatThermalLine(" days", days.toString()))
+        appendLine(formatThermalLine(" qty (kg)", "%.3f".format(qtyKg)))
+        appendLine(formatThermalLine(" days on hand", days.toString()))
         appendLine(thermalDividerLight())
     }
     appendLine(formatThermalLine("TOTAL VALUE", CurrencyFormatter.format(totalValue)))

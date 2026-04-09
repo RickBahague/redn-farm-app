@@ -23,6 +23,30 @@ import javax.inject.Inject
 
 private const val CASH_EPS = 0.01
 
+internal fun cashDiscrepancyForFinalize(
+    cashOnHand: Double?,
+    expectedCashFromOrders: Double,
+    remittedToday: Double,
+): Double {
+    val drawerExpected = expectedCashFromOrders - remittedToday
+    return if (cashOnHand != null) cashOnHand - drawerExpected else drawerExpected
+}
+
+internal fun cashRemarksMissingForFinalize(
+    cashOnHand: Double?,
+    expectedCashFromOrders: Double,
+    remittedToday: Double,
+    remarks: String?,
+): Boolean {
+    val discrepancy = cashDiscrepancyForFinalize(
+        cashOnHand = cashOnHand,
+        expectedCashFromOrders = expectedCashFromOrders,
+        remittedToday = remittedToday,
+    )
+    if (abs(discrepancy) <= CASH_EPS) return false
+    return remarks.isNullOrBlank()
+}
+
 // ─── UI state ──────────────────────────────────────────────────────────────
 
 sealed class DayCloseUiState {
@@ -232,14 +256,13 @@ class DayCloseViewModel @Inject constructor(
         }
     }
 
-    private fun drawerExpectedCash(state: DayCloseUiState.Ready): Double =
-        state.snapshot.expectedCashFromOrders - state.snapshot.remittedToday
-
     private fun cashRemarksMissing(state: DayCloseUiState.Ready): Boolean {
-        val counted = state.close.cash_on_hand
-        if (counted == null) return false
-        if (abs(counted - drawerExpectedCash(state)) <= CASH_EPS) return false
-        return state.close.cash_reconciliation_remarks.isNullOrBlank()
+        return cashRemarksMissingForFinalize(
+            cashOnHand = state.close.cash_on_hand,
+            expectedCashFromOrders = state.snapshot.expectedCashFromOrders,
+            remittedToday = state.snapshot.remittedToday,
+            remarks = state.close.cash_reconciliation_remarks,
+        )
     }
 
     /** Request finalization. Shows confirmation dialog if margin is negative (D4). */

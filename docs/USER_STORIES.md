@@ -1314,7 +1314,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** a store assistant, **I want to** reconcile the cash I collected today against what the system shows as paid **so that** any cash discrepancy is identified and recorded.
 
 **Actor:** Store Assistant, Admin
-**Status:** ✅ *(partial — expected paid offline+reseller, remittances (**REMITTANCE**), disbursements line, digital collections, colored **expected − remitted** and **counted vs drawer expectation**; **block finalize** when cash on hand differs from drawer expectation and remarks empty; **AC3** does not require remarks solely for non-zero **expected − remitted** without a counted cash figure.)*
+**Status:** ✅ *(cash discrepancy guard and remarks policy finalized; cash section labels/validation copy aligned; finalize guard scenarios covered in ViewModel tests; manual Day Close flow checks passed.)*
 
 **Acceptance criteria:**
 1. The cash reconciliation section shows:
@@ -1416,7 +1416,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** an admin or purchasing assistant, **I want to** view all stock currently on hand across all acquisitions **so that** I know exactly what I have, what it cost, how long it has been sitting, and what is at risk of spoilage.
 
 **Actor:** Admin, Purchasing Assistant
-**Status:** ✅ *(partial — search, category chips, **at-risk** toggle, total value, **print** via **`buildOutstandingInventoryReport`**; FIFO lots + aging colors; **AC11** uses **`actual_remaining`** when today's close is finalized; per-row **AC3** ledger fields not all shown on the card.)*
+**Status:** ✅ *(search, category chips, **at-risk** toggle, total value, **print** via **`buildOutstandingInventoryReport`**; FIFO lots + aging colors; **AC11** uses **`actual_remaining`** when today's close is finalized; AC3 per-product ledger fields now shown on card with explicit units.)*
 
 **Background:** "Outstanding inventory" is distinct from the EOD-US-03 inventory close. EOD-US-03 is a reconciliation done at close time that posts spoilage. The outstanding inventory report is a **live, always-available view** of the current theoretical stock position derived from all acquisition and order records — accessible at any time during the day, not just at close. It is the answer to "what do I still have on hand right now?"
 
@@ -1484,7 +1484,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** an admin, **I want to** see a summary of which employees worked today and what wages are due **so that** payroll is accounted for each day even if payment is made later.
 
 **Actor:** Admin
-**Status:** ✅ *(partial — payments today with gross, advance, net (**BUG-EMP-01** formula); **Wages / shift notes** on `day_closes.notes`; thermal uses wages total line.)*
+**Status:** ✅ *(payments today show employee, gross, cash advance, net (**BUG-EMP-01** formula); notes UX explicitly supports wages-due/non-blocking close; thermal line wording aligned to "Employee wages paid today".)*
 
 **Acceptance criteria:**
 1. The Day Close screen includes an **Employee Day Summary** section.

@@ -424,6 +424,8 @@ class DayCloseRepository @Inject constructor(
         val allLots = acquisitionDao.getAllAcquisitionLotsOldestFirst()
         val soldUpTo = orderDao.getTotalSoldQtyByProductUpTo(end)
             .associateBy { it.product_id }
+        val priorSpoilageByProduct = dayCloseInventoryDao.getPriorPostedVarianceByProduct(dayStart)
+            .associate { it.product_id to it.total_variance }
 
         val grouped = allLots.groupBy { it.product_id }
         val now = System.currentTimeMillis()
@@ -431,6 +433,21 @@ class DayCloseRepository @Inject constructor(
         return grouped.mapNotNull { (productId, lots) ->
             val totalSoldKg = soldUpTo[productId]?.total_qty ?: 0.0
             val result = InventoryFifoAllocator.allocate(lots, totalSoldKg, now)
+            val totalAcquiredKg = lots.sumOf { lot ->
+                if (lot.is_per_kg) {
+                    lot.quantity
+                } else {
+                    val pieceCount = lot.piece_count ?: 1.0
+                    if (pieceCount > 0.0) lot.quantity / pieceCount else lot.quantity
+                }
+            }
+            val priorPostedSpoilageKg = priorSpoilageByProduct[productId] ?: 0.0
+            val theoreticalOnHandKg = totalAcquiredKg - totalSoldKg - priorPostedSpoilageKg
+            val weightedAverageCostPerKg = if (totalAcquiredKg > 0.0) {
+                lots.sumOf { it.total_amount } / totalAcquiredKg
+            } else {
+                0.0
+            }
 
             val actualOverride = actualKgByProduct[productId]
             val totalRemainingKg = actualOverride ?: result.totalRemainingKg
@@ -468,12 +485,18 @@ class DayCloseRepository @Inject constructor(
                 totalRemainingKg = totalRemainingKg,
                 displayValuePhp = displayValuePhp,
                 oldestUnsoldDateMillis = agingSourceMillis,
+                daysOnHand = agingSourceMillis?.let { ((now - it) / MS_PER_DAY).toInt().coerceAtLeast(0) } ?: 0,
                 agingFlag = agingFlag,
                 lots = if (useFifoLots) result.lots else emptyList(),
                 usesActualFromDayClose = actualOverride != null,
+                totalAcquiredKg = totalAcquiredKg,
+                totalSoldKg = totalSoldKg,
+                priorPostedSpoilageKg = priorPostedSpoilageKg,
+                theoreticalOnHandKg = theoreticalOnHandKg,
+                weightedAverageCostPerKg = weightedAverageCostPerKg,
             )
         }.sortedByDescending { line ->
-            line.oldestUnsoldDateMillis?.let { (now - it) / MS_PER_DAY } ?: 0L
+            line.daysOnHand
         }
     }
 
@@ -500,9 +523,15 @@ class DayCloseRepository @Inject constructor(
         val totalRemainingKg: Double,
         val displayValuePhp: Double,
         val oldestUnsoldDateMillis: Long?,
+        val daysOnHand: Int,
         val agingFlag: AgingFlag,
         val lots: List<InventoryFifoAllocator.LotResult>,
         val usesActualFromDayClose: Boolean = false,
+        val totalAcquiredKg: Double,
+        val totalSoldKg: Double,
+        val priorPostedSpoilageKg: Double,
+        val theoreticalOnHandKg: Double,
+        val weightedAverageCostPerKg: Double,
     )
 
     companion object {

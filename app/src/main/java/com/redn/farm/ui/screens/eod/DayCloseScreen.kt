@@ -74,7 +74,9 @@ fun DayCloseScreen(
                 viewModel.consumeEvent()
             }
             is DayCloseEvent.CashRemarksRequired -> {
-                snackbarHostState.showSnackbar("Enter reconciliation remarks when cash on hand differs from expected drawer.")
+                snackbarHostState.showSnackbar(
+                    "Add reconciliation remarks for any non-zero discrepancy before finalizing."
+                )
                 viewModel.consumeEvent()
             }
             null -> Unit
@@ -498,10 +500,16 @@ private fun DayCloseReadyContent(
         }
 
         item {
-            DayCloseSectionCard(title = "Employee payments (today)") {
+            DayCloseSectionCard(title = "Employee Day Summary") {
+                Text(
+                    "Net pay formula (BUG-EMP-01): gross wage + cash advance.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
                 if (snap.employeePayments.isEmpty()) {
                     Text(
-                        "No employee payments recorded today.",
+                        "No employee payments recorded today",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -509,11 +517,9 @@ private fun DayCloseReadyContent(
                     snap.employeePayments.forEach { row ->
                         val p = row.payment
                         val net = p.amount + (p.cash_advance_amount ?: 0.0)
-                        Text(row.employeeName, style = MaterialTheme.typography.titleSmall)
+                        DayCloseRow("Employee", row.employeeName)
                         DayCloseRow("Gross wage", CurrencyFormatter.format(p.amount))
-                        p.cash_advance_amount?.takeIf { it != 0.0 }?.let { adv ->
-                            DayCloseRow("Cash advance", CurrencyFormatter.format(adv))
-                        }
+                        DayCloseRow("Cash advance", CurrencyFormatter.format(p.cash_advance_amount ?: 0.0))
                         DayCloseRow("Net pay", CurrencyFormatter.format(net))
                         Spacer(Modifier.height(4.dp))
                     }
@@ -595,9 +601,9 @@ private fun EmployeeNotesCard(
     onSaveNotes: (String?) -> Unit,
 ) {
     var notesText by remember { mutableStateOf(notes ?: "") }
-    DayCloseSectionCard(title = "Wages / shift notes") {
+    DayCloseSectionCard(title = "Wages due notes (optional)") {
         Text(
-            "Optional notes on wages due or shift handover (saved on the day close record).",
+            "Use this to record wages due but not yet paid. This note is optional and does not block finalize.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -776,6 +782,12 @@ private fun CashReconciliationCard(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Text(
+            "Finalize rule: non-zero discrepancy requires remarks. " +
+                "Uses counted cash when entered; otherwise expected minus remitted.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         DayCloseRow("Expected (paid off+res)", CurrencyFormatter.format(expectedCashOrders))
         DayCloseRow("Remitted today", CurrencyFormatter.format(remittedToday))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -811,7 +823,7 @@ private fun CashReconciliationCard(
             counted?.let { c ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(
-                        "Counted vs drawer exp.",
+                        "Discrepancy (counted - drawer)",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

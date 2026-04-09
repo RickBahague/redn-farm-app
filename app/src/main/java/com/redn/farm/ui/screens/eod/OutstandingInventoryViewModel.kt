@@ -102,10 +102,7 @@ class OutstandingInventoryViewModel @Inject constructor(
     fun buildPrintText(printedBy: String): String? {
         val state = _uiState.value as? OutstandingInventoryUiState.Ready ?: return null
         val lines = state.filteredLines.map { line ->
-            val days = line.oldestUnsoldDateMillis?.let { ms ->
-                ((System.currentTimeMillis() - ms) / (24 * 60 * 60 * 1000)).toInt()
-            } ?: 0
-            Triple(line.productName, line.totalRemainingKg, days)
+            Triple(line.productName, line.totalRemainingKg, line.daysOnHand)
         }
         val suffix = when {
             state.searchQuery.isNotBlank() -> "filtered"

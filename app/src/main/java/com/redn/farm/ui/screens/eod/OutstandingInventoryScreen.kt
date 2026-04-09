@@ -220,8 +220,31 @@ private fun OutstandingProductCard(
                 Column(Modifier.weight(1f)) {
                     Text(line.productName, style = MaterialTheme.typography.titleSmall, color = agingColor)
                     Text(
-                        String.format("%.3f kg · %s", line.totalRemainingKg, CurrencyFormatter.format(line.displayValuePhp)),
+                        String.format(
+                            "Outstanding: %.3f kg · %s",
+                            line.totalRemainingKg,
+                            CurrencyFormatter.format(line.displayValuePhp),
+                        ),
                         style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        String.format(
+                            "Acquired %.3f kg · Sold %.3f kg · Spoilage %.3f kg",
+                            line.totalAcquiredKg,
+                            line.totalSoldKg,
+                            line.priorPostedSpoilageKg,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        String.format(
+                            "Theoretical on hand: %.3f kg · WAC: %s/kg",
+                            line.theoreticalOnHandKg,
+                            CurrencyFormatter.format(line.weightedAverageCostPerKg),
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (line.usesActualFromDayClose) {
@@ -236,7 +259,7 @@ private fun OutstandingProductCard(
                             Instant.ofEpochMilli(millis), ZoneId.systemDefault()
                         ).format(dateFmt)
                         Text(
-                            "Oldest lot: $dateStr",
+                            "Oldest unsold lot: $dateStr · ${line.daysOnHand} days on hand",
                             style = MaterialTheme.typography.labelSmall,
                             color = agingColor,
                         )
@@ -277,7 +300,7 @@ private fun LotRow(lot: InventoryFifoAllocator.LotResult, dateFmt: DateTimeForma
     ) {
         Text(dateStr, style = MaterialTheme.typography.labelSmall, color = agingColor)
         Text(
-            String.format("%.3f kg · %d days", lot.remainingQtyKg, lot.ageDays),
+            String.format("%.3f kg remaining · %d days on hand", lot.remainingQtyKg, lot.ageDays),
             style = MaterialTheme.typography.labelSmall,
             color = agingColor
         )

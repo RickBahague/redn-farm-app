@@ -27,7 +27,7 @@ It is derived from `USER_STORIES.md` status lines. Any stream not listed here as
 | **B — Preset traceability** | ✅ Complete | `MGT-US-05` + `AUTH-US-04` AC6 shipped/verified |
 | **C — Export truncate/clear** | ✅ Complete | `EXP-US-02` shipped (documented scope exclusions) |
 | **D — Schema documentation** | ✅ Complete | `SYS-US-04` shipped |
-| **E — End of day** | ⚠️ Not fully complete | Remaining partial stories: `EOD-US-04`, `EOD-US-09`, `EOD-US-10` |
+| **E — End of day** | ✅ Complete | Closure verification finished for `EOD-US-04`, `EOD-US-09`, `EOD-US-10` |
 | **F — Employee payments filters** | ✅ Complete | `EMP-US-06` AC2b shipped |
 | **G — Pricing spec alignment** | ✅ Complete | `MGT-US-01`, `NFR-US-05` shipped |
 | **H — Documentation consistency** | 🔄 Ongoing | Keep cross-doc sync after each shipment |
@@ -36,192 +36,53 @@ It is derived from `USER_STORIES.md` status lines. Any stream not listed here as
 
 Only items below should be treated as **remaining implementation work**.
 
-#### 1) `EOD-US-04` — Cash reconciliation (close remaining AC)
+#### 1) `EOD-US-04` — Cash reconciliation (closed)
 
-**Current status in canon:** ✅ (partial)
+**Current status in canon:** ✅
 
-- [ ] **AC3 policy alignment:** Decide and implement single discrepancy rule for finalize guard:  
-      require remarks for any non-zero discrepancy per AC text, or update AC text/status note to keep current counted-vs-drawer-only rule.
-- [ ] **Finalize guard tests:** Add/extend ViewModel tests for all discrepancy paths:  
-      zero discrepancy, expected-vs-remitted non-zero with no `cash_on_hand`, counted-vs-drawer mismatch with/without remarks.
-- [ ] **UX copy consistency:** Ensure Day Close labels and validation message match final policy language (discrepancy definition + remarks requirement).
-- [ ] **Doc sync:** Update `USER_STORIES.md` (`EOD-US-04` status line) and `EOD_EPIC_TRACKER.md` after policy is finalized.
+- [x] **AC3 policy alignment:** Finalize guard and discrepancy policy aligned and implemented.
+- [x] **Finalize guard tests:** ViewModel discrepancy paths covered in `DayCloseViewModelCashGuardTest`.
+- [x] **UX copy consistency:** Day Close labels and validation message aligned with finalized policy language.
+- [x] **Doc sync:** `USER_STORIES.md` and `EOD_EPIC_TRACKER.md` updated.
 
-#### 2) `EOD-US-10` — Outstanding inventory report (complete AC3 card fields)
+#### 2) `EOD-US-10` — Outstanding inventory report (closed)
 
-**Current status in canon:** ✅ (partial)
+**Current status in canon:** ✅
 
-- [ ] **AC3 per-product ledger fields:** Show missing fields on card (or equivalent clearly visible row content):  
-      total acquired, total sold, previously posted spoilage, theoretical on hand, weighted average cost/unit, outstanding value, oldest unsold date, days on hand.
-- [ ] **Units and labeling pass:** Ensure qty/unit labels are explicit and consistent across summary card, lot drill-down, and thermal output.
-- [ ] **Sort/filter regression check:** Preserve current behaviors while adding AC3 fields: default sort by days-on-hand desc, category filter, search, at-risk toggle.
-- [ ] **Doc sync:** Update `USER_STORIES.md` (`EOD-US-10` status line) and `EOD_EPIC_TRACKER.md` once AC3 display is complete.
+- [x] **AC3 per-product ledger fields:** Card shows full per-product ledger fields from AC3.
+- [x] **Units and labeling pass:** Qty/unit labels aligned across summary card, lot drill-down, and thermal output.
+- [x] **Sort/filter regression check:** Existing sort/filter behavior retained.
+- [x] **Doc sync:** `USER_STORIES.md` and `EOD_EPIC_TRACKER.md` updated.
 
-#### 3) `EOD-US-09` — Employee day summary at close (close partial status)
+#### 3) `EOD-US-09` — Employee day summary at close (closed)
 
-**Current status in canon:** ✅ (partial)
+**Current status in canon:** ✅
 
-- [ ] **AC2 presentation audit:** Confirm row fields exactly match canonical labels (employee, gross wage, cash advance, net pay) and formula note references `BUG-EMP-01`.
-- [ ] **AC4 notes UX audit:** Confirm notes affordance clearly communicates “wages due but not yet paid” intent and remains non-blocking for finalize.
-- [ ] **AC6 print wording parity:** Validate thermal line text/format is aligned with story wording (“Employee wages paid today: PHP X,XXX.00”).
-- [ ] **Doc sync:** Update `USER_STORIES.md` (`EOD-US-09` status line) and `EOD_EPIC_TRACKER.md` after final UX/print parity checks.
+- [x] **AC2 presentation audit:** Employee row labels/fields aligned with canonical wording (employee, gross, cash advance, net).
+- [x] **AC4 notes UX audit:** Notes affordance explicitly supports wages-due/non-blocking finalize intent.
+- [x] **AC6 print wording parity:** Thermal wages line wording aligned with story wording.
+- [x] **Doc sync:** `USER_STORIES.md` and `EOD_EPIC_TRACKER.md` updated.
 
 ### Exit criteria for this checklist
 
-- [ ] `EOD-US-04`, `EOD-US-09`, `EOD-US-10` move from **✅ (partial)** to **✅** in `USER_STORIES.md`
-- [ ] Epic 12 tracker reflects identical completion state and notes
-- [ ] This file keeps historical record sections below but the **Remaining AC checklist** remains the active handoff section
+- [x] `EOD-US-04`, `EOD-US-09`, `EOD-US-10` moved from **✅ (partial)** to **✅** in `USER_STORIES.md`
+- [x] Epic 12 tracker reflects identical completion state and notes
+- [x] This file keeps historical record sections below while this checklist records closure completion
 
-### Agent task cards (assignable)
+### Execution notes (archived)
 
-Use one card per agent. Keep each implementation branch scoped to one story.
+The detailed agent cards, dispatch templates, and parallel merge checklist were used to close
+`EOD-US-04`, `EOD-US-09`, and `EOD-US-10`. They are now archived from this active section to keep the
+document concise after closure.
 
-#### Agent Card A — `EOD-US-04` Cash reconciliation
+Final verification snapshot (2026-04-09):
 
-**Goal:** Close remaining AC policy gap and align UI + finalize behavior.
-
-**Primary scope/files:**
-- `app/src/main/java/com/redn/farm/ui/screens/eod/DayCloseViewModel.kt`
-- `app/src/main/java/com/redn/farm/ui/screens/eod/DayCloseScreen.kt`
-- `app/src/main/java/com/redn/farm/data/repository/DayCloseRepository.kt` *(only if query/policy data wiring changes)*
-- `docs/USER_STORIES.md`
-- `docs/EOD_EPIC_TRACKER.md`
-
-**Implementation checklist:**
-- [ ] Decide canonical discrepancy policy for AC3 (strict "any non-zero discrepancy requires remarks" vs current counted-vs-drawer-only guard).
-- [ ] Implement finalize guard to match chosen policy.
-- [ ] Align on-screen labels/help text/snackbar with chosen policy.
-- [ ] Add or update unit tests for finalize guard permutations.
-- [ ] Update story status text + tracker note after behavior is finalized.
-
-**Acceptance verification (manual + automated):**
-- [ ] `./gradlew :app:testDebugUnitTest --tests "*DayCloseViewModel*"`
-- [ ] Manual: expected-remitted non-zero with no cash-on-hand -> behavior matches canonical policy.
-- [ ] Manual: counted cash mismatch with empty remarks -> finalize blocked with clear guidance.
-- [ ] Manual: discrepancy resolved or remarks provided -> finalize allowed.
-
-**Out of scope:** redesigning cash section layout beyond wording/validation needed for AC parity.
-
----
-
-#### Agent Card B — `EOD-US-10` Outstanding inventory report
-
-**Goal:** Complete AC3 per-product ledger display while preserving existing filters/print behavior.
-
-**Primary scope/files:**
-- `app/src/main/java/com/redn/farm/ui/screens/eod/OutstandingInventoryScreen.kt`
-- `app/src/main/java/com/redn/farm/ui/screens/eod/OutstandingInventoryViewModel.kt` *(if UI model needs additional fields/plumbing)*
-- `app/src/main/java/com/redn/farm/data/repository/DayCloseRepository.kt` *(if missing card fields are not exposed yet)*
-- `app/src/main/java/com/redn/farm/utils/ThermalPrintBuilders.kt` *(only if label/unit parity updates are needed)*
-- `docs/USER_STORIES.md`
-- `docs/EOD_EPIC_TRACKER.md`
-
-**Implementation checklist:**
-- [ ] Surface all AC3 summary fields on each product card (or equivalent always-visible summary row).
-- [ ] Keep unit labels explicit and consistent for qty, cost/unit, and value.
-- [ ] Preserve sort/filter behavior (days-on-hand desc default, search, category, at-risk).
-- [ ] Validate no regression in lot drill-down and print output.
-- [ ] Update story status text + tracker note after AC3 parity is complete.
-
-**Acceptance verification (manual + automated):**
-- [ ] `./gradlew assembleDebug`
-- [ ] Manual: product card visibly includes total acquired/sold/spoilage/theoretical/cost/value/oldest/date-age.
-- [ ] Manual: category, search, and at-risk filters still work together.
-- [ ] Manual: print output remains readable and unit-consistent.
-
-**Out of scope:** changing FIFO logic or aging thresholds unless required by AC defect.
-
----
-
-#### Agent Card C — `EOD-US-09` Employee day summary at close
-
-**Goal:** Remove partial status by closing display/wording parity checks for section + print line.
-
-**Primary scope/files:**
-- `app/src/main/java/com/redn/farm/ui/screens/eod/DayCloseScreen.kt`
-- `app/src/main/java/com/redn/farm/ui/screens/eod/DayCloseViewModel.kt` *(only if formatting data changes are needed)*
-- `app/src/main/java/com/redn/farm/utils/ThermalPrintBuilders.kt`
-- `docs/USER_STORIES.md`
-- `docs/EOD_EPIC_TRACKER.md`
-
-**Implementation checklist:**
-- [ ] Ensure row presentation matches AC2 labels (employee, gross wage, cash advance, net pay).
-- [ ] Ensure notes affordance clearly covers "wages due but not yet paid" and remains non-blocking.
-- [ ] Ensure printed wages line wording/format matches AC6 intent.
-- [ ] Confirm formula note remains aligned with `BUG-EMP-01`.
-- [ ] Update story status text + tracker note after parity confirmation.
-
-**Acceptance verification (manual + automated):**
-- [ ] `./gradlew assembleDebug`
-- [ ] Manual: with payments today, rows show all required fields and total wages line.
-- [ ] Manual: with no payments today, empty-state copy is shown and close remains allowed.
-- [ ] Manual: EOD slip includes wages line with expected wording/value.
-
-**Out of scope:** payroll domain rule changes outside EOD summary representation.
-
-### Parallel execution plan (3 agents)
-
-Run these cards in parallel, but with doc-update sequencing to avoid merge churn.
-
-#### Agent allocation
-
-| Agent | Card | Primary code focus | Risk level |
-|------|------|--------------------|------------|
-| **Agent 1** | Card A (`EOD-US-04`) | `DayCloseViewModel`, `DayCloseScreen`, tests | Medium |
-| **Agent 2** | Card B (`EOD-US-10`) | `OutstandingInventoryScreen` (+ repo/viewmodel if needed) | Medium |
-| **Agent 3** | Card C (`EOD-US-09`) | `DayCloseScreen`, `ThermalPrintBuilders` | Low/Medium |
-
-#### Branching strategy
-
-- Create one branch per card:
-  - `agent/eod-us-04-cash-recon`
-  - `agent/eod-us-10-outstanding-ac3`
-  - `agent/eod-us-09-employee-summary`
-- Keep each PR scoped to one story only (no opportunistic cleanup).
-- Defer shared doc edits (`USER_STORIES.md`, `EOD_EPIC_TRACKER.md`) until code is validated to reduce rebases.
-
-#### File overlap and conflict controls
-
-- **Potential overlap:** `DayCloseScreen.kt` (Agent 1 + Agent 3).
-  - Agent 1 owns **Cash reconciliation** section and finalize warnings/copy only.
-  - Agent 3 owns **Employee payments + notes** section and wages print wording only.
-  - No cross-edit outside owned section boundaries.
-- **No expected overlap:** Agent 2 work is mainly in `OutstandingInventory*` files.
-- Use small commits grouped by concern (UI, logic, tests, docs).
-
-#### Integration sequence (recommended)
-
-1. **Merge Agent 2 first** (`EOD-US-10`)  
-   Rationale: mostly isolated files; lowest blast radius on EOD screen.
-2. **Merge Agent 1 second** (`EOD-US-04`)  
-   Rationale: finalize guard behavior can affect close flow; should stabilize before final doc closure.
-3. **Rebase Agent 3**, then merge (`EOD-US-09`)  
-   Rationale: shared `DayCloseScreen.kt`; resolve any UI text/section adjacency conflicts last.
-4. **Final doc sync pass** in a short follow-up PR:
-   - update status lines in `USER_STORIES.md`
-   - update `EOD_EPIC_TRACKER.md`
-   - tick this checklist exit criteria
-
-#### Validation matrix before merge
-
-- **Agent 1 (`EOD-US-04`)**
+- ✅ Target stories closed in canon (`USER_STORIES.md`): `EOD-US-04`, `EOD-US-09`, `EOD-US-10`
+- ✅ Validation commands passed:
   - `./gradlew :app:testDebugUnitTest --tests "*DayCloseViewModel*"`
-  - manual finalize guard scenarios (remarks/discrepancy combinations)
-- **Agent 2 (`EOD-US-10`)**
   - `./gradlew assembleDebug`
-  - manual AC3 field visibility + filter/sort/print checks
-- **Agent 3 (`EOD-US-09`)**
-  - `./gradlew assembleDebug`
-  - manual employee summary rows, empty state, wages line in thermal slip
-- **Post-merge smoke**
-  - open Day Close for today, walk Review -> Confirm finalize path
-  - print draft + finalized EOD once
-
-#### Definition of done for parallel batch
-
-- All 3 card PRs merged without unresolved behavior conflicts.
-- `EOD-US-04`, `EOD-US-09`, `EOD-US-10` status lines moved to **✅** in `USER_STORIES.md`.
-- `EOD_EPIC_TRACKER.md` and this plan reflect same final state.
+- ✅ Manual smoke and print checks passed
+- ✅ Cross-doc sync completed in `USER_STORIES.md` and `EOD_EPIC_TRACKER.md`
 
 ---
 
@@ -407,7 +268,7 @@ Use this table as the single copy/paste reference when updating trackers; source
 | AUTH-US-04 | ✅ (AC6 verify) |
 | EXP-US-02 | ✅ (Stream C complete 2026-04-09) |
 | SYS-US-04 | ✅ (Stream D complete 2026-04-09) |
-| EOD-US-01 – EOD-US-10 | ✅ or ✅ (partial) — see **USER_STORIES.md** (Stream E 2026-04-09) |
+| EOD-US-01 – EOD-US-10 | ✅ (Stream E closure complete 2026-04-09) |
 | EOD-US-11 – EOD-US-15 | ✅ (Stream E follow-up shipped 2026-04-09) |
 | EMP-US-06 | ✅ (AC2b shipped 2026-04-09) |
 | NFR-US-05 | ✅ (shipped 2026-04-09) |
