@@ -12,6 +12,7 @@ import com.redn.farm.data.model.OrderItem
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.ProductPrice
 import com.redn.farm.data.pricing.OrderPricingResolver
+import com.redn.farm.data.pricing.defaultIsPerKgForOrderLine
 import com.redn.farm.data.repository.AcquisitionRepository
 import com.redn.farm.data.repository.CustomerRepository
 import com.redn.farm.data.repository.OrderRepository
@@ -129,23 +130,18 @@ class OrderHistoryViewModel @Inject constructor(
         }
     }
 
-    fun productSupportsDualUnit(product: Product): Boolean {
-        val pp = getLatestProductPrice(product.product_id) ?: return false
-        val hasKg = (pp.per_kg_price ?: 0.0) > 0 || (pp.discounted_per_kg_price != null && pp.discounted_per_kg_price!! > 0)
-        val hasPc = (pp.per_piece_price ?: 0.0) > 0 || (pp.discounted_per_piece_price != null && pp.discounted_per_piece_price!! > 0)
-        val acq = _activeSrpsByProduct.value[product.product_id]
-        val srpKg = acq?.let {
-            listOfNotNull(it.srp_online_per_kg, it.srp_reseller_per_kg, it.srp_offline_per_kg).any { v -> v > 0 }
-        } ?: false
-        val srpPc = acq?.let {
-            listOfNotNull(it.srp_online_per_piece, it.srp_reseller_per_piece, it.srp_offline_per_piece).any { v -> v > 0 }
-        } ?: false
-        return (hasKg && hasPc) || (srpKg && srpPc) || (hasKg && srpPc) || (hasPc && srpKg)
-    }
+    fun productSupportsDualUnit(product: Product): Boolean =
+        OrderPricingResolver.productSupportsDualUnit(
+            getLatestProductPrice(product.product_id),
+            _activeSrpsByProduct.value[product.product_id],
+        )
 
     fun defaultIsPerKgForProduct(product: Product): Boolean =
         !product.unit_type.equals("piece", ignoreCase = true) &&
             !product.unit_type.equals("pieces", ignoreCase = true)
+
+    fun defaultIsPerKgForProductLine(product: Product): Boolean =
+        defaultIsPerKgForOrderLine(product, _activeSrpsByProduct.value[product.product_id])
 
     fun getLatestProductPrice(productId: String): ProductPrice? {
         return _productPrices.value[productId]

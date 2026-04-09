@@ -84,7 +84,7 @@ class ExportViewModel @Inject constructor(
     }
 
     /**
-     * EXP-US-02: one CSV per selected table, same timestamp suffix on all files in the batch.
+     * EXP-US-01 batch export: one CSV per selected table, same timestamp suffix on all files in the batch.
      */
     fun exportSelectedBundle(selected: Set<ExportBundleTable>) {
         viewModelScope.launch {

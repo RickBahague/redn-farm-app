@@ -1,8 +1,10 @@
 # Phase 6 — Export completion (detailed tracker)
 
-**Created:** 2026-04-02  
+**Created:** 2026-04-02 · **Aligned:** 2026-04-09  
 **Related plan:** `rebuild_plan.md` Phase 6 (this file does **not** modify that document).  
-**Goal:** EXP-US-01 (all core tables + acquisitions SRP columns), EXP-US-02 (selective multi-file export), SYS-US-04 note (schema verification).
+**Goal:** EXP-US-01 (all core tables + acquisitions SRP columns), **batch CSV export** (checkbox bundle), SYS-US-04 note (schema verification).  
+
+**Naming note:** In **`USER_STORIES.md`**, **EXP-US-02** is **Clear / truncate tables** (still partial — see [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PARTIAL_IMPLEMENTATION_PLAN.md) Stream C). This tracker’s **P6-3** is that **selective multi-table export**, not truncate.
 
 ---
 
@@ -45,7 +47,7 @@
 
 ---
 
-## P6-3 — Selective export (EXP-US-02)
+## P6-3 — Selective **export** (batch CSV — maps to **EXP-US-01** bundle UX)
 
 | Item | Status | Notes |
 |------|--------|--------|
@@ -53,18 +55,19 @@
 | One CSV per table | `[x]` | Same `yyyyMMdd_HHmmss` suffix on every file in a batch |
 | Output directory | `[x]` | `Android/data/.../files/exports/` (unchanged) |
 | Admin-only UI | `[x]` | Selective card shown when `ExportViewModel.isAdmin` |
+| `product_prices` in bundle | `[ ]` | Still **individual export** only; optional follow-up |
 
 **Files:** `ExportBundleTable.kt`, `ExportViewModel.exportSelectedBundle`, `ExportScreen.kt`.
 
 ---
 
-## P6-4 — SYS-US-04 (Room vs `schema_evolution.sql` VERSION 4)
+## P6-4 — SYS-US-04 (Room vs `schema_evolution.sql`)
 
 | Item | Status | Notes |
 |------|--------|--------|
-| Generated DDL location | `[x]` | This project uses **KSP**, not kapt: `app/build/generated/ksp/debug/java/com/redn/farm/data/local/FarmDatabase_Impl.java` |
-| Manual diff | `[ ]` | Compare `_db.execSQL("CREATE TABLE...` blocks in that file to `docs/schema_evolution.sql` **VERSION 4** section |
-| `FarmDatabase` version | `[x]` | `@Database(version = 4)` in `FarmDatabase.kt` |
+| Generated DDL location | `[x]` | This project uses **KSP**: `app/build/generated/ksp/debug/java/com/redn/farm/data/local/FarmDatabase_Impl.java` |
+| Manual diff | `[ ]` | Compare `_db.execSQL("CREATE TABLE...` blocks to **`docs/schema_evolution.sql`** — append **VERSION N** matching **`FarmDatabase.kt` `version =`** (currently **10**) |
+| `FarmDatabase` version | `[~]` | Update this row when bumping Room; keep **`schema_evolution.sql`** header comment in sync |
 
 ---
 
@@ -80,3 +83,4 @@
 
 - Share/export intent from success dialog (share sheet).
 - Non-admin: hide or read-only Export screen if product policy requires it.
+- **USER_STORIES** **EXP-US-02**: multi-table clear with FK hints, presets + activation log, users — see [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PARTIAL_IMPLEMENTATION_PLAN.md) Stream C and [`BACKLOG.md`](./BACKLOG.md) **BUG-02**.

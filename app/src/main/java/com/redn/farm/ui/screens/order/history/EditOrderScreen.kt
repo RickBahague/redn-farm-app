@@ -1095,7 +1095,7 @@ private fun ProductSelectionDialog(
                                     .fillMaxWidth()
                                     .clickable {
                                         selectedProduct = product
-                                        isPerKg = viewModel.defaultIsPerKgForProduct(product)
+                                        isPerKg = viewModel.defaultIsPerKgForProductLine(product)
                                         quantity = ""
                                     }
                             )

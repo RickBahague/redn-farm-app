@@ -71,7 +71,22 @@ object OrderPricingResolver {
         return fallbackUnitPrice(productPrice, channel, isPerKg)
     }
 
-    /** Minimum positive per-kg SRP across channels for "from ₱X" summary (ORD-US-08). */
+    /**
+     * Whether the UI may offer a **per kg / per piece** toggle (BUG-ORD-07).
+     *
+     * Uses the same acquisition signals as [resolveUnitPrice]: [minPerKgSrpAcrossChannels] and
+     * [minPerPieceSrpAcrossChannels] (per-piece includes **derived** from per-kg + [Acquisition.piece_count]).
+     */
+    fun productSupportsDualUnit(productPrice: ProductPrice?, acquisition: Acquisition?): Boolean {
+        val pp = productPrice ?: return false
+        val hasKg = (pp.per_kg_price ?: 0.0) > 0 || (pp.discounted_per_kg_price ?: 0.0) > 0
+        val hasPc = (pp.per_piece_price ?: 0.0) > 0 || (pp.discounted_per_piece_price ?: 0.0) > 0
+        val srpKg = minPerKgSrpAcrossChannels(acquisition) != null
+        val srpPc = minPerPieceSrpAcrossChannels(acquisition) != null
+        return (hasKg && hasPc) || (srpKg && srpPc) || (hasKg && srpPc) || (hasPc && srpKg)
+    }
+
+    /** Minimum positive per-kg SRP across channels for "from ₱X" summary (ORD-US-08, PRD-US-01). */
     fun minPerKgSrpAcrossChannels(acquisition: Acquisition?): Double? {
         val acq = acquisition ?: return null
         val values = listOfNotNull(
@@ -81,4 +96,23 @@ object OrderPricingResolver {
         ).filter { it > 0 }
         return values.minOrNull()
     }
+
+    /** Minimum positive per-piece SRP (resolved per channel, includes derived from per-kg × piece_count) — PRD-US-01. */
+    fun minPerPieceSrpAcrossChannels(acquisition: Acquisition?): Double? {
+        val acq = acquisition ?: return null
+        val values = listOf(SalesChannel.ONLINE, SalesChannel.RESELLER, SalesChannel.OFFLINE)
+            .mapNotNull { ch -> srpFromAcquisition(acq, ch, isPerKg = false)?.takeIf { it > 0 } }
+        return values.minOrNull()
+    }
+
+    /** Non-null when the acquisition contributes at least one positive customer SRP used in the catalog. */
+    fun catalogSrpSummaryAmounts(acquisition: Acquisition?): CatalogSrpSummary? {
+        val acq = acquisition ?: return null
+        val minKg = minPerKgSrpAcrossChannels(acq)?.takeIf { it > 0 }
+        val minPc = minPerPieceSrpAcrossChannels(acq)?.takeIf { it > 0 }
+        if (minKg == null && minPc == null) return null
+        return CatalogSrpSummary(minPerKg = minKg, minPerPiece = minPc)
+    }
+
+    data class CatalogSrpSummary(val minPerKg: Double?, val minPerPiece: Double?)
 }

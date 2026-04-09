@@ -222,6 +222,9 @@ fun NavGraph(
                 ProductFormScreen(
                     productId = pid,
                     onNavigateBack = { navController.navigateUp() },
+                    onOpenPresetDetail = { presetId ->
+                        navController.navigate(Screen.PresetDetail.createRoute(presetId))
+                    },
                     viewModel = hiltViewModel(productsListEntry)
                 )
             }

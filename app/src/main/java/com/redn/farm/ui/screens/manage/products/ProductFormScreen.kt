@@ -17,9 +17,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +39,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,20 +49,48 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.redn.farm.data.model.Acquisition
 import com.redn.farm.data.model.Product
+import com.redn.farm.data.model.ProductPrice
+import com.redn.farm.data.pricing.OrderPricingResolver
+import com.redn.farm.data.pricing.SalesChannel
+import com.redn.farm.utils.CurrencyFormatter
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlin.math.max
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProductFormScreen(
     productId: String,
     onNavigateBack: () -> Unit,
+    onOpenPresetDetail: (String) -> Unit = {},
     viewModel: ManageProductsViewModel
 ) {
     val isNew = productId == "new"
     val products by viewModel.products.collectAsState()
+    val activeAcquisitionByProductId by viewModel.activeAcquisitionByProductId.collectAsState()
+    val canViewPresetDetail by viewModel.canViewPresetDetail.collectAsState()
+    val priceHistory by remember(productId) {
+        if (productId == "new") flowOf(emptyList()) else viewModel.observePriceHistory(productId)
+    }.collectAsState(initial = emptyList())
+    val acquisitionHistory by remember(productId) {
+        if (productId == "new") flowOf(emptyList()) else viewModel.observeAcquisitionHistory(productId)
+    }.collectAsState(initial = emptyList())
+    val currentActiveAcquisitionId =
+        if (isNew) null else activeAcquisitionByProductId[productId]?.acquisition_id?.takeIf { it > 0 }
+    val mergedHistory = remember(priceHistory, acquisitionHistory) {
+        mergeProductPriceHistory(priceHistory, acquisitionHistory)
+    }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val historyDateFmt = remember {
+        DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())
+    }
 
     val existing = remember(productId, products) {
         if (isNew) null else products.find { it.product_id == productId }
@@ -259,8 +291,155 @@ fun ProductFormScreen(
                     Text("Active", style = MaterialTheme.typography.titleSmall)
                     Switch(checked = isActive, onCheckedChange = { isActive = it })
                 }
+
+                Spacer(Modifier.height(16.dp))
+                Text("Price & SRP history", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Manual fallback entries and acquisitions (newest first).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                    ) {
+                        if (mergedHistory.isEmpty()) {
+                            Text(
+                                "No manual prices or acquisitions recorded yet.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            mergedHistory.forEachIndexed { index, row ->
+                                UnifiedHistoryRowContent(
+                                    row = row,
+                                    dateFmt = historyDateFmt,
+                                    currentActiveAcquisitionId = currentActiveAcquisitionId,
+                                    canOpenPreset = canViewPresetDetail,
+                                    onPresetClick = onOpenPresetDetail,
+                                )
+                                if (index < mergedHistory.lastIndex) {
+                                    HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                                }
+                            }
+                        }
+                    }
+                }
             }
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+private data class UnifiedHistoryRow(
+    val sortMillis: Long,
+    val manual: ProductPrice? = null,
+    val acquisition: Acquisition? = null,
+)
+
+private fun mergeProductPriceHistory(
+    manuals: List<ProductPrice>,
+    acquisitions: List<Acquisition>,
+): List<UnifiedHistoryRow> = buildList {
+    manuals.forEach { p ->
+        add(UnifiedHistoryRow(sortMillis = p.date_created, manual = p))
+    }
+    acquisitions.forEach { a ->
+        val created = a.created_at.takeIf { it > 0 }
+        val sortKey = if (created != null) max(a.date_acquired, created) else a.date_acquired
+        add(UnifiedHistoryRow(sortMillis = sortKey, acquisition = a))
+    }
+}.sortedByDescending { it.sortMillis }
+
+@Composable
+private fun UnifiedHistoryRowContent(
+    row: UnifiedHistoryRow,
+    dateFmt: DateTimeFormatter,
+    currentActiveAcquisitionId: Int?,
+    canOpenPreset: Boolean,
+    onPresetClick: (String) -> Unit,
+) {
+    fun formatMillis(millis: Long): String =
+        Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(dateFmt)
+
+    when {
+        row.manual != null -> {
+            val p = row.manual
+            Text(formatMillis(p.date_created), style = MaterialTheme.typography.labelMedium)
+            Text("Manual fallback", style = MaterialTheme.typography.titleSmall)
+            p.per_kg_price?.takeIf { it > 0 }?.let {
+                Text("Per kg: ${CurrencyFormatter.format(it)}", style = MaterialTheme.typography.bodyMedium)
+            }
+            p.per_piece_price?.takeIf { it > 0 }?.let {
+                Text("Per piece: ${CurrencyFormatter.format(it)}", style = MaterialTheme.typography.bodyMedium)
+            }
+            p.discounted_per_kg_price?.takeIf { it > 0 }?.let {
+                Text("Discounted kg: ${CurrencyFormatter.format(it)}", style = MaterialTheme.typography.bodySmall)
+            }
+            p.discounted_per_piece_price?.takeIf { it > 0 }?.let {
+                Text("Discounted pc: ${CurrencyFormatter.format(it)}", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        row.acquisition != null -> {
+            val a = row.acquisition
+            Text(formatMillis(a.date_acquired), style = MaterialTheme.typography.labelMedium)
+            val title = if (a.srp_custom_override) "Acquisition (custom SRP)" else "Acquisition (preset SRP)"
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                if (currentActiveAcquisitionId != null && a.acquisition_id == currentActiveAcquisitionId) {
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text("Current SRP") },
+                    )
+                }
+            }
+            Text(
+                "Lot #${a.acquisition_id} · ${String.format(Locale.getDefault(), "%.3f", a.quantity)} ${if (a.is_per_kg) "kg" else "pc"}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            val oKg = OrderPricingResolver.srpFromAcquisition(a, SalesChannel.ONLINE, true)
+            val rKg = OrderPricingResolver.srpFromAcquisition(a, SalesChannel.RESELLER, true)
+            val fKg = OrderPricingResolver.srpFromAcquisition(a, SalesChannel.OFFLINE, true)
+            Text(
+                "Online kg ${oKg?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
+                    "Reseller ${rKg?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
+                    "Store ${fKg?.let { CurrencyFormatter.format(it) } ?: "—"}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            val oPc = OrderPricingResolver.srpFromAcquisition(a, SalesChannel.ONLINE, false)
+            val rPc = OrderPricingResolver.srpFromAcquisition(a, SalesChannel.RESELLER, false)
+            val fPc = OrderPricingResolver.srpFromAcquisition(a, SalesChannel.OFFLINE, false)
+            if (listOf(oPc, rPc, fPc).any { it != null && it > 0 }) {
+                Text(
+                    "Per piece · Online ${oPc?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
+                        "Reseller ${rPc?.let { CurrencyFormatter.format(it) } ?: "—"} · " +
+                        "Store ${fPc?.let { CurrencyFormatter.format(it) } ?: "—"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            val ref = a.preset_ref?.trim().orEmpty()
+            if (ref.isNotEmpty()) {
+                if (canOpenPreset) {
+                    TextButton(onClick = { onPresetClick(ref) }) {
+                        Text("Preset: $ref")
+                    }
+                } else {
+                    Text(
+                        "Preset: $ref",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }

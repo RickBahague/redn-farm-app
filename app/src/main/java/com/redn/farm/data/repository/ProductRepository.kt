@@ -55,15 +55,46 @@ class ProductRepository @Inject constructor(
         }
     }
 
+    /** Full manual price history for **PRD-US-07** (newest first from DAO). */
+    fun getPriceHistory(productId: String): Flow<List<ProductPrice>> {
+        return productPriceDao.getPriceHistory(productId).map { entities ->
+            entities.map { e ->
+                ProductPrice(
+                    price_id = e.price_id,
+                    product_id = e.product_id,
+                    per_kg_price = e.per_kg_price,
+                    per_piece_price = e.per_piece_price,
+                    discounted_per_kg_price = e.discounted_per_kg_price,
+                    discounted_per_piece_price = e.discounted_per_piece_price,
+                    date_created = e.date_created
+                )
+            }
+        }
+    }
+
     fun getFilteredProducts(filters: ProductFilters): Flow<List<Product>> {
         return productDao.getAllProducts().map { products ->
             var filteredProducts = products.map { it.toProduct() }
 
             // Apply search filter
             if (filters.searchQuery.isNotEmpty()) {
+                val q = filters.searchQuery
                 filteredProducts = filteredProducts.filter { product ->
-                    product.product_name.contains(filters.searchQuery, ignoreCase = true) ||
-                    product.product_description.contains(filters.searchQuery, ignoreCase = true)
+                    product.product_name.contains(q, ignoreCase = true) ||
+                        product.product_description.contains(q, ignoreCase = true) ||
+                        product.product_id.contains(q, ignoreCase = true)
+                }
+            }
+            if (filters.unitTypeFilter.isNotBlank()) {
+                val u = filters.unitTypeFilter.trim()
+                filteredProducts = filteredProducts.filter { product ->
+                    product.unit_type.contains(u, ignoreCase = true)
+                }
+            }
+            if (filters.categoryFilter.isNotBlank()) {
+                val c = filters.categoryFilter.trim()
+                filteredProducts = filteredProducts.filter { product ->
+                    product.category?.contains(c, ignoreCase = true) == true
                 }
             }
 

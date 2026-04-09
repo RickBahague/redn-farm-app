@@ -2,8 +2,23 @@
 
 **Canon:** [`USER_STORIES.md`](./USER_STORIES.md) Epic 12 (EOD-US-01 to EOD-US-10)  
 **Readiness report:** See `docs/bugs.md` and inline notes below  
-**Created:** 2026-04-07  
-**DB version target:** 9 (bump from current v8)
+**Created:** 2026-04-07 · **Snapshot updated:** 2026-04-09  
+**DB version (current app):** `FarmDatabase` **v10** (day close entities landed in v9+; verify in `FarmDatabase.kt`).
+
+---
+
+## Implementation snapshot (2026-04-09)
+
+Substantial code exists under `app/src/main/java/com/redn/farm/ui/screens/eod/` and `data/repository/DayCloseRepository.kt`. The **phase checklists below** are the original build plan; many items are **done in code** while **USER_STORIES.md** still marks several EOD stories **🔧** or **📋**. Use this table as a coarse map; for **what remains to ship**, follow [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PARTIAL_IMPLEMENTATION_PLAN.md) **Stream E**.
+
+| Area | In codebase (high level) | Typical gaps vs USER_STORIES |
+|------|-------------------------|------------------------------|
+| Schema / DAOs / repository | `DayCloseEntity`, inventory, audit, `DayCloseRepository`, FIFO helper, date windowing | Fine-tune aggregates, finalize persistence for all fields |
+| Navigation / RBAC | `DayClose`, `DayCloseHistory`, `OutstandingInventory` routes; dashboard tiles; `Rbac` day-close roles | Optional dedicated read-only **day close detail** route |
+| **DayCloseScreen** | Sales summary (partial), COGS/margin, inventory list + counts, cash card, finalize, negative-margin dialog | Warnings AC4, channel/product breakdown, full cash math, cumulative margin, un-finalize UI, print |
+| **DayCloseHistoryScreen** | List + open by date | Date filter, detail vs edit, re-print, un-finalize |
+| **OutstandingInventoryScreen** | FIFO lots, aging colors | Search/filter/at-risk, print, finalized-close override |
+| Thermal EOD / outstanding print | — | **EOD-US-05**, **EOD-US-10** print — see Phase 5 below |
 
 ---
 

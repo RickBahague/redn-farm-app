@@ -444,7 +444,7 @@ fun ExportScreen(
                                 style = MaterialTheme.typography.titleMedium
                             )
                             Text(
-                                text = "Pick tables and export one CSV per table with the same timestamp (EXP-US-02).",
+                                text = "Pick tables and export one CSV per table with the same timestamp (EXP-US-01 batch).",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

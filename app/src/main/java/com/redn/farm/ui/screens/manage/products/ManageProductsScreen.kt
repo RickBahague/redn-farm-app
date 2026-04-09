@@ -26,8 +26,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.redn.farm.data.model.Acquisition
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.model.ProductPrice
+import com.redn.farm.data.pricing.OrderPricingResolver
 import kotlinx.coroutines.launch
 import com.redn.farm.utils.CurrencyFormatter
 import androidx.compose.foundation.clickable
@@ -45,6 +47,17 @@ private val productPriceDateFormatter: DateTimeFormatter =
 private fun formatProductPriceDate(millis: Long): String =
     Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(productPriceDateFormatter)
 
+/** True when any manual fallback field is a positive price (latest row only — **PRD-US-01**). */
+private fun hasManualFallbackPrice(price: ProductPrice?): Boolean {
+    if (price == null) return false
+    return listOfNotNull(
+        price.per_kg_price,
+        price.per_piece_price,
+        price.discounted_per_kg_price,
+        price.discounted_per_piece_price
+    ).any { it > 0 }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManageProductsScreen(
@@ -56,6 +69,7 @@ fun ManageProductsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val products by viewModel.products.collectAsState()
     val productPrices by viewModel.productPrices.collectAsState()
+    val activeAcquisitionByProductId by viewModel.activeAcquisitionByProductId.collectAsState()
     val canMutate by viewModel.canMutateProducts.collectAsState()
     var pendingDelete by remember { mutableStateOf<Product?>(null) }
     var fallbackPriceTarget by remember { mutableStateOf<Product?>(null) }
@@ -115,6 +129,7 @@ fun ManageProductsScreen(
                     ProductCard(
                         product = product,
                         productPrice = price,
+                        activeAcquisition = activeAcquisitionByProductId[product.product_id],
                         canMutate = canMutate,
                         onEditClick = { onNavigateToProductForm(product.product_id) },
                         onDeleteClick = { pendingDelete = product },
@@ -214,6 +229,7 @@ fun ManageProductsScreen(
 private fun ProductCard(
     product: Product,
     productPrice: ProductPrice?,
+    activeAcquisition: Acquisition?,
     canMutate: Boolean,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
@@ -241,6 +257,32 @@ private fun ProductCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    Text(
+                        text = product.product_id,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = buildString {
+                            append(product.unit_type)
+                            product.category?.takeIf { it.isNotBlank() }?.let { append(" · ").append(it) }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (product.product_description.isNotBlank()) {
+                        Text(
+                            text = product.product_description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     if (!product.is_active) {
                         AssistChip(
                             onClick = if (canMutate) onEditClick else { {} },
@@ -268,51 +310,62 @@ private fun ProductCard(
                     }
                 }
             }
-//            Text(
-//                text = product.product_description,
-//                style = MaterialTheme.typography.bodyMedium
-//            )
-            productPrice?.let { price ->
-                // Regular Prices
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        price.per_kg_price?.let {
-                            Text(
-                                text = "Per Kg: ${CurrencyFormatter.format(it)}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            // Show discounted price if available
-                            price.discounted_per_kg_price?.let { discounted ->
+            // PRD-US-01: show acquisition SRP summary on the list; do not show manual peso amounts here (PRD-US-05).
+            val srpSummary = activeAcquisition?.let { OrderPricingResolver.catalogSrpSummaryAmounts(it) }
+            val hasAcquisitionSrp = srpSummary != null
+            val manualFallbackOnly = !hasAcquisitionSrp && hasManualFallbackPrice(productPrice)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                when {
+                    hasAcquisitionSrp && srpSummary != null -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            srpSummary.minPerKg?.let {
                                 Text(
-                                    text = "Disc: ${CurrencyFormatter.format(discounted)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
+                                    text = "From ${CurrencyFormatter.format(it)}/kg",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            srpSummary.minPerPiece?.let {
+                                Text(
+                                    text = "From ${CurrencyFormatter.format(it)}/pc",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("Acquisition SRP") },
+                        )
                     }
-                    Column(horizontalAlignment = Alignment.End) {
-                        price.per_piece_price?.let {
-                            Text(
-                                text = "Per Piece: ${CurrencyFormatter.format(it)}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            // Show discounted price if available
-                            price.discounted_per_piece_price?.let { discounted ->
-                                Text(
-                                    text = "Disc: ${CurrencyFormatter.format(discounted)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        }
+                    manualFallbackOnly -> {
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("Manual price") },
+                        )
+                        Text(
+                            text = "Open product to set or view fallback prices in history.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    else -> {
+                        AssistChip(
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("No price") },
+                        )
                     }
                 }
             }
@@ -629,6 +682,8 @@ private fun FilterDialog(
     var searchQuery by remember { mutableStateOf("") }
     var showOutOfStock by remember { mutableStateOf(false) }
     var sortBy by remember { mutableStateOf("name") } // "name", "price"
+    var unitTypeFilter by remember { mutableStateOf("") }
+    var categoryFilter by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -645,10 +700,23 @@ private fun FilterDialog(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    label = { Text("Search") },
+                    label = { Text("Search name, ID, or description") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+                OutlinedTextField(
+                    value = unitTypeFilter,
+                    onValueChange = { unitTypeFilter = it },
+                    label = { Text("Unit type contains (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("e.g. kg, piece") }
+                )
+                OutlinedTextField(
+                    value = categoryFilter,
+                    onValueChange = { categoryFilter = it },
+                    label = { Text("Category contains (optional)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
@@ -685,7 +753,9 @@ private fun FilterDialog(
                         ProductFilters(
                             searchQuery = searchQuery,
                             showOutOfStock = showOutOfStock,
-                            sortBy = sortBy
+                            sortBy = sortBy,
+                            unitTypeFilter = unitTypeFilter,
+                            categoryFilter = categoryFilter,
                         )
                     )
                     onDismiss()

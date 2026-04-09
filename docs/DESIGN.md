@@ -62,18 +62,39 @@ Defined in `navigation/NavGraph.kt` as a sealed class `Screen`:
 | `database_migration` | Database Setup |
 | `main` | Main Dashboard |
 | `orders` | Take Order |
+| `active_srps` | Active SRPs (price list) |
 | `order_history` | Order History |
+| `order_detail/{orderId}` | Order Detail |
 | `edit_order/{orderId}` | Edit Order |
 | `products` | Manage Products |
+| `product_form/{productId}` | Product Add/Edit |
 | `customers` | Manage Customers |
+| `customer_form/{customerId}` | Customer Add/Edit |
 | `acquire` | Acquire Produce (Inventory) |
+| `acquisition_form/{acquisitionId}` | Acquisition Add/Edit |
 | `remittance` | Remittances & disbursements (single screen; **USER_STORIES** Epic 8 **DISB-US-01–03**) |
+| `remittance_add_edit/{remittanceId}` | Remittance / Disbursement Form |
 | `employees` | Manage Employees (Green Crew) |
+| `employee_add_edit/{employeeId}` | Employee Add/Edit |
 | `employee_payments/{employeeId}/{employeeName}` | Employee Payments |
+| `employee_payment_form/{employeeId}/{employeeName}/{paymentId}` | Payment Add/Edit |
 | `farm_ops` | Farm Operations |
+| `farm_op_form/{operationId}` | Farm Operation Add/Edit |
 | `farm_ops_history` | Farm Ops History |
 | `export` | Export / Data Management |
 | `about` | About |
+| `profile` | Profile |
+| `change_password` | Change Password |
+| `user_management` | User Management (admin) |
+| `settings` | Settings (admin-capable roles) |
+| `pricing_presets` | Pricing Presets Home |
+| `preset_history` | Preset History |
+| `pricing_preset_editor/{sourcePresetId}` | Preset Editor |
+| `preset_detail/{presetId}` | Preset Detail |
+| `preset_activation_preview/{presetId}` | Preset Activation Preview |
+| `day_close/{businessDateMillis}` | Day Close (**Epic 12**) |
+| `day_close_history` | Day Close History |
+| `outstanding_inventory` | Outstanding Inventory |
 
 Start destination is `login`. After login succeeds, the back stack is cleared so back-press cannot return to the login screen. Same for logout — the entire back stack is cleared with `popUpTo(0) { inclusive = true }`.
 
@@ -101,9 +122,9 @@ Users are created in `FarmDatabase`'s `onOpen` / `onCreate` callback if they don
 
 ## 6. Database Design
 
-### `FarmDatabase` (Room, version 6)
+### `FarmDatabase` (Room)
 
-Located at `data/local/FarmDatabase.kt`. Singleton accessed via `FarmDatabase.getDatabase(context)`. A `clearInstance()` method exists for reinitialization scenarios.
+Located at `data/local/FarmDatabase.kt`. The **`@Database(version = …)`** value is the source of truth (currently **10**); this document is updated when the schema bumps. Singleton accessed via `FarmDatabase.getDatabase(context)`. A `clearInstance()` method exists for reinitialization scenarios. Development builds use **`fallbackToDestructiveMigration()`**; see **`docs/schema_evolution.sql`** and **`USER_STORIES.md` SYS-US-04**.
 
 **Type converters registered:**
 - `DateTimeConverter` — `LocalDateTime` ↔ `Long` (epoch seconds, UTC offset)

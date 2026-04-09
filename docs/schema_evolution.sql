@@ -6,7 +6,7 @@
 --   • Each version block contains the FULL CREATE TABLE statements
 --     for that version — not diffs.
 --   • Append new versions at the bottom; never edit past versions.
---   • Version numbers must match FarmDatabase.kt @Database(version = N) (currently 5).
+--   • Version numbers must match FarmDatabase.kt @Database(version = N) (currently 10 — update when bumping Room).
 --   • Verify v4+ CREATE statements against Room's generated schema JSON
 --     (build/generated/source/kapt/.../FarmDatabase_Impl.java) per SYS-US-04.
 -- ============================================================

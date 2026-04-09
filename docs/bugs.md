@@ -1074,6 +1074,66 @@ All per-piece acquisitions already in the DB have inflated SRPs. They will need 
 
 ---
 
+## BUG-ORD-06 — Take / edit order: **per-piece** line used **per-kg** SRP when product `unit_type` disagreed with acquisition
+
+### Report
+- **Screens:** **Take Order** → Add product (`ProductSelectionDialog`); **Edit order** → add line (same pattern).
+- **Symptom:** A product sold **per piece** (active acquisition recorded with **`is_per_kg = false`**) still got **per-kg** SRP (`srp_*_per_kg`) applied to the line when **`Product.unit_type`** was **`kg`** (or not **`piece`**), so **unit price** matched **₱/kg** instead of **₱/pc**.
+
+### Root cause
+- **`defaultIsPerKgForProduct`** only inspected **`Product.unit_type`**. It ignored the **active acquisition’s** costing basis (**`Acquisition.is_per_kg`**), which is what **INV-US-06** / **`OrderPricingResolver.srpFromAcquisition`** use to populate **per-kg vs per-piece** columns.
+- **`resolveUnitPrice(..., isPerKg = true)`** reads **`srp_*_per_kg`**; with **`isPerKg = false`** it reads **per-piece** (or derives from **per-kg + piece_count**). Defaulting **`isPerKg`** from the product row alone could pick the **wrong branch** for the latest lot.
+
+### Fix
+- **`defaultIsPerKgForOrderLine(product, activeAcquisition?)`** in **`OrderUnitDefaults.kt`**: if an active acquisition exists, **`return activeAcquisition.is_per_kg`**; else keep the **`piece` / `pieces`** heuristic on **`Product.unit_type`**.
+- **`TakeOrderViewModel.defaultIsPerKgForProductLine`** / **`OrderHistoryViewModel.defaultIsPerKgForProductLine`** wrap that helper.
+- **`ProductSelectionDialog`** and **`EditOrderScreen`** product picker use **`defaultIsPerKgForProductLine`** when starting the add-line flow.
+
+### Files
+- `app/src/main/java/com/redn/farm/data/pricing/OrderUnitDefaults.kt` (new)
+- `app/src/main/java/com/redn/farm/ui/screens/order/TakeOrderViewModel.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/order/ProductSelectionDialog.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/order/history/OrderHistoryViewModel.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/order/history/EditOrderScreen.kt`
+
+### Verification
+- `./gradlew :app:compileDebugKotlin` ✅  
+- `./gradlew :app:testDebugUnitTest --tests "com.redn.farm.data.pricing.OrderUnitDefaultsTest"` ✅  
+- Manual: product **`unit_type = kg`**, latest acquisition **per piece** with only **per-piece** SRPs filled → new line defaults **per piece** and **`OrderPricingResolver`** uses **pc** path.
+
+**Status:** `[x]`
+
+---
+
+## BUG-ORD-07 — **Edit order:** no **kg / pc** toggle when **per-piece SRP** is only **derived** from per-kg + `piece_count`
+
+### Report
+- **Screens:** **Take Order** (cart row unit toggle, product picker); **Edit order** (add line / line editor).
+- **Symptom:** On **Take Order**, staff can switch a line between **per kg** and **per piece** when the active acquisition has **per-kg SRPs** and **`piece_count`**, with **empty** **`srp_*_per_piece`** columns (resolver derives **₱/pc** via **`PricingChannelEngine.perPieceSrp`**). On **Edit order**, the same product may **not** show the unit toggle, so the line stays stuck on one basis even though both prices exist for pricing.
+
+### Root cause
+- **`TakeOrderViewModel.productSupportsDualUnit`** treats **per-piece** as present if **either** raw **`srp_*_per_piece`** **or** **derived** per-piece from **`srp_*_per_kg`** + **`piece_count`** (same idea as **`OrderPricingResolver.srpFromAcquisition`**).
+- **`OrderHistoryViewModel.productSupportsDualUnit`** only checks **raw** **`srp_online_per_piece` / `srp_reseller_per_piece` / `srp_offline_per_piece`**. It does **not** fold in **derived** per-piece, so **`srpPc`** stays **false** when only kg columns + **`piece_count`** are set — **`showUnitToggle`** stays off in **`EditOrderScreen`**.
+
+### Fix
+- **`OrderPricingResolver.productSupportsDualUnit(productPrice, acquisition)`** — catalog **kg/pc** flags unchanged; acquisition side uses **`minPerKgSrpAcrossChannels`** and **`minPerPieceSrpAcrossChannels`** so **per-piece** matches **`srpFromAcquisition`** (including **derived** per-piece).
+- **`TakeOrderViewModel`** / **`OrderHistoryViewModel`**: **`productSupportsDualUnit(Product)`** delegates to the resolver.
+
+### Files
+- `app/src/main/java/com/redn/farm/data/pricing/OrderPricingResolver.kt` — **`productSupportsDualUnit`**
+- `app/src/main/java/com/redn/farm/ui/screens/order/TakeOrderViewModel.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/order/history/OrderHistoryViewModel.kt`
+- `app/src/test/java/com/redn/farm/data/pricing/OrderPricingResolverTest.kt`
+
+### Verification
+- Active acquisition: **per-kg SRPs filled**, **`piece_count` > 0**, all **`srp_*_per_piece` null** → **Take Order** shows toggle; **Edit order** add-line / line row **also** shows toggle; switching unit reprices consistently with **`resolveUnitPrice` / `resolveOrderLinePrice`**.
+- `./gradlew :app:compileDebugKotlin` ✅  
+- `./gradlew :app:testDebugUnitTest --tests "com.redn.farm.data.pricing.OrderPricingResolverTest"` ✅
+
+**Status:** `[x]`
+
+---
+
 ## BUG-SYS-02 — **Logout** should land on **Login** in one step (no visible stepping through other screens)
 
 ### Report

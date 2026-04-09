@@ -4,6 +4,8 @@
 **Source review:** `docs/user_review_product_management.md`  
 **Goal:** Convert current v3-era product management UI/data handling into v4-aligned behavior per PRD-US-01 through PRD-US-08.
 
+**Stream A (2026-04-09):** **PRD-US-01** / **PRD-US-07** closed in app — catalog SRP summary + unified price/SRP history on **ProductFormScreen**. See [`USER_STORIES.md`](./USER_STORIES.md).
+
 ---
 
 ## Status legend

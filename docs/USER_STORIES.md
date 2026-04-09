@@ -6,7 +6,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 
 **App version:** 1.0.0  
 **Platform:** Android (Kotlin + Jetpack Compose)  
-**Last updated:** 2026-04-02
+**Last updated:** 2026-04-09
 
 ---
 
@@ -19,7 +19,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 | **Farmer** | Records what happens in the field. | Farm Operations |
 | **Purchasing Assistant** | Records incoming produce and procurement costs. | Inventory & Acquisitions |
 
-> **Note:** The current app seeds two accounts (`admin` / `user`) but has no role-based access control in the UI — all authenticated users can access all features. Actor tags indicate *intended* ownership per feature for future RBAC.
+> **Note:** The app seeds two accounts (`admin` / `user`). **Per-screen access** is enforced with `Rbac` (e.g. Settings and pricing presets for admin-capable roles, export data for export-capable roles, day close for store/admin roles). A full role matrix UI remains out of scope; see **Out of Scope (v1.0)** below.
 
 ---
 
@@ -30,6 +30,8 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 | ✅ | Implemented and working |
 | 🔧 | Partially implemented |
 | 📋 | Planned / not yet built |
+
+**Closing gaps:** Stories marked **✅ (partial)** or **🔧** are tracked with implementation steps in [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PARTIAL_IMPLEMENTATION_PLAN.md).
 
 ---
 
@@ -78,7 +80,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** any authenticated user, **I want to** change my own password from my profile screen **so that** I can keep my account secure.
 
 **Actor:** All  
-**Status:** 📋
+**Status:** ✅ *(**ProfileScreen** / **ChangePasswordScreen** — current password check, match validation, hash update; nav from dashboard top bar)*
 
 **Acceptance criteria:**
 1. A profile screen is accessible from the top bar of the dashboard (SYS-US-02).
@@ -96,7 +98,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** an admin, **I want to** create and deactivate user accounts **so that** I control who can access the app and each saved record can be attributed to a specific user.
 
 **Actor:** Admin  
-**Status:** 📋
+**Status:** ✅ *(**UserManagementScreen** / **UserManagementViewModel** — create user with hashed password, activate/deactivate, admin password reset; `Rbac` gated. **AC6** preset `saved-by` / broad audit attribution: verify against pricing-preset save paths if required for compliance.)*
 
 **Acceptance criteria:**
 1. I can create a new user account with a username, full name, role, and initial password.
@@ -115,7 +117,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a store assistant, **I want to** create a new order for a customer **so that** I can record what they are buying and calculate the total.
 
 **Actor:** Store Assistant  
-**Status:** ✅ (partial — channel-based SRP pre-fill is 📋)
+**Status:** ✅ *(**TakeOrderViewModel** — active acquisition SRPs by **sales channel** via `observeAllActiveSrps` + `OrderPricingResolver`; fallback **ProductPrice** when no acquisition SRP)*
 
 **Acceptance criteria:**
 1. I can select a customer from the existing customer list.
@@ -135,7 +137,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a store assistant, **I want** the correct unit SRP (per kg or per piece) to be applied automatically based on how the product is sold **so that** I don't have to decide or calculate prices myself.
 
 **Actor:** Store Assistant  
-**Status:** ✅ (partial — automatic SRP selection is 📋)
+**Status:** ✅ *(per-channel resolution in **OrderPricingResolver**; dual-unit products when supported via **productSupportsDualUnit** / line **isPerKg**)*
 
 **Acceptance criteria:**
 1. Products configured as sold per kg use the **per-kg SRP** for the selected channel; products sold per piece use the **per-piece SRP**.
@@ -163,7 +165,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a store assistant, **I want to** edit an order that has not been paid yet **so that** I can correct mistakes or add items.
 
 **Actor:** Store Assistant  
-**Status:** ✅ (partial — channel SRP re-application on channel change is 📋)
+**Status:** ✅ *(**OrderHistoryViewModel.repriceOrderItems** reapplies active SRPs when the order channel changes)*
 
 **Acceptance criteria:**
 1. Tapping an unpaid order in the history list opens the **order detail screen** (ORD-US-10) first. An **Edit** button on the detail screen enters edit mode — edit mode is not directly reachable from the history list.
@@ -230,7 +232,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a store assistant, **I want to** view the full details of any order **so that** I can see exactly what was ordered, at what price, for which customer, and take quick actions without having to enter edit mode.
 
 **Actor:** Store Assistant  
-**Status:** 📋
+**Status:** ✅ *(**OrderDetailScreen** — line items, totals, paid/delivered toggles, print, **Edit** when unpaid)*
 
 **Acceptance criteria:**
 1. Tapping any order in the history list (ORD-US-03) opens this detail screen — for both paid and unpaid orders.
@@ -274,7 +276,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** an admin, **I want to** view all products **so that** I can see what is available for sale and what each product's current selling price is.
 
 **Actor:** Admin  
-**Status:** ✅ (partial — SRP display is 📋)
+**Status:** ✅ *(**ManageProductsScreen** / **ManageProductsViewModel** — active SRP via `observeAllActiveSrps`, **From ₱X/kg** & **From ₱X/pc** via **OrderPricingResolver**; **Manual price** / **No price** / **Acquisition SRP** chips; manual peso amounts only in **ProductFormScreen** history; filter: unit type & category substrings + search includes **product_id**.)*
 
 **Acceptance criteria:**
 1. Products are listed with their ID, name, description, unit type, category, and active status.
@@ -360,7 +362,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** an admin, **I want to** see the full price history for a product **so that** I can trace how SRPs have changed over time and which preset version drove each change.
 
 **Actor:** Admin  
-**Status:** ✅ (partial — acquisition-derived SRP history is 📋)
+**Status:** ✅ *(**ProductFormScreen** — merged **product_prices** + **acquisitions** timeline; per-channel SRP lines; **preset_ref** → **PresetDetail** when role allows; **Current SRP** chip on the active acquisition lot (**INV-US-06**).)*
 
 **Acceptance criteria:**
 1. Price history shows all entries for a product in reverse chronological order.
@@ -437,7 +439,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a store assistant, **I want** the sales channel to be pre-selected based on the customer's type when I start a new order **so that** the correct SRP is applied automatically without me having to choose a channel manually each time.
 
 **Actor:** Store Assistant  
-**Status:** 📋
+**Status:** ✅ *(**TakeOrderViewModel.selectCustomer** → **`CustomerType.defaultOrderChannel()`**; channel remains overridable)*
 
 **Mapping:**
 
@@ -899,31 +901,29 @@ net_pay = amount + cash_advance_amount
 `EmployeeId, FirstName, LastName, Contact, DateCreated, DateUpdated, DeviceId`
 
 **employee_payments.csv**
-`PaymentId, EmployeeId, EmployeeName, GrossWage, CashAdvanceAmount, LiquidatedAmount, NetPay, DatePaid, ReceivedDate, Signature, DeviceId`
-
-> `NetPay` = `GrossWage − CashAdvanceAmount + LiquidatedAmount`
+`PaymentId, EmployeeId, EmployeeName, Amount, CashAdvanceAmount, LiquidatedAmount, DatePaid, ReceivedDate, Signature, IsFinalized, DeviceId` *(exported column **Amount** is gross wage; **NetPay** is not a separate CSV column — compute as **Amount − CashAdvanceAmount + LiquidatedAmount** if needed)*
 
 **farm_operations.csv**
 `OperationId, OperationType, OperationDate, Details, Area, WeatherCondition, Personnel, ProductId, ProductName, DateCreated, DateUpdated, DeviceId`
 
-**acquisitions.csv** *(includes computed SRPs and preset traceability — columns marked 📋 are added when INV-US-05 is implemented)*
-`AcquisitionId, ProductId, ProductName, ProductCategory, Quantity, PricePerUnit, TotalAmount, IsPerKg, PieceCount, DateAcquired, Location,`
-`PresetRef, SpoilageRate, AdditionalCostPerKg, HaulingWeightKg, HaulingFees,`
-`OnlineMarkup, ResellerMarkup, OfflineMarkup,`
-`SrpOnlinePerKg 📋, SrpResellerPerKg 📋, SrpOfflinePerKg 📋,`
-`SrpOnline500g 📋, SrpOnline250g 📋, SrpOnline100g 📋,`
-`SrpReseller500g 📋, SrpReseller250g 📋, SrpReseller100g 📋,`
-`SrpOffline500g 📋, SrpOffline250g 📋, SrpOffline100g 📋,`
-`SrpOnlinePerPiece 📋, SrpResellerPerPiece 📋, SrpOfflinePerPiece 📋,`
+**acquisitions.csv** *(computed SRPs, hauling snapshot JSON, channels snapshot, **SrpCustomOverride** — see **CsvExportService.exportAcquisitions**; column set may differ slightly from the narrative list below as the schema evolved)*
+`AcquisitionId, ProductId, ProductName, Quantity, PricePerUnit, TotalAmount, IsPerKg, PieceCount, DateAcquired, CreatedAt, Location,`
+`PresetRef, SpoilageRate, SpoilageKg, AdditionalCostPerKg, HaulingWeightKg, HaulingFeesJson, ChannelsSnapshotJson,`
+`SrpOnlinePerKg, SrpResellerPerKg, SrpOfflinePerKg,`
+`SrpOnline500g, SrpOnline250g, SrpOnline100g,`
+`SrpReseller500g, SrpReseller250g, SrpReseller100g,`
+`SrpOffline500g, SrpOffline250g, SrpOffline100g,`
+`SrpOnlinePerPiece, SrpResellerPerPiece, SrpOfflinePerPiece,`
+`SrpCustomOverride,`
 `DeviceId`
 
 **remittances.csv**
 `RemittanceId, EntryType, Amount, Date, Remarks, DateUpdated, DeviceId` — **`EntryType`** = `REMITTANCE` \| `DISBURSEMENT` (**DISB-US-01–03**)
 
 **Acceptance criteria:**
-1. All 10 tables listed above can be exported individually.
+1. All 10 tables listed above can be exported individually. **Users** also have a dedicated export. **Selective batch export** (**ExportBundleTable**) includes the same core tables plus **Users** but not **product_prices** — export product prices with the single-table action.
 2. Exported files are saved to the app's external files directory (`exports/`) and can be shared/downloaded from the device.
-3. SRP and preset columns on `acquisitions.csv` are included once INV-US-05 is implemented; prior to that they are omitted from the export.
+3. SRP and preset-related columns on `acquisitions.csv` are included (**INV-US-05** implemented).
 
 ---
 
@@ -931,7 +931,7 @@ net_pay = amount + cash_advance_amount
 **As** an admin, **I want to** truncate any data table **so that** I can reset test data before going live.
 
 **Actor:** Admin  
-**Status:** 🔧 (currently only Customers, Products, Acquisitions — expanding to all is 📋)
+**Status:** 🔧 *(per-table **Clear** actions on **ExportScreen** for customers, products, product prices, orders, order items, employees, employee payments, farm operations, remittances, acquisitions. **Not yet:** multi-table checklist with FK dependency hints, **Users** truncate, **Pricing Presets** + **preset activation log** clear-as-one, **Select All** / batch clear.)*
 
 **Acceptance criteria:**
 1. The screen presents a **checklist** of all clearable tables. The admin selects one or more before confirming:
@@ -963,7 +963,7 @@ net_pay = amount + cash_advance_amount
 **As** an admin, **I want** a Settings screen accessible from the top bar **so that** I can manage pricing presets without cluttering the main dashboard.
 
 **Actor:** Admin  
-**Status:** 📋
+**Status:** ✅ *(**SettingsScreen** → **PricingPresetsHomeScreen**; `Rbac` — **NavGraph** / **MainScreen**)*
 
 **Screen structure:**
 
@@ -1000,7 +1000,7 @@ Top bar → Settings (admin only)
 **As** an admin, **I want to** configure the spoilage rate and hauling-based additional costs **so that** all SRP calculations automatically reflect the store's real operating costs without hardcoding them.
 
 **Actor:** Admin  
-**Status:** 📋
+**Status:** ✅ *(preset editor + saved snapshot on acquisitions; see **PricingPresetEditor** / **SrpCalculator** — **BUG-PRC-04** / rate vs absolute kg policy may still differ from full spec)*
 
 **Canonical reference:** PricingReference.md US-6, §7.3, FR-PC-50–51
 
@@ -1018,7 +1018,7 @@ Top bar → Settings (admin only)
 **As** an admin, **I want to** set the markup percentage and rounding rule for each sales channel **so that** online, reseller, and offline SRPs reflect the different margin requirements for each channel.
 
 **Actor:** Admin  
-**Status:** 📋
+**Status:** ✅ *(channel policy in presets; **PricingChannelEngine** — optional fees / rounding as implemented)*
 
 **Canonical reference:** PricingReference.md US-6, §4.3, §4.3.1 (preset table / CLARIF), §7.2, §11.1.2, FR-PC-05, FR-PC-14
 
@@ -1041,7 +1041,7 @@ Top bar → Settings (admin only)
 **As** an admin, **I want to** define product categories and assign category-specific spoilage rates and additional costs **so that** different product types use appropriate preset values when computing SRPs.
 
 **Actor:** Admin  
-**Status:** 📋
+**Status:** ✅ *(categories JSON in presets; product **category** field; acquisition form picker)*
 
 **Canonical reference:** PricingReference.md US-6, §7.3, FR-PC-03, FR-PC-07, FR-PC-51
 
@@ -1061,7 +1061,7 @@ Top bar → Settings (admin only)
 **As** an admin, **I want to** see how a saved preset would change current active SRPs before I activate it **so that** I can avoid unintentional price shifts reaching the order-taking flow.
 
 **Actor:** Admin  
-**Status:** 📋
+**Status:** ✅ *(**PresetActivationPreview** route — required before activation per **MGT-US-00** AC#7)*
 
 **Canonical reference:** PricingReference.md FR-PC-53, §15.2
 
@@ -1077,7 +1077,7 @@ Top bar → Settings (admin only)
 **As** an admin, **I want** a complete, immutable history of all saved presets — showing which ones were active and when — **so that** I can audit how pricing policy has changed and trace any stored SRP back to the exact preset that produced it.
 
 **Actor:** Admin  
-**Status:** 📋
+**Status:** ✅ *(partial — **PresetHistory** / **PresetDetail** / activation log; **AC5** tap **`preset_ref`** on acquisition detail → preset record **📋** if not wired in UI)*
 
 **Canonical reference:** PricingReference.md FR-PC-54, §8.2
 
@@ -1094,7 +1094,7 @@ Top bar → Settings (admin only)
 **As** an admin, **I want to** explicitly activate a saved preset **so that** all new acquisition SRP computations use the pricing policy I intend, and I remain in full control of when pricing policy changes take effect.
 
 **Actor:** Admin  
-**Status:** 📋
+**Status:** ✅ *(single active preset; activation log; preview gate — **PricingPresetRepository** / **NavGraph**)*
 
 **Acceptance criteria:**
 1. Any saved preset record (from MGT-US-01–03) can be activated from the preset history list (MGT-US-05) or from the preset detail view.
@@ -1173,9 +1173,9 @@ Top bar → Settings (admin only)
 **As** a developer rebuilding the app, **I want** a clean full-schema recreate that includes all new fields from planned stories, with a `schema_evolution.sql` file as the living record **so that** the database is built right from the start without incremental migration baggage.
 
 **Actor:** System (developer convention)  
-**Status:** 📋
+**Status:** 🔧 *(`docs/schema_evolution.sql` exists; **`FarmDatabase`** is **version 10** with **`fallbackToDestructiveMigration()`** — narrative below still describes an older v4 target; keep SQL file and Room version in sync manually until production migrations are defined.)*
 
-**Decision:** For this build phase, **no Room migrations are used**. The database is created fresh with all tables and fields in their final planned shape. The `fallbackToDestructiveMigration()` strategy is used during development. When the app ships to production a proper migration strategy will be defined.
+**Decision:** For this build phase, **no production Room migrations** are committed for every bump. The database is created fresh with current entities. The `fallbackToDestructiveMigration()` strategy is used during development. When the app ships to production a proper migration strategy will be defined.
 
 **New fields added to existing tables (vs v3 schema):**
 
@@ -1286,7 +1286,7 @@ One row per product per day close. Fields: `close_id`, `product_id`, `product_na
 **As** a store assistant or admin, **I want to** start the end-of-day closing process **so that** the day's operations are formally concluded with a summary record.
 
 **Actor:** Store Assistant, Admin
-**Status:** 📋
+**Status:** 🔧 *(**DayCloseScreen** / **MainScreen** "Day Close"; draft vs finalized; **Rbac** — **AC4–AC6** warnings, past-date rules, admin **un-finalize** UI **📋**)*
 
 **Acceptance criteria:**
 1. A **"Close Day"** action is accessible from the main dashboard, visible only to users with `STORE_ASSISTANT` or `ADMIN` role.
@@ -1305,7 +1305,7 @@ One row per product per day close. Fields: `close_id`, `product_id`, `product_na
 **As** a store assistant, **I want to** see a summary of today's sales before confirming the close **so that** I can verify the numbers are correct.
 
 **Actor:** Store Assistant, Admin
-**Status:** 📋
+**Status:** 🔧 *(orders count, gross revenue, collected, unpaid snapshot — **DayCloseRepository**; **by-channel** and **by-product top** breakdowns **📋**)*
 
 **Acceptance criteria:**
 1. The sales summary section of the Day Close screen shows:
@@ -1329,7 +1329,7 @@ One row per product per day close. Fields: `close_id`, `product_id`, `product_na
 **As** a purchasing assistant or admin, **I want to** reconcile total stock on hand against actual remaining quantities at end of day **so that** spoilage, loss, and unsold inventory are formally tracked across all acquisitions, not just today's.
 
 **Actor:** Purchasing Assistant, Admin
-**Status:** 📋
+**Status:** 🔧 *(inventory lines, theoretical vs actual, variance — **DayCloseInventoryEntity**; full AC set e.g. zero-stock toggle, "not counted" semantics, finalize persistence **📋** vs verify in **DayCloseRepository**)*
 
 **Background:** Acquisitions do not happen every day. A batch of 80 kg of tomatoes bought on Monday may still be selling on Wednesday and Thursday. The closing inventory must account for the full stock position — all acquisitions ever recorded minus all sales ever recorded — and reconcile that against a physical count at the end of each business day. This gives an accurate picture of what is on hand, regardless of when the stock was purchased.
 
@@ -1369,7 +1369,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** a store assistant, **I want to** reconcile the cash I collected today against what the system shows as paid **so that** any cash discrepancy is identified and recorded.
 
 **Actor:** Store Assistant, Admin
-**Status:** 📋
+**Status:** 🔧 *(**CashReconciliationCard** — cash on hand + remarks; full spec: remittance vs expected cash math, digital collections line, block finalize on discrepancy **📋**)*
 
 **Acceptance criteria:**
 1. The cash reconciliation section shows:
@@ -1387,7 +1387,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** an admin, **I want to** print a thermal end-of-day summary slip **so that** I have a physical record of the day's performance for filing.
 
 **Actor:** Admin, Store Assistant
-**Status:** 📋
+**Status:** 📋 *(thermal **Print EOD** from **DayCloseScreen** not implemented; order/receipt printing exists elsewhere.)*
 
 **Acceptance criteria:**
 1. A **Print EOD Summary** button is available on the Day Close screen (both draft and finalized states).
@@ -1412,7 +1412,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** an admin, **I want to** view the history of past day closes **so that** I can compare daily performance and access any day's EOD record.
 
 **Actor:** Admin
-**Status:** 📋
+**Status:** 🔧 *(**DayCloseHistoryScreen** list + open by date; **date range filter**, **un-finalize** from UI, **re-print** **📋** — **DayCloseRepository.unfinalize** exists but no screen action yet)*
 
 **Acceptance criteria:**
 1. A **Day Close History** screen is accessible from the main dashboard (admin only).
@@ -1429,7 +1429,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** an admin, **I want to** see today's revenue against the actual cost of the goods sold today **so that** I have a meaningful daily margin that reflects the real cost of what was sold, not just what was bought on that day.
 
 **Actor:** Admin
-**Status:** 📋
+**Status:** 🔧 *(**Cost & Margin** on **DayCloseScreen** — COGS, gross margin, negative-margin confirm dialog; **cumulative position** subsection **📋**)*
 
 **Background:** Comparing today's revenue to today's acquisition spend is misleading — on most days there is no acquisition, making the "procurement cost" appear as zero. The correct measure is **cost of goods sold (COGS)**: the acquisition cost attributable to the specific quantities sold today. This is derived from the acquisition pool using a weighted average cost per product, applied to today's sold quantities.
 
@@ -1471,7 +1471,7 @@ The app maintains a running balance per product using two aggregates computed di
 **As** an admin or purchasing assistant, **I want to** view all stock currently on hand across all acquisitions **so that** I know exactly what I have, what it cost, how long it has been sitting, and what is at risk of spoilage.
 
 **Actor:** Admin, Purchasing Assistant
-**Status:** 📋
+**Status:** 🔧 *(**OutstandingInventoryScreen** — FIFO lot aging flags; **print**, category filter, "at-risk only", finalized-close override rules **📋**)*
 
 **Background:** "Outstanding inventory" is distinct from the EOD-US-03 inventory close. EOD-US-03 is a reconciliation done at close time that posts spoilage. The outstanding inventory report is a **live, always-available view** of the current theoretical stock position derived from all acquisition and order records — accessible at any time during the day, not just at close. It is the answer to "what do I still have on hand right now?"
 
@@ -1598,7 +1598,7 @@ The app maintains a running balance per product using two aggregates computed di
 - Multi-device data synchronization (exports provide a manual bridge)
 - Cloud backup / remote database
 - Push notifications
-- Full **RBAC** **administration** UI (role matrix, bulk assignment) — out of scope; **per-screen gates** already use **`Rbac`** (**DESIGN.md** §5), including **Epic 12** day close (**DESIGN.md** §14.10)
+- Full **RBAC** **administration** UI (role matrix, bulk assignment) — out of scope; **per-screen gates** use **`Rbac`** (**DESIGN.md** §5), including **Epic 12** day close (**DESIGN.md** §14.10)
 - Report generation / dashboards / charts *(EOD daily reports are in scope as of Epic 12; multi-period dashboards and trend charts remain out of scope)*
 - Print support from within the app *(EOD thermal slip printing is in scope as of Epic 12; general in-app print is out of scope)*
 - Barcode / QR scanning for products
