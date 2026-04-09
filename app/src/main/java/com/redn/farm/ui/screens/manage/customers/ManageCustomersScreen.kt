@@ -10,12 +10,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Customer
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -120,7 +122,8 @@ fun ManageCustomersScreen(
                         .padding(vertical = 8.dp),
                     placeholder = { Text("Search customers") },
                     leadingIcon = { Icon(Icons.Default.Search, "Search") },
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
                 )
 
                 val isFiltering = searchQuery.isNotBlank()

@@ -6,6 +6,8 @@
 
 **Stream A (2026-04-09):** **PRD-US-01** / **PRD-US-07** closed in app — catalog SRP summary + unified price/SRP history on **ProductFormScreen**. See [`USER_STORIES.md`](./USER_STORIES.md).
 
+**Stream B (2026-04-10):** **Steps 7–9** completed in codebase — list card SRP badges aligned with `observeAllActiveSrps`; **`ProductActiveStatusFilter`** replaces `showOutOfStock`; full-screen **`ProductPriceHistoryScreen`** + shared **`ProductHistoryUi`** (history also remains summarized on **ProductFormScreen** for convenience).
+
 ---
 
 ## Status legend
@@ -125,6 +127,8 @@ Activities:
 Deliverables:
 - Product list matches PRD-US-01 AC#2..AC#4 pricing behavior
 
+**Implementation notes (2026-04-10):** `ManageProductsScreen` `ProductCard` uses `activeAcquisitionByProductId` + `OrderPricingResolver.catalogSrpSummaryAmounts`; chips **Acquisition SRP** / **Manual price** / **No price**; manual peso amounts not on list (PRD-US-05).
+
 ---
 
 ### Step 8 — Fix filters
@@ -144,6 +148,8 @@ Activities:
 Deliverables:
 - Filters work exactly as PRD-US-01 AC#7 expects
 
+**Implementation notes (2026-04-10):** `ProductActiveStatusFilter` enum; `ProductFilters` fields `unitTypeFilter`, `categoryFilter`, `activeStatus` (default **ACTIVE_ONLY** — same default behavior as old “hide inactive”); **`showOutOfStock` removed**. Filter dialog: **All / Active / Inactive** chips.
+
 ---
 
 ### Step 9 — Price history screen (PRD-US-07)
@@ -162,6 +168,8 @@ Activities:
 Deliverables:
 - Price history screen renders complete history entries and is reachable from the UI
 
+**Implementation notes (2026-04-10):** `ProductRepository.getPriceHistory` (existing) + **`ProductPriceHistoryScreen`** route `product_price_history/{productId}`; **`ProductHistoryUi.kt`** holds `mergeProductPriceHistory` + `UnifiedHistoryRowContent` shared with **ProductFormScreen**. Entry: product card **History** icon; edit form **Price history** app bar action. Acquisition rows use same “preset / per-channel SRP” copy as embedded history (no separate **Computed** chip label — title distinguishes **Manual fallback** vs **Acquisition (preset/custom SRP)**).
+
 ---
 
 ## Completion tracker
@@ -174,9 +182,9 @@ Deliverables:
 | Step 4 — Wire Delete + Deactivate | `[x]` | Delete icon + confirm dialog + FK failure snackbar; active toggle already in edit dialog; inactive badge shown on list |
 | Step 5 — Wire Reinitialize | `[x]` | Refresh icon + confirm dialog; `populateDatabase()` now loads products/prices/customers from `assets/data/*.json`; removed v1 manual CREATE TABLE SQL |
 | Step 6 — Set manual fallback price | `[x]` | Separate “Set fallback price” bottom sheet; saves per-kg/per-piece via `insertProductPrice()`; clearly labeled as manual fallback |
-| Step 7 — Fix product card price display | `[ ]` | Use active SRPs mapping + badge logic |
-| Step 8 — Fix filters | `[ ]` | Add required filters to model + apply in repo + update dialog |
-| Step 9 — Price history screen | `[ ]` | Full-screen screen + computed/manual entry rendering |
+| Step 7 — Fix product card price display | `[x]` | `ProductCard` + `observeAllActiveSrps` map + `catalogSrpSummaryAmounts` + list chips (**2026-04-10** verified in code) |
+| Step 8 — Fix filters | `[x]` | `ProductActiveStatusFilter`; repo applies search + unit + category + active; dialog chips (**2026-04-10**) |
+| Step 9 — Price history screen | `[x]` | `ProductPriceHistoryScreen` + `ProductHistoryUi`; nav from list + edit (**2026-04-10**); embedded history on form retained |
 
 ---
 
@@ -193,4 +201,3 @@ Deliverables:
 - Manual smoke after Steps 8–9:
   - Filters include unit type, category, active status + product_id search
   - Price history screen shows computed/manual entries correctly
-

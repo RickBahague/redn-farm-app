@@ -39,12 +39,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.local.entity.UserEntity
 import com.redn.farm.security.Rbac
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -222,14 +224,16 @@ private fun CreateUserDialog(
                     onValueChange = { username = it },
                     label = { Text("Username") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
                 )
                 OutlinedTextField(
                     value = fullName,
                     onValueChange = { fullName = it },
                     label = { Text("Full name") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
                 )
                 OutlinedTextField(
                     value = password,

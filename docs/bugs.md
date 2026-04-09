@@ -64,6 +64,212 @@
 
 ---
 
+## BUG-IME-01 — Alphanumeric keyboard must not show grammar/spell suggestions during data entry
+
+### Report
+- **Screens:** Text entry fields used for alphanumeric input (e.g., search, names, usernames).
+- **Symptom:** IME grammar/spell suggestions and autocorrect appear while entering short alphanumeric values, creating noisy UI and occasional unintended substitutions.
+
+### Expected behavior
+- For operational text entry, disable grammar/autocomplete assistance. **`KeyboardType.Ascii` is unreliable** on common IMEs; the app uses the **password input class without masking** (`KeyboardType.Password` without `PasswordVisualTransformation`) via **`dataEntryNoImeSuggestionsKeyboardOptions`** (see **BUG-IME-02** rollout).
+
+### Fix *(implemented 2026-04-09; password-class IME 2026-04-10)*
+- **`alphaNumericKeyboardOptions(imeAction)`** delegates to **`dataEntryNoImeSuggestionsKeyboardOptions`** — `KeyboardType.Password`, `KeyboardCapitalization.None`, explicit `imeAction` (no `PasswordVisualTransformation` on the field). Same workaround as **login username**; Compose BOM does not expose `autoCorrectEnabled` / `VisiblePassword`.
+- **`loginUsernameKeyboardOptions()`** → `dataEntryNoImeSuggestionsKeyboardOptions(ImeAction.Next)`.
+- **Initial tranche** (call sites use `alphaNumericKeyboardOptions` and now inherit the password-class preset):
+  - `LoginScreen` username (`loginUsernameKeyboardOptions`); password field unchanged (`KeyboardType.Password` + IME Done)
+  - `OutstandingInventoryScreen` search field
+  - `EmployeeFormScreen` first/last name
+  - `CustomerFormScreen` first/last/address/city/province/postal code
+  - `UserManagementScreen` create-user username/full name
+  - Plus filters/search/dialogs already wired: Acquire filters + acquisition product search, farm-op filters + product search, manage customers/employees/products list searches, order customer/product dialogs + order history filters + edit-order product search, remittance list search.
+
+### Files *(initial tranche + shared helper)*
+- `app/src/main/java/com/redn/farm/ui/components/InputKeyboardOptions.kt` *(new)*
+- `app/src/main/java/com/redn/farm/ui/screens/login/LoginScreen.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/eod/OutstandingInventoryScreen.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/manage/employees/EmployeeFormScreen.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/manage/customers/CustomerFormScreen.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/profile/UserManagementScreen.kt`
+- **BUG-IME-03**–**BUG-IME-07** (2026-04-10): remaining free-text fields wired + audit; see those sections.
+
+### Verification
+- `./gradlew :app:compileDebugKotlin` ✅
+- On-device: login and alphanumeric fields behave as expected (no grammar/suggestion strip interfering with entry) — **2026-04-10**.
+
+**Status:** `[x]` *(closed — verified)*
+
+---
+
+## BUG-IME-02 — Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(product catalog free-text fields)*
+
+### Report
+- **Standard:** Alphanumeric keyboard must not show grammar/spell suggestions during data entry (same intent as **BUG-IME-01**).
+- **Screens:** Manage Products → add/edit product (`ProductFormScreen`); any remaining free-text rows on `ManageProductsScreen` (e.g. dialog fields) not already using `alphaNumericKeyboardOptions`.
+- **Symptom:** Grammar/suggestion strip on structured text (names, categories, descriptions).
+
+### Expected behavior
+- Match **BUG-IME-01**: use `alphaNumericKeyboardOptions(...)` with an appropriate `ImeAction` chain for editable text fields; keep numeric fields on `KeyboardType.Number` / `Decimal` / numeric pad.
+
+### Fix direction
+- `ProductFormScreen`: **Product name**, **Description**, **Category (optional)** — add `keyboardOptions` (multiline description: still use preset for consistency with ops data entry, unless product explicitly wants spell check for prose).
+
+### Fix *(implemented 2026-04-10)*
+- **`ProductFormScreen`**: **Product name** / **Category** — `alphaNumericKeyboardOptions` + `KeyboardActions` (`Next` / `Done`); **Description** — `alphaNumericKeyboardOptions(ImeAction.Default)` (multiline). *(After **BUG-IME-01** delegation, `alphaNumericKeyboardOptions` = password input class, visible text.)*
+- **`ManageProductsScreen`**: filter sheet search/unit/category — `alphaNumericKeyboardOptions` + `singleLine = true`; other `OutlinedTextField`s read-only + numeric pad or decimal price only.
+
+### Candidate files
+- `app/src/main/java/com/redn/farm/ui/screens/manage/products/ProductFormScreen.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/manage/products/ManageProductsScreen.kt` *(verify all editable text rows)*
+
+### Verification
+- Type in each field on a device with aggressive IME (e.g. Gboard): no grammar/suggestion bar interfering with short labels/IDs.
+- `./gradlew :app:compileDebugKotlin` ✅
+
+**Status:** `[x]`
+
+---
+
+## BUG-IME-03 — Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(pricing preset editor free-text fields)*
+
+### Report
+- **Standard:** Alphanumeric keyboard must not show grammar/spell suggestions during data entry (same intent as **BUG-IME-01**).
+- **Screen:** Pricing → preset editor (`PricingPresetEditorScreen`).
+- **Symptom:** Grammar/suggestion strip on labels and names.
+
+### Expected behavior
+- Match **BUG-IME-01** for editable text; leave read-only dropdown rows unchanged.
+
+### Fix direction
+- Apply `alphaNumericKeyboardOptions` (or appropriate `ImeAction`) to: **Preset name (optional)**, hauling **fee line labels**, per-category **Name**, channel **fee labels**.
+- Do **not** change numeric pad fields or read-only `OutlinedTextField` anchors.
+
+### Candidate files
+- `app/src/main/java/com/redn/farm/ui/screens/pricing/PricingPresetEditorScreen.kt`
+
+### Fix *(implemented 2026-04-10)*
+- **Preset name**, hauling **Label**, category **Name**, channel fee **Label** — `alphaNumericKeyboardOptions` with appropriate `ImeAction`; read-only dropdown anchors unchanged.
+
+### Verification
+- Exercise hauling fee rows, category rows, and channel fee rows on device IME.
+- `./gradlew :app:compileDebugKotlin` ✅
+
+**Status:** `[x]`
+
+---
+
+## BUG-IME-04 — Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(farm operation form free-text fields)*
+
+### Report
+- **Standard:** Alphanumeric keyboard must not show grammar/spell suggestions during data entry (same intent as **BUG-IME-01**).
+- **Screen:** Log / edit farm operation (`FarmOperationFormScreen`).
+- **Symptom:** Grammar/suggestion strip on **Details**, **Area**, **Personnel** (product search already uses `alphaNumericKeyboardOptions`).
+
+### Expected behavior
+- Match **BUG-IME-01**; multiline **Details** uses same preset unless UX requests spell check for long prose.
+
+### Fix direction
+- Add `keyboardOptions` to **Details**, **Area**, **Personnel**; keep **Operation type** / **Weather** read-only dropdown fields as-is.
+
+### Candidate files
+- `app/src/main/java/com/redn/farm/ui/screens/farmops/FarmOperationFormScreen.kt`
+
+### Fix *(implemented 2026-04-10)*
+- **Details** — `alphaNumericKeyboardOptions(ImeAction.Default)`; **Area** / **Personnel** — `alphaNumericKeyboardOptions` + `KeyboardActions` (`Next` / `Done`).
+
+### Verification
+- Confirm focus order / `ImeAction` where multiple single-line fields exist.
+- `./gradlew :app:compileDebugKotlin` ✅
+
+**Status:** `[x]`
+
+---
+
+## BUG-IME-05 — Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(remittance remarks + typed payment signature)*
+
+### Report
+- **Standard:** Alphanumeric keyboard must not show grammar/spell suggestions during data entry (same intent as **BUG-IME-01**).
+- **Screens:** `RemittanceFormScreen` (**Remarks**); `PaymentFormScreen` (**Type** signature mode — `OutlinedTextField` without `keyboardOptions`).
+- **Symptom:** Unwanted grammar/suggestion UI during those text fields.
+
+### Expected behavior
+- Match **BUG-IME-01**; numeric amount field stays on numeric pad / decimal keyboard.
+
+### Fix direction
+- `RemittanceFormScreen`: **Remarks** → `alphaNumericKeyboardOptions` (or `ImeAction.Done` for last field).
+- `PaymentFormScreen`: typed **Signature** line → `alphaNumericKeyboardOptions`; do not change decimal wage/advance/liquidated fields.
+
+### Candidate files
+- `app/src/main/java/com/redn/farm/ui/screens/remittance/RemittanceFormScreen.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/manage/employees/payment/PaymentFormScreen.kt`
+
+### Fix *(implemented 2026-04-10)*
+- **`RemittanceFormScreen`** **Remarks** — `alphaNumericKeyboardOptions(ImeAction.Default)` (multiline).
+- **`PaymentFormScreen`** typed **Signature** — `alphaNumericKeyboardOptions(ImeAction.Done)` + `KeyboardActions`.
+
+### Verification
+- Save flows unchanged; IME clean on remarks + signature typing.
+- `./gradlew :app:compileDebugKotlin` ✅
+
+**Status:** `[x]`
+
+---
+
+## BUG-IME-06 — Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(day close notes and reconciliation remarks)*
+
+### Report
+- **Standard:** Alphanumeric keyboard must not show grammar/spell suggestions during data entry (same intent as **BUG-IME-01**).
+- **Screen:** Day Close (`DayCloseScreen`) — **Wages due notes (optional)**; **Reconciliation remarks** (with cash on hand; cash field stays decimal).
+- **Symptom:** Grammar/suggestion strip on free-text notes.
+
+### Expected behavior
+- Match **BUG-IME-01** for consistency in ops entry; optional product note: multiline prose could keep spell check — align with stakeholder if needed.
+
+### Fix direction
+- Add `keyboardOptions` to both multiline `OutlinedTextField`s; use `ImeAction.Default` or `Done` as appropriate.
+
+### Candidate files
+- `app/src/main/java/com/redn/farm/ui/screens/eod/DayCloseScreen.kt`
+
+### Fix *(implemented 2026-04-10)*
+- **Wages due notes**, **Reconciliation remarks** — `alphaNumericKeyboardOptions(ImeAction.Default)`; cash / inventory count fields stay decimal.
+
+### Verification
+- Save notes / reconciliation on device; no suggestion strip noise for short operational phrases.
+- `./gradlew :app:compileDebugKotlin` ✅
+
+**Status:** `[x]`
+
+---
+
+## BUG-IME-07 — Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(repo-wide audit for remaining text fields)*
+
+### Report
+- **Standard:** Alphanumeric keyboard must not show grammar/spell suggestions during data entry (same intent as **BUG-IME-01**).
+- **Scope:** Any `OutlinedTextField` (or future text input) that is **not** `readOnly`, **not** numeric/password/phone-specific, and still lacks `keyboardOptions` aligned with **BUG-IME-01**.
+
+### Expected behavior
+- No stray text fields open the default “full text” IME with grammar suggestions for operational data entry.
+
+### Fix direction
+- Run a repo search (e.g. ripgrep for `OutlinedTextField` and inspect each call site); wire `alphaNumericKeyboardOptions` / `loginUsernameKeyboardOptions` / existing `KeyboardType.Phone` policy as appropriate.
+- Explicitly **out of scope:** `NumericPadOutlinedTextField` decimal paths unless a text keyboard is incorrectly shown (separate issue).
+
+### Fix *(implemented 2026-04-10)*
+- **`alphaNumericKeyboardOptions` → `dataEntryNoImeSuggestionsKeyboardOptions`:** all prior call sites (search, filters, customer/employee/user forms, acquire/farm-op product search, order dialogs, etc.) now use the password-class IME without masking.
+- **New call sites** wired in **BUG-IME-03**–**BUG-IME-06** (see above).
+- **Excluded by design:** true password fields (`PasswordVisualTransformation`), **`KeyboardType.Phone`** contact fields, numeric/decimal/pad fields.
+
+### Candidate files
+- Grep-driven for future screens; pattern: operational text → `alphaNumericKeyboardOptions` or `loginUsernameKeyboardOptions`.
+
+### Verification
+- Spot-check + `./gradlew :app:compileDebugKotlin` ✅
+
+**Status:** `[x]`
+
+---
+
 ## BUG-ACQ-01 — Acquire: tapping numeric inputs shows no keyboard
 
 ### Report
@@ -1183,6 +1389,34 @@ All per-piece acquisitions already in the DB have inflated SRPs. They will need 
 
 ---
 
+## BUG-ORD-08 — **Active SRPs:** app crashes when expanding a product row (show price / detail)
+
+### Report
+- **Navigation:** **Take Order** (or order flow) → **Active SRPs**.
+- **User action:** Tap a product row to **expand** it (chevron / “dropdown” to reveal channel price detail — **`AnimatedVisibility`** + **`ActiveSrpsSelectedChannelDetail`** in **`ActiveSrpsScreen`**).
+- **Symptom:** The **app crashes** (process termination), not a handled error.
+- **Impact:** Staff cannot inspect per-channel pack lines and SRP breakdown on device.
+
+### Expected behavior
+- Expanding a row should only show/hide detail UI; no crash for any active acquisition row returned by **`ActiveSrpsViewModel.rows`**.
+
+### Root cause
+- **`ActiveSrpsSelectedChannelDetail`** used a **qualified early return** (**`return@Column`**) after **`Text`** when the selected channel had **no SRP** on that acquisition. That composable runs **inside** **`AnimatedVisibility`**, which sits **inside** a **`LazyColumn`** item. Compose’s slot table does not handle **qualified returns** in that nested context reliably (known pattern: **`ArrayIndexOutOfBoundsException`** / slot imbalance; see e.g. Compose Multiplatform **#2225** — qualified return under lazy item subtree).
+
+### Fix *(implemented 2026-04-10)*
+- Replace **`return@Column`** with a plain **`if (!hasChannel) { … } else { … }`** so every composition path uses the same structural **`Column`** content without non-local exit.
+
+### Files
+- `app/src/main/java/com/redn/farm/ui/screens/order/ActiveSrpsScreen.kt` — **`ActiveSrpsSelectedChannelDetail`**
+
+### Verification
+- Manual: **Active SRPs** → expand rows where the **selected channel** has **no** SRP on the lot (message path) and rows **with** SRP (detail path); switch **Online / Reseller / Offline**; no crash.
+- `./gradlew :app:compileDebugKotlin` ✅
+
+**Status:** `[x]`
+
+---
+
 ## BUG-SYS-02 — **Logout** should land on **Login** in one step (no visible stepping through other screens)
 
 ### Report
@@ -1249,8 +1483,16 @@ All per-piece acquisitions already in the DB have inflated SRPs. They will need 
 
 | Bug ID | Title | Status | Notes |
 |--------|-------|--------|-------|
+| BUG-IME-01 | Alphanumeric keyboard must not show grammar/spell suggestions during data entry | `[x]` | **`alphaNumericKeyboardOptions` → `dataEntryNoImeSuggestionsKeyboardOptions`** (password class, no mask); **`loginUsernameKeyboardOptions`** |
+| BUG-IME-02 | Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(product catalog)* | `[x]` | **`ProductFormScreen`** + **`ManageProductsScreen`** filters |
+| BUG-IME-03 | Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(pricing preset editor)* | `[x]` | **`PricingPresetEditorScreen`** text labels |
+| BUG-IME-04 | Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(farm operation form)* | `[x]` | **`FarmOperationFormScreen`** details/area/personnel |
+| BUG-IME-05 | Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(remittance + payment signature)* | `[x]` | **`RemittanceFormScreen`**, **`PaymentFormScreen`** |
+| BUG-IME-06 | Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(day close)* | `[x]` | **`DayCloseScreen`** notes + remarks |
+| BUG-IME-07 | Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(repo-wide audit)* | `[x]` | Central delegation + **BUG-IME-03**–**06** call sites |
 | BUG-PRT-01 | Print: “Print failed” snackbar even when print succeeds | `[x]` | **`connectPrinter`** no resume on **`onDisconnected`**; **`lineWrap`/`cutPaper`** non-fatal; order history snapshot message |
 | BUG-SYS-02 | Logout: direct to Login, no intermediate screen transitions | `[x]` | **`LoginViewModel.logout`** + **`SessionChecker`**: **`popUpTo(graph.id)`** **`inclusive`**; removed duplicate **`NavGraph.onLogout`** |
+| BUG-ORD-08 | Active SRPs: crash expanding product row / price detail | `[x]` | **`return@Column`** under **`LazyColumn`** + **`AnimatedVisibility`** → **`if`/`else`** (**`ActiveSrpsSelectedChannelDetail`**) |
 | BUG-ORD-05 | Active SRPs: channel chips drive list + expander + print | `[x]` | **`ActiveSrpsCollapsedSummary`** + **`ActiveSrpsSelectedChannelDetail`**; **`ProductActiveSrpRow`** no **`summaryFromPerKg`** |
 | BUG-ORD-04 | Order SRP vs Active SRPs print (resolver alignment); receipts **`/kg`/`/pc`** | `[x]` | **`OrderPricingResolver.srpFromAcquisition`** in **`ActiveSrpsScreen.printPriceList`**; **`ThermalPrintBuilders.buildOrderReceiptText`** + order history screens |
 | BUG-ORD-03 | Order history date filter → same picker pattern as Acquire Produce | `[x]` | `OrderHistoryFilters`: From/To cards + `DatePickerDialog` + `DatePicker` |
@@ -1292,6 +1534,13 @@ All per-piece acquisitions already in the DB have inflated SRPs. They will need 
 
 | Date | Change |
 |------|--------|
+| 2026-04-10 | **BUG-ORD-08** fixed: **Active SRPs** — removed **`return@Column`** in **`ActiveSrpsSelectedChannelDetail`** (nested under **`LazyColumn`** + **`AnimatedVisibility`**); use **`if`/`else`**; tracker **`[x]`**. |
+| 2026-04-10 | **BUG-ORD-08** logged: **Active SRPs** — crash when expanding product row / price detail; investigation checklist in section. |
+| 2026-04-10 | **BUG-IME-03**–**BUG-IME-07** fixed: preset editor, farm-op form, remittance/payment, day close; **`alphaNumericKeyboardOptions`** delegates to **`dataEntryNoImeSuggestionsKeyboardOptions`** (all prior call sites inherit password-class IME). **BUG-IME-01** section revised. |
+| 2026-04-10 | **BUG-IME-02** — **`dataEntryNoImeSuggestionsKeyboardOptions`** (password input class, no masking) on **`ProductFormScreen`** + filter dialog; **`InputKeyboardOptions`**: **`loginUsernameKeyboardOptions`** delegates to shared helper. |
+| 2026-04-10 | **BUG-IME-02** — **`ManageProductsScreen`** filter dialog: **`singleLine = true`** on search/unit/category (IME polish; presets already applied). |
+| 2026-04-10 | **BUG-IME-02** fixed: **`ProductFormScreen`** `alphaNumericKeyboardOptions` + IME chain; **`ManageProductsScreen`** verified (filters + numeric/decimal only). |
+| 2026-04-10 | **BUG-IME-02**–**BUG-IME-07** logged: extend **BUG-IME-01** keyboard preset to remaining text inputs (products, pricing preset editor, farm-op form, remittance/payment, day close, repo audit). **BUG-IME-01** section clarified (initial tranche + filters/dialogs). |
 | 2026-04-06 | **BUG-FOP-04** fixed: **`loggedInUsernameOrEmpty()`** + new-op **`personnel`** default; edit via **`LaunchedEffect`**; **`[x]`**. |
 | 2026-04-03 | **BUG-FOP-03** fixed: **Log operation** **Weather** — **`ExposedDropdownMenu`** **Hot/Dry** / **Rainy** / **Cloudy**; **`normalizeFarmOpWeather`** for legacy text; tracker **`[x]`**. |
 | 2026-04-06 | **BUG-FOP-03** logged: **Log operation** — **Weather** → dropdown **Hot/Dry**, **Rainy**, **Cloudy** (not free text); **`[ ]`**. |

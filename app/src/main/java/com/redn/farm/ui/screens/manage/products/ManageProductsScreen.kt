@@ -15,12 +15,14 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
@@ -36,7 +38,9 @@ import androidx.compose.foundation.clickable
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import com.redn.farm.data.model.ProductActiveStatusFilter
 import com.redn.farm.data.model.ProductFilters
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import com.redn.farm.ui.components.NumericPadBottomSheet
 
 private enum class FallbackPadTarget { PER_KG, PER_PIECE }
@@ -63,6 +67,7 @@ private fun hasManualFallbackPrice(price: ProductPrice?): Boolean {
 fun ManageProductsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToProductForm: (String) -> Unit,
+    onNavigateToPriceHistory: (String) -> Unit,
     viewModel: ManageProductsViewModel = hiltViewModel()
 ) {
     val scope = rememberCoroutineScope()
@@ -133,7 +138,8 @@ fun ManageProductsScreen(
                         canMutate = canMutate,
                         onEditClick = { onNavigateToProductForm(product.product_id) },
                         onDeleteClick = { pendingDelete = product },
-                        onSetFallbackPriceClick = { fallbackPriceTarget = product }
+                        onSetFallbackPriceClick = { fallbackPriceTarget = product },
+                        onPriceHistoryClick = { onNavigateToPriceHistory(product.product_id) },
                     )
                 }
             }
@@ -233,7 +239,8 @@ private fun ProductCard(
     canMutate: Boolean,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
-    onSetFallbackPriceClick: () -> Unit
+    onSetFallbackPriceClick: () -> Unit,
+    onPriceHistoryClick: () -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -291,20 +298,27 @@ private fun ProductCard(
                         )
                     }
                 }
-                if (canMutate) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(onClick = onPriceHistoryClick) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = "Price and SRP history",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    if (canMutate) {
                         IconButton(onClick = onSetFallbackPriceClick) {
                             Icon(
                                 imageVector = Icons.Default.AttachMoney,
                                 contentDescription = "Set fallback price",
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = MaterialTheme.colorScheme.primary,
                             )
                         }
                         IconButton(onClick = onDeleteClick) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
                                 contentDescription = "Delete",
-                                tint = MaterialTheme.colorScheme.error
+                                tint = MaterialTheme.colorScheme.error,
                             )
                         }
                     }
@@ -680,10 +694,10 @@ private fun FilterDialog(
     onApplyFilters: (ProductFilters) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    var showOutOfStock by remember { mutableStateOf(false) }
     var sortBy by remember { mutableStateOf("name") } // "name", "price"
     var unitTypeFilter by remember { mutableStateOf("") }
     var categoryFilter by remember { mutableStateOf("") }
+    var activeStatus by remember { mutableStateOf(ProductActiveStatusFilter.ACTIVE_ONLY) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -701,31 +715,48 @@ private fun FilterDialog(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     label = { Text("Search name, ID, or description") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
                 )
                 OutlinedTextField(
                     value = unitTypeFilter,
                     onValueChange = { unitTypeFilter = it },
                     label = { Text("Unit type contains (optional)") },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("e.g. kg, piece") }
+                    placeholder = { Text("e.g. kg, piece") },
+                    singleLine = true,
+                    keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
                 )
                 OutlinedTextField(
                     value = categoryFilter,
                     onValueChange = { categoryFilter = it },
                     label = { Text("Category contains (optional)") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Done),
                 )
 
+                Text("Active status", style = MaterialTheme.typography.labelLarge)
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Checkbox(
-                        checked = showOutOfStock,
-                        onCheckedChange = { showOutOfStock = it }
+                    FilterChip(
+                        selected = activeStatus == ProductActiveStatusFilter.ALL,
+                        onClick = { activeStatus = ProductActiveStatusFilter.ALL },
+                        label = { Text("All") },
                     )
-                    Text("Show out of stock")
+                    FilterChip(
+                        selected = activeStatus == ProductActiveStatusFilter.ACTIVE_ONLY,
+                        onClick = { activeStatus = ProductActiveStatusFilter.ACTIVE_ONLY },
+                        label = { Text("Active") },
+                    )
+                    FilterChip(
+                        selected = activeStatus == ProductActiveStatusFilter.INACTIVE_ONLY,
+                        onClick = { activeStatus = ProductActiveStatusFilter.INACTIVE_ONLY },
+                        label = { Text("Inactive") },
+                    )
                 }
 
                 Text("Sort by:", modifier = Modifier.padding(top = 8.dp))
@@ -752,10 +783,10 @@ private fun FilterDialog(
                     onApplyFilters(
                         ProductFilters(
                             searchQuery = searchQuery,
-                            showOutOfStock = showOutOfStock,
                             sortBy = sortBy,
                             unitTypeFilter = unitTypeFilter,
                             categoryFilter = categoryFilter,
+                            activeStatus = activeStatus,
                         )
                     )
                     onDismiss()

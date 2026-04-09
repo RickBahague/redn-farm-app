@@ -16,9 +16,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import com.redn.farm.data.local.entity.DayCloseEntity
 import com.redn.farm.data.local.entity.DayCloseInventoryEntity
 import com.redn.farm.data.pricing.SalesChannel
@@ -616,6 +618,7 @@ private fun EmployeeNotesCard(
                     .fillMaxWidth()
                     .padding(top = 8.dp),
                 minLines = 2,
+                keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Default),
             )
             TextButton(
                 onClick = { onSaveNotes(notesText.ifBlank { null }) },
@@ -842,6 +845,7 @@ private fun CashReconciliationCard(
                     .fillMaxWidth()
                     .padding(top = 4.dp),
                 minLines = 2,
+                keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Default),
             )
             TextButton(
                 onClick = { onSave(cashText.toDoubleOrNull(), remarksText.ifBlank { null }) },

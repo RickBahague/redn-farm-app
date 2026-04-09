@@ -26,7 +26,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import com.redn.farm.utils.MillisDateRange
 import java.time.Instant
 import java.time.ZoneId
@@ -67,6 +69,7 @@ fun OrderHistoryFilters(
             },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
+            keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
         )
 
         Row(

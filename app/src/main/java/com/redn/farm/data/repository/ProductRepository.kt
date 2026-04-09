@@ -5,6 +5,7 @@ import com.redn.farm.data.local.dao.ProductPriceDao
 import com.redn.farm.data.local.entity.ProductEntity
 import com.redn.farm.data.local.entity.ProductPriceEntity
 import com.redn.farm.data.model.Product
+import com.redn.farm.data.model.ProductActiveStatusFilter
 import com.redn.farm.data.model.ProductPrice
 import com.redn.farm.data.model.ProductFilters
 import kotlinx.coroutines.flow.Flow
@@ -98,9 +99,12 @@ class ProductRepository @Inject constructor(
                 }
             }
 
-            // Apply out of stock filter
-            if (!filters.showOutOfStock) {
-                filteredProducts = filteredProducts.filter { it.is_active }
+            filteredProducts = when (filters.activeStatus) {
+                ProductActiveStatusFilter.ALL -> filteredProducts
+                ProductActiveStatusFilter.ACTIVE_ONLY ->
+                    filteredProducts.filter { it.is_active }
+                ProductActiveStatusFilter.INACTIVE_ONLY ->
+                    filteredProducts.filter { !it.is_active }
             }
 
             // Apply sorting

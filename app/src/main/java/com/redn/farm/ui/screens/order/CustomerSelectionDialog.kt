@@ -10,9 +10,11 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Customer
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,7 +47,8 @@ fun CustomerSelectionDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 8.dp),
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
                 )
 
                 LazyColumn {

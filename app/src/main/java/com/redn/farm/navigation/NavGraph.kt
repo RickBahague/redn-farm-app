@@ -55,6 +55,7 @@ import com.redn.farm.ui.screens.eod.OutstandingInventoryScreen
 import com.redn.farm.ui.screens.manage.customers.CustomerFormScreen
 import com.redn.farm.ui.screens.manage.customers.ManageCustomersViewModel
 import com.redn.farm.ui.screens.manage.products.ProductFormScreen
+import com.redn.farm.ui.screens.manage.products.ProductPriceHistoryScreen
 
 sealed class Screen(val route: String) {
     object Login : Screen("login")
@@ -63,6 +64,9 @@ sealed class Screen(val route: String) {
     object Products : Screen("products")
     object ProductForm : Screen("product_form/{productId}") {
         fun createRoute(productId: String) = "product_form/$productId"
+    }
+    object ProductPriceHistory : Screen("product_price_history/{productId}") {
+        fun createRoute(productId: String) = "product_price_history/$productId"
     }
     object Customers : Screen("customers")
     object CustomerForm : Screen("customer_form/{customerId}") {
@@ -207,7 +211,10 @@ fun NavGraph(
                     },
                     onNavigateToProductForm = { productId ->
                         navController.navigate(Screen.ProductForm.createRoute(productId))
-                    }
+                    },
+                    onNavigateToPriceHistory = { productId ->
+                        navController.navigate(Screen.ProductPriceHistory.createRoute(productId))
+                    },
                 )
             }
         }
@@ -228,7 +235,31 @@ fun NavGraph(
                     onOpenPresetDetail = { presetId ->
                         navController.navigate(Screen.PresetDetail.createRoute(presetId))
                     },
+                    onNavigateToPriceHistory = {
+                        navController.navigate(Screen.ProductPriceHistory.createRoute(pid))
+                    },
                     viewModel = hiltViewModel(productsListEntry)
+                )
+            }
+        }
+        composable(
+            route = Screen.ProductPriceHistory.route,
+            arguments = listOf(
+                navArgument("productId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            val historyPid = entry.arguments?.getString("productId") ?: return@composable
+            val productsListEntryForHistory = remember(entry) {
+                navController.getBackStackEntry(Screen.Products.route)
+            }
+            RequireRole(navController, Rbac.ROLES_PRODUCTS) {
+                ProductPriceHistoryScreen(
+                    productId = historyPid,
+                    onNavigateBack = { navController.navigateUp() },
+                    onOpenPresetDetail = { presetId ->
+                        navController.navigate(Screen.PresetDetail.createRoute(presetId))
+                    },
+                    viewModel = hiltViewModel(productsListEntryForHistory)
                 )
             }
         }

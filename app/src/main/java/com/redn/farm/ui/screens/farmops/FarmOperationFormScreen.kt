@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -52,11 +53,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.redn.farm.data.model.FarmOperation
 import com.redn.farm.data.model.FarmOperationType
 import com.redn.farm.data.model.Product
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import com.redn.farm.utils.MillisDateRange
 import java.time.Instant
 import java.time.ZoneId
@@ -155,6 +160,7 @@ fun FarmOperationFormScreen(
                 it.product_description.contains(searchQuery, ignoreCase = true)
         }
     }
+    val focusManager = LocalFocusManager.current
 
     val canSave = details.isNotBlank()
 
@@ -242,7 +248,8 @@ fun FarmOperationFormScreen(
                             }
                         }
                     },
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
                 )
                 LazyColumn(
                     modifier = Modifier.heightIn(max = 400.dp),
@@ -388,7 +395,8 @@ fun FarmOperationFormScreen(
                 label = { Text("Details") },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 3,
-                maxLines = 6
+                maxLines = 6,
+                keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Default),
             )
 
             Row(
@@ -400,7 +408,11 @@ fun FarmOperationFormScreen(
                     onValueChange = { area = it },
                     label = { Text("Area") },
                     singleLine = true,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) },
+                    ),
                 )
                 ExposedDropdownMenuBox(
                     expanded = weatherMenuExpanded,
@@ -442,7 +454,11 @@ fun FarmOperationFormScreen(
                 onValueChange = { personnel = it },
                 label = { Text("Personnel") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = { focusManager.clearFocus() },
+                ),
             )
 
             Row(

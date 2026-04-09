@@ -38,6 +38,8 @@ import com.redn.farm.utils.PrinterUtils
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -1080,7 +1082,9 @@ private fun ProductSelectionDialog(
                                     Icon(Icons.Default.Clear, "Clear search")
                                 }
                             }
-                        } else null
+                        } else null,
+                        singleLine = true,
+                        keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
                     )
 
                     LazyColumn(

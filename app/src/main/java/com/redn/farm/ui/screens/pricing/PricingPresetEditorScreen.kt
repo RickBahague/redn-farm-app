@@ -41,9 +41,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.ui.components.NumericPadOutlinedTextField
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import com.redn.farm.ui.components.NumericPadOutlinedTextFieldForDouble
 import com.redn.farm.ui.components.NumericPadOutlinedTextFieldForNullableDouble
 import com.redn.farm.data.pricing.ChannelConfig
@@ -130,7 +132,8 @@ fun PricingPresetEditorScreen(
                 onValueChange = { viewModel.updateForm { f -> f.copy(presetName = it) } },
                 label = { Text("Preset name (optional)") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
             )
 
             Text("Spoilage & hauling", style = MaterialTheme.typography.titleMedium)
@@ -182,7 +185,8 @@ fun PricingPresetEditorScreen(
                             onValueChange = { viewModel.updateHaulingFee(index, it, fee.amount) },
                             label = { Text("Label") },
                             modifier = Modifier.weight(1f),
-                            singleLine = true
+                            singleLine = true,
+                            keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
                         )
                         NumericPadOutlinedTextFieldForDouble(
                             value = fee.amount,
@@ -226,7 +230,8 @@ fun PricingPresetEditorScreen(
                             },
                             label = { Text("Name") },
                             modifier = Modifier.weight(1f),
-                            singleLine = true
+                            singleLine = true,
+                            keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
                         )
                         IconButton(onClick = { viewModel.removeCategory(index) }) {
                             Icon(Icons.Default.Delete, contentDescription = "Remove category")
@@ -379,7 +384,8 @@ private fun ChannelEditorBlock(
                     },
                     label = { Text("Label") },
                     modifier = Modifier.weight(1f),
-                    singleLine = true
+                    singleLine = true,
+                    keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
                 )
                 ExposedDropdownMenuBox(
                     expanded = feeTypeExpanded,

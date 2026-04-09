@@ -15,12 +15,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.repository.DayCloseRepository
 import com.redn.farm.data.util.InventoryFifoAllocator
 import com.redn.farm.data.local.session.SessionManager
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import com.redn.farm.utils.CurrencyFormatter
 import com.redn.farm.utils.PrinterUtils
 import kotlinx.coroutines.launch
@@ -143,7 +144,7 @@ private fun OutstandingInventoryList(
                 label = { Text("Search product") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
             )
             Spacer(Modifier.height(8.dp))
             Row(

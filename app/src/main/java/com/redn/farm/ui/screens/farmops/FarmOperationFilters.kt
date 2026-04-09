@@ -7,8 +7,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.redn.farm.data.model.FarmOperationType
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import com.redn.farm.utils.MillisDateRange
 import java.time.Instant
 import java.time.ZoneId
@@ -50,7 +52,8 @@ fun FarmOperationFilters(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true
+            singleLine = true,
+            keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
         )
 
         ExposedDropdownMenuBox(

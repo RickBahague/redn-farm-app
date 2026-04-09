@@ -57,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -66,6 +67,7 @@ import com.redn.farm.data.model.AcquisitionLocation
 import com.redn.farm.data.model.Product
 import com.redn.farm.data.repository.AcquisitionDraftPricingPreview
 import com.redn.farm.ui.components.NumericPadBottomSheet
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import com.redn.farm.utils.CurrencyFormatter
 import com.redn.farm.utils.MillisDateRange
 import kotlin.math.abs
@@ -445,6 +447,7 @@ fun AcquisitionFormScreen(
                         }
                     },
                     singleLine = true,
+                    keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
                 )
                 LazyColumn(
                     modifier = Modifier.heightIn(max = 400.dp),

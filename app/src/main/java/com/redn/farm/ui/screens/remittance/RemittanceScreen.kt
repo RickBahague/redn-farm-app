@@ -46,10 +46,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Remittance
 import com.redn.farm.data.model.RemittanceEntryType
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import com.redn.farm.utils.CurrencyFormatter
 import com.redn.farm.utils.PrinterUtils
 import com.redn.farm.utils.buildRemittanceSlip
@@ -248,7 +250,8 @@ fun RemittanceScreen(
                         }
                     }
                 },
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
             )
 
             Spacer(modifier = Modifier.height(8.dp))

@@ -41,9 +41,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.redn.farm.data.model.RemittanceEntryType
 import com.redn.farm.ui.components.NumericPadOutlinedTextField
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -247,7 +249,8 @@ fun RemittanceFormScreen(
                 label = { Text("Remarks") },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
-                maxLines = 4
+                maxLines = 4,
+                keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Default),
             )
             Spacer(Modifier.padding(bottom = 24.dp))
         }

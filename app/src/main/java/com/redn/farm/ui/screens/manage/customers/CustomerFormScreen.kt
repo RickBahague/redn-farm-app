@@ -44,8 +44,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import com.redn.farm.data.model.Customer
 import com.redn.farm.data.model.CustomerType
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -173,21 +177,27 @@ fun CustomerFormScreen(
                 onValueChange = { firstname = it },
                 label = { Text("First name") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
             )
             OutlinedTextField(
                 value = lastname,
                 onValueChange = { lastname = it },
                 label = { Text("Last name") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
             )
             OutlinedTextField(
                 value = contact,
                 onValueChange = { contact = it },
                 label = { Text("Contact") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Phone,
+                    imeAction = ImeAction.Next,
+                ),
             )
 
             Text("Customer type", style = MaterialTheme.typography.titleSmall)
@@ -227,7 +237,8 @@ fun CustomerFormScreen(
                         onValueChange = { address = it },
                         label = { Text("Street / address") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -238,14 +249,16 @@ fun CustomerFormScreen(
                             onValueChange = { city = it },
                             label = { Text("City") },
                             singleLine = true,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
                         )
                         OutlinedTextField(
                             value = province,
                             onValueChange = { province = it },
                             label = { Text("Province") },
                             singleLine = true,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Next),
                         )
                     }
                     OutlinedTextField(
@@ -253,7 +266,8 @@ fun CustomerFormScreen(
                         onValueChange = { postalCode = it },
                         label = { Text("Postal code") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Done),
                     )
                 }
             }

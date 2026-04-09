@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -20,6 +21,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.Product
 import androidx.compose.ui.platform.LocalConfiguration
 import com.redn.farm.data.pricing.SalesChannel
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,7 +76,8 @@ fun ProductSelectionDialog(
                                 }
                             }
                         },
-                        singleLine = true
+                        singleLine = true,
+                        keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
                     )
 
                     LazyColumn(

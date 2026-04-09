@@ -321,47 +321,49 @@ private fun ActiveSrpsSelectedChannelDetail(
             .padding(top = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // Do not use `return@Column` here: this composable is nested under LazyColumn items +
+        // AnimatedVisibility; qualified returns in that subtree corrupt the slot table (crash).
         if (!hasChannel) {
             Text(
                 text = "No SRP for $channelTitle on this acquisition.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            return@Column
-        }
-        val perKg = OrderPricingResolver.srpFromAcquisition(acquisition, channel, isPerKg = true)
-        val perPiece = OrderPricingResolver.srpFromAcquisition(acquisition, channel, isPerKg = false)
-        when (ch) {
-            SalesChannel.ONLINE ->
-                ActiveSrpsChannelBlock(
-                    title = blockTitle,
-                    perKg = perKg ?: acquisition.srp_online_per_kg,
-                    g500 = acquisition.srp_online_500g,
-                    g250 = acquisition.srp_online_250g,
-                    g100 = acquisition.srp_online_100g,
-                    perPiece = perPiece,
-                    isPerKg = acquisition.is_per_kg,
-                )
-            SalesChannel.RESELLER ->
-                ActiveSrpsChannelBlock(
-                    title = blockTitle,
-                    perKg = perKg ?: acquisition.srp_reseller_per_kg,
-                    g500 = acquisition.srp_reseller_500g,
-                    g250 = acquisition.srp_reseller_250g,
-                    g100 = acquisition.srp_reseller_100g,
-                    perPiece = perPiece,
-                    isPerKg = acquisition.is_per_kg,
-                )
-            else ->
-                ActiveSrpsChannelBlock(
-                    title = blockTitle,
-                    perKg = perKg ?: acquisition.srp_offline_per_kg,
-                    g500 = acquisition.srp_offline_500g,
-                    g250 = acquisition.srp_offline_250g,
-                    g100 = acquisition.srp_offline_100g,
-                    perPiece = perPiece,
-                    isPerKg = acquisition.is_per_kg,
-                )
+        } else {
+            val perKg = OrderPricingResolver.srpFromAcquisition(acquisition, channel, isPerKg = true)
+            val perPiece = OrderPricingResolver.srpFromAcquisition(acquisition, channel, isPerKg = false)
+            when (ch) {
+                SalesChannel.ONLINE ->
+                    ActiveSrpsChannelBlock(
+                        title = blockTitle,
+                        perKg = perKg ?: acquisition.srp_online_per_kg,
+                        g500 = acquisition.srp_online_500g,
+                        g250 = acquisition.srp_online_250g,
+                        g100 = acquisition.srp_online_100g,
+                        perPiece = perPiece,
+                        isPerKg = acquisition.is_per_kg,
+                    )
+                SalesChannel.RESELLER ->
+                    ActiveSrpsChannelBlock(
+                        title = blockTitle,
+                        perKg = perKg ?: acquisition.srp_reseller_per_kg,
+                        g500 = acquisition.srp_reseller_500g,
+                        g250 = acquisition.srp_reseller_250g,
+                        g100 = acquisition.srp_reseller_100g,
+                        perPiece = perPiece,
+                        isPerKg = acquisition.is_per_kg,
+                    )
+                else ->
+                    ActiveSrpsChannelBlock(
+                        title = blockTitle,
+                        perKg = perKg ?: acquisition.srp_offline_per_kg,
+                        g500 = acquisition.srp_offline_500g,
+                        g250 = acquisition.srp_offline_250g,
+                        g100 = acquisition.srp_offline_100g,
+                        perPiece = perPiece,
+                        isPerKg = acquisition.is_per_kg,
+                    )
+            }
         }
     }
 }

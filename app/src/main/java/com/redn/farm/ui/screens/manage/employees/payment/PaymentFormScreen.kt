@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.data.model.EmployeePayment
+import com.redn.farm.ui.components.alphaNumericKeyboardOptions
 import com.redn.farm.utils.buildEmployeePaymentVoucher
 import com.redn.farm.utils.CurrencyFormatter
 import com.redn.farm.utils.PrinterUtils
@@ -486,7 +487,11 @@ fun PaymentFormScreen(
                             onValueChange = { signature = it },
                             label = { Text("Signature (optional)") },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(
+                                onDone = { focusManager.clearFocus() },
+                            ),
                         )
                     }
                 }
