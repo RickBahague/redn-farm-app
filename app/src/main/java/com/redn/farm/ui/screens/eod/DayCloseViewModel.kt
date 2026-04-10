@@ -10,6 +10,7 @@ import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.security.Rbac
 import com.redn.farm.utils.ThermalEodChannelRow
 import com.redn.farm.utils.ThermalEodInventoryRow
+import com.redn.farm.data.repository.DayCloseSoldQty
 import com.redn.farm.utils.ThermalEodProductRow
 import com.redn.farm.utils.ThermalEodUnpaidRow
 import com.redn.farm.utils.buildEodSummary
@@ -170,14 +171,21 @@ class DayCloseViewModel @Inject constructor(
         }
     }
 
-    /** Update the physical count for a single product (kg). */
-    fun enterActualCount(productId: String, actualKg: Double) {
+    /**
+     * Physical count in **display** units: **kg** when the row is per-kg, **pieces** when per-piece
+     * (**BUG-EOD-03**); persisted as **kg** in [DayCloseInventoryEntity].
+     */
+    fun enterActualCount(productId: String, rawInput: Double) {
         val state = _uiState.value as? DayCloseUiState.Ready ?: return
         if (state.close.is_finalized) return
         val idx = state.inventoryLines.indexOfFirst { it.product_id == productId }
         if (idx < 0) return
         val line = state.inventoryLines[idx]
         if (!line.is_counted) return
+        val snap = state.snapshot
+        val unit = snap.inventoryUnitByProduct[productId] ?: "kg"
+        val ppk = snap.inventoryPiecesPerKgByProduct[productId]
+        val actualKg = DayCloseSoldQty.inventoryCountInputToStoredKg(rawInput, unit, ppk)
         val varianceQty = actualKg - line.adjusted_theoretical_remaining
         val varianceCost = varianceQty * line.weighted_avg_cost_per_unit
         val updatedLine = line.copy(
@@ -189,9 +197,9 @@ class DayCloseViewModel @Inject constructor(
         _uiState.value = state.copy(inventoryLines = newList)
         viewModelScope.launch {
             repo.updateInventoryLine(updatedLine)
-            val snap = repo.loadEodUiSnapshot(state.close.business_date, newList)
+            val refreshedSnap = repo.loadEodUiSnapshot(state.close.business_date, newList)
             (_uiState.value as? DayCloseUiState.Ready)?.let { r ->
-                _uiState.value = r.copy(snapshot = snap)
+                _uiState.value = r.copy(snapshot = refreshedSnap)
             }
         }
     }
@@ -327,15 +335,28 @@ class DayCloseViewModel @Inject constructor(
             ThermalEodChannelRow(label, row.order_count, row.total_sales)
         }
         val top = s.topProducts.map { p ->
-            ThermalEodProductRow(p.product_name, p.qty_sold, p.revenue)
+            ThermalEodProductRow(
+                name = p.product_name,
+                qtyDisplay = DayCloseSoldQty.formatTopProductQtyLine(p.qty_kg_sold, p.qty_pc_sold),
+                revenue = p.revenue,
+            )
         }
         val inv = state.inventoryLines.map { line ->
             val unitLabel = s.inventoryUnitByProduct[line.product_id] ?: "kg"
+            val ppk = s.inventoryPiecesPerKgByProduct[line.product_id]
             ThermalEodInventoryRow(
                 name = line.product_name,
-                theoreticalQty = line.adjusted_theoretical_remaining,
-                actualQty = line.actual_remaining,
-                varianceQty = line.variance_qty,
+                theoreticalQty = DayCloseSoldQty.inventoryDisplayQuantity(
+                    line.adjusted_theoretical_remaining,
+                    unitLabel,
+                    ppk,
+                ),
+                actualQty = line.actual_remaining?.let {
+                    DayCloseSoldQty.inventoryDisplayQuantity(it, unitLabel, ppk)
+                },
+                varianceQty = line.variance_qty?.let {
+                    DayCloseSoldQty.inventoryDisplayQuantity(it, unitLabel, ppk)
+                },
                 unitLabel = unitLabel,
             )
         }

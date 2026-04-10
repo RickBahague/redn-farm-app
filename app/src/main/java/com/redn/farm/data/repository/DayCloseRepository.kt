@@ -12,7 +12,8 @@ import com.redn.farm.data.local.dao.EmployeePaymentWithEmployee
 import com.redn.farm.data.local.dao.OrderDao
 import com.redn.farm.data.local.dao.OrderWithDetails
 import com.redn.farm.data.local.dao.ProductDao
-import com.redn.farm.data.local.dao.ProductRevenueRow
+import com.redn.farm.data.local.dao.ProductSoldQtyBreakdown
+import com.redn.farm.data.local.dao.ProductTopRevenueRow
 import com.redn.farm.data.local.dao.RemittanceDao
 import com.redn.farm.data.local.entity.DayCloseAuditEntity
 import com.redn.farm.data.local.entity.DayCloseEntity
@@ -120,10 +121,10 @@ class DayCloseRepository @Inject constructor(
         val acqSummaries = acquisitionDao.getTotalAcquiredByProduct()
             .associateBy { it.product_id }
 
-        val soldUpTo = orderDao.getTotalSoldQtyByProductUpTo(end)
+        val soldUpTo = orderDao.getTotalSoldQtyBreakdownByProductUpTo(end)
             .associateBy { it.product_id }
 
-        val soldToday = orderDao.getSoldQtyByProductOnDate(start, end)
+        val soldToday = orderDao.getSoldQtyBreakdownByProductOnDate(start, end)
             .associateBy { it.product_id }
 
         val priorMap = dayCloseInventoryDao.getPriorPostedVarianceByProduct(start)
@@ -142,8 +143,13 @@ class DayCloseRepository @Inject constructor(
                 acq.total_qty / pc
             }
 
-            val totalSoldKg = soldUpTo[productId]?.total_qty ?: 0.0
-            val soldTodayKg = soldToday[productId]?.total_qty ?: 0.0
+            val pc = acq.max_piece_count
+            val totalSoldKg = soldUpTo[productId]?.let { b ->
+                DayCloseSoldQty.kgEquivalent(b.qty_kg_sold, b.qty_pc_sold, pc)
+            } ?: 0.0
+            val soldTodayKg = soldToday[productId]?.let { b ->
+                DayCloseSoldQty.kgEquivalent(b.qty_kg_sold, b.qty_pc_sold, pc)
+            } ?: 0.0
 
             val wac = if (totalAcquiredKg > 0) acq.total_cost / totalAcquiredKg else 0.0
 
@@ -186,7 +192,7 @@ class DayCloseRepository @Inject constructor(
         val salesSummary = orderDao.getSalesSummaryOnDate(start, end)
         val unpaidSummary = orderDao.getUnpaidSummaryAsOf(end)
 
-        val soldToday = orderDao.getSoldQtyByProductOnDate(start, end)
+        val soldToday = orderDao.getSoldQtyBreakdownByProductOnDate(start, end)
             .associateBy { it.product_id }
         val acqSummaries = acquisitionDao.getTotalAcquiredByProduct()
             .associateBy { it.product_id }
@@ -201,7 +207,12 @@ class DayCloseRepository @Inject constructor(
                 acq.total_qty / pc
             }
             val wac = if (totalAcquiredKg > 0) acq.total_cost / totalAcquiredKg else 0.0
-            totalCogs += soldRow.total_qty * wac
+            val kgSold = DayCloseSoldQty.kgEquivalent(
+                soldRow.qty_kg_sold,
+                soldRow.qty_pc_sold,
+                acq.max_piece_count,
+            )
+            totalCogs += kgSold * wac
         }
 
         val grossRevenue = salesSummary.total_sales
@@ -244,7 +255,7 @@ class DayCloseRepository @Inject constructor(
     data class EodUiSnapshot(
         val dailyBreakdown: DailyOrderBreakdown,
         val byChannel: List<ChannelSalesRow>,
-        val topProducts: List<ProductRevenueRow>,
+        val topProducts: List<ProductTopRevenueRow>,
         val expectedCashFromOrders: Double,
         val remittedToday: Double,
         val disbursementsToday: Double,
@@ -258,6 +269,17 @@ class DayCloseRepository @Inject constructor(
         val lastAcqMillisByProduct: Map<String, Long>,
         val lastAcqDetailByProduct: Map<String, LastAcquisitionDetail>,
         val inventoryUnitByProduct: Map<String, String>,
+        /** [AcquisitionDao] aggregate **max_piece_count** per product — display kg→pc for inventory rows. */
+        val inventoryPiecesPerKgByProduct: Map<String, Double>,
+        /** Same **order_items** breakdown as **Top products** for the business date (Sales Summary alignment). */
+        val inventorySoldTodayBreakdownByProduct: Map<String, ProductSoldQtyBreakdown>,
+        /** Line **revenue** on the business date per product (pairs with [inventorySoldTodayBreakdownByProduct]). */
+        val inventoryDayRevenueByProduct: Map<String, Double>,
+        /**
+         * Cumulative **order_items** kg/pc split through end of close date — same basis as **Top products**
+         * formatting for **Sold through close** (not kg→pc conversion of [DayCloseInventoryEntity.total_sold_through_close_date]).
+         */
+        val inventorySoldThroughCloseBreakdownByProduct: Map<String, ProductSoldQtyBreakdown>,
         val outstandingRevenueToday: Double,
     )
 
@@ -303,6 +325,16 @@ class DayCloseRepository @Inject constructor(
             }
         val inventoryUnitByProduct = acquisitionDao.getLatestUnitModeByProduct()
             .associate { row -> row.product_id to if (row.is_per_kg_flag) "kg" else "pc" }
+        val inventoryPiecesPerKgByProduct = acquisitionDao.getTotalAcquiredByProduct()
+            .associate { row ->
+                row.product_id to DayCloseSoldQty.piecesPerKgFromAcqAggregate(row.max_piece_count)
+            }
+        val inventorySoldTodayBreakdownByProduct =
+            orderDao.getSoldQtyBreakdownByProductOnDate(start, end).associateBy { it.product_id }
+        val inventoryDayRevenueByProduct =
+            orderDao.getProductRevenueOnDate(start, end).associate { it.product_id to it.revenue }
+        val inventorySoldThroughCloseBreakdownByProduct =
+            orderDao.getTotalSoldQtyBreakdownByProductUpTo(end).associateBy { it.product_id }
 
         val outstandingRevenueToday = sales.total_sales - sales.total_collected
 
@@ -328,6 +360,10 @@ class DayCloseRepository @Inject constructor(
             lastAcqMillisByProduct = lastAcqMillisByProduct,
             lastAcqDetailByProduct = lastAcqDetailByProduct,
             inventoryUnitByProduct = inventoryUnitByProduct,
+            inventoryPiecesPerKgByProduct = inventoryPiecesPerKgByProduct,
+            inventorySoldTodayBreakdownByProduct = inventorySoldTodayBreakdownByProduct,
+            inventoryDayRevenueByProduct = inventoryDayRevenueByProduct,
+            inventorySoldThroughCloseBreakdownByProduct = inventorySoldThroughCloseBreakdownByProduct,
             outstandingRevenueToday = outstandingRevenueToday,
         )
     }
@@ -422,7 +458,9 @@ class DayCloseRepository @Inject constructor(
             }
 
         val allLots = acquisitionDao.getAllAcquisitionLotsOldestFirst()
-        val soldUpTo = orderDao.getTotalSoldQtyByProductUpTo(end)
+        val acqSummaries = acquisitionDao.getTotalAcquiredByProduct()
+            .associateBy { it.product_id }
+        val soldUpTo = orderDao.getTotalSoldQtyBreakdownByProductUpTo(end)
             .associateBy { it.product_id }
         val priorSpoilageByProduct = dayCloseInventoryDao.getPriorPostedVarianceByProduct(dayStart)
             .associate { it.product_id to it.total_variance }
@@ -431,7 +469,13 @@ class DayCloseRepository @Inject constructor(
         val now = System.currentTimeMillis()
 
         return grouped.mapNotNull { (productId, lots) ->
-            val totalSoldKg = soldUpTo[productId]?.total_qty ?: 0.0
+            val totalSoldKg = soldUpTo[productId]?.let { b ->
+                DayCloseSoldQty.kgEquivalent(
+                    b.qty_kg_sold,
+                    b.qty_pc_sold,
+                    acqSummaries[productId]?.max_piece_count,
+                )
+            } ?: 0.0
             val result = InventoryFifoAllocator.allocate(lots, totalSoldKg, now)
             val totalAcquiredKg = lots.sumOf { lot ->
                 if (lot.is_per_kg) {

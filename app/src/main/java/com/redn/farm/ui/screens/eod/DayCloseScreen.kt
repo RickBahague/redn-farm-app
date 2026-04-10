@@ -21,10 +21,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.redn.farm.ui.components.alphaNumericKeyboardOptions
+import com.redn.farm.data.local.dao.ProductSoldQtyBreakdown
 import com.redn.farm.data.local.entity.DayCloseEntity
 import com.redn.farm.data.local.entity.DayCloseInventoryEntity
 import com.redn.farm.data.pricing.SalesChannel
 import com.redn.farm.data.repository.DayCloseRepository
+import com.redn.farm.data.repository.DayCloseSoldQty
 import com.redn.farm.utils.CurrencyFormatter
 import com.redn.farm.utils.PrinterUtils
 import kotlinx.coroutines.launch
@@ -143,7 +145,7 @@ fun DayCloseScreen(
                     state = state,
                     padding = padding,
                     onRefreshInventory = { viewModel.refreshInventorySnapshot(username) },
-                    onEnterCount = { pid, kg -> viewModel.enterActualCount(pid, kg) },
+                    onEnterCount = { pid, raw -> viewModel.enterActualCount(pid, raw) },
                     onSetCounted = { pid, counted -> viewModel.setLineCounted(pid, counted) },
                     onSaveCash = { cash, remarks -> viewModel.saveCash(cash, remarks, username) },
                     onSaveNotes = { notes -> viewModel.saveNotes(notes, username) },
@@ -171,7 +173,7 @@ private fun DayCloseReadyContent(
     state: DayCloseUiState.Ready,
     padding: PaddingValues,
     onRefreshInventory: () -> Unit,
-    onEnterCount: (String, Double) -> Unit,
+    onEnterCount: (String, Double) -> Unit, // value in display units (kg or pc per inventory row label)
     onSetCounted: (String, Boolean) -> Unit,
     onSaveCash: (Double?, String?) -> Unit,
     onSaveNotes: (String?) -> Unit,
@@ -312,7 +314,7 @@ private fun DayCloseReadyContent(
                     snap.topProducts.forEach { p ->
                         DayCloseRow(
                             p.product_name.take(28),
-                            "${"%.2f".format(p.qty_sold)} kg · ${CurrencyFormatter.format(p.revenue)}",
+                            "${DayCloseSoldQty.formatTopProductQtyLine(p.qty_kg_sold, p.qty_pc_sold)} · ${CurrencyFormatter.format(p.revenue)}",
                         )
                     }
                 }
@@ -409,14 +411,19 @@ private fun DayCloseReadyContent(
 
         itemsIndexed(displayInventory, key = { _, line -> line.product_id }) { _, line ->
             val unitLabel = snap.inventoryUnitByProduct[line.product_id] ?: "kg"
+            val piecesPerKg = snap.inventoryPiecesPerKgByProduct[line.product_id]
             InventoryLineCard(
                 line = line,
                 unitLabel = unitLabel,
+                piecesPerKg = piecesPerKg,
+                soldTodayBreakdown = snap.inventorySoldTodayBreakdownByProduct[line.product_id],
+                soldThroughCloseBreakdown = snap.inventorySoldThroughCloseBreakdownByProduct[line.product_id],
+                revenueToday = snap.inventoryDayRevenueByProduct[line.product_id],
                 lastAcqDetail = snap.lastAcqDetailByProduct[line.product_id],
                 lastAcqMillis = snap.lastAcqMillisByProduct[line.product_id],
                 nowMillis = nowMillis,
                 canEdit = state.canEditInventoryCounts && !state.close.is_finalized,
-                onEnterCount = { kg -> onEnterCount(line.product_id, kg) },
+                onEnterCount = { v -> onEnterCount(line.product_id, v) },
                 onSetCounted = { counted -> onSetCounted(line.product_id, counted) },
             )
         }
@@ -660,6 +667,10 @@ private fun DayCloseRow(label: String, value: String) {
 private fun InventoryLineCard(
     line: DayCloseInventoryEntity,
     unitLabel: String,
+    piecesPerKg: Double?,
+    soldTodayBreakdown: ProductSoldQtyBreakdown?,
+    soldThroughCloseBreakdown: ProductSoldQtyBreakdown?,
+    revenueToday: Double?,
     lastAcqDetail: DayCloseRepository.LastAcquisitionDetail?,
     lastAcqMillis: Long?,
     nowMillis: Long,
@@ -667,8 +678,13 @@ private fun InventoryLineCard(
     onEnterCount: (Double) -> Unit,
     onSetCounted: (Boolean) -> Unit,
 ) {
-    var countText by remember(line.product_id, line.actual_remaining, line.is_counted) {
-        mutableStateOf(line.actual_remaining?.toString() ?: "")
+    fun dq(kgStored: Double): Double =
+        DayCloseSoldQty.inventoryDisplayQuantity(kgStored, unitLabel, piecesPerKg)
+
+    var countText by remember(line.product_id, line.actual_remaining, line.is_counted, unitLabel, piecesPerKg) {
+        mutableStateOf(
+            line.actual_remaining?.let { dq(it).toString() } ?: "",
+        )
     }
 
     val agingDays = lastAcqMillis?.let { ((nowMillis - it) / (24 * 60 * 60 * 1000)).toInt() } ?: 0
@@ -681,11 +697,49 @@ private fun InventoryLineCard(
                 style = MaterialTheme.typography.titleSmall,
                 color = if (agingHighlight) AmberInventoryAging else MaterialTheme.colorScheme.onSurface,
             )
-            DayCloseRow("Acquired (all time, $unitLabel)", String.format("%.3f", line.total_acquired_all_time))
-            DayCloseRow("Sold through close ($unitLabel)", String.format("%.3f", line.total_sold_through_close_date))
-            DayCloseRow("Prior posted var. ($unitLabel)", String.format("%.3f", line.prior_posted_variance))
-            DayCloseRow("Theoretical (adj.)", String.format("%.3f %s", line.adjusted_theoretical_remaining, unitLabel))
-            DayCloseRow("Sold today", String.format("%.3f %s", line.sold_this_close_date, unitLabel))
+            DayCloseRow("Acquired (all time, $unitLabel)", String.format("%.3f", dq(line.total_acquired_all_time)))
+            val soldThroughValue =
+                if (soldThroughCloseBreakdown != null &&
+                    (soldThroughCloseBreakdown.qty_kg_sold > 1e-9 || soldThroughCloseBreakdown.qty_pc_sold > 1e-9)
+                ) {
+                    DayCloseSoldQty.formatTopProductQtyLine(
+                        soldThroughCloseBreakdown.qty_kg_sold,
+                        soldThroughCloseBreakdown.qty_pc_sold,
+                    )
+                } else if (abs(line.total_sold_through_close_date) > 1e-9) {
+                    String.format("%.3f %s", dq(line.total_sold_through_close_date), unitLabel)
+                } else {
+                    "—"
+                }
+            DayCloseRow("Sold through close", soldThroughValue)
+            DayCloseRow("Prior posted var. ($unitLabel)", String.format("%.3f", dq(line.prior_posted_variance)))
+            val theoreticalDisplay = DayCloseSoldQty.inventoryTheoreticalDisplayQuantity(
+                acquiredKg = line.total_acquired_all_time,
+                soldThroughBreakdown = soldThroughCloseBreakdown,
+                ledgerSoldKg = line.total_sold_through_close_date,
+                priorVarianceKg = line.prior_posted_variance,
+                unitLabel = unitLabel,
+                piecesPerKg = piecesPerKg,
+            )
+            DayCloseRow(
+                "Theoretical (adj.)",
+                String.format("%.3f %s", theoreticalDisplay, unitLabel),
+            )
+            val soldTodayValue =
+                if (soldTodayBreakdown != null &&
+                    (soldTodayBreakdown.qty_kg_sold > 1e-9 || soldTodayBreakdown.qty_pc_sold > 1e-9)
+                ) {
+                    val q = DayCloseSoldQty.formatTopProductQtyLine(
+                        soldTodayBreakdown.qty_kg_sold,
+                        soldTodayBreakdown.qty_pc_sold,
+                    )
+                    "${q} · ${CurrencyFormatter.format(revenueToday ?: 0.0)}"
+                } else if (abs(line.sold_this_close_date) > 1e-9) {
+                    String.format("%.3f %s", dq(line.sold_this_close_date), unitLabel)
+                } else {
+                    "—"
+                }
+            DayCloseRow("Sold today", soldTodayValue)
             val lastMs = lastAcqDetail?.dateMillis ?: lastAcqMillis
             lastMs?.let { ms ->
                 val fmt = remember { DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault()) }
@@ -704,7 +758,11 @@ private fun InventoryLineCard(
             line.variance_qty?.let { v ->
                 DayCloseRow(
                     "Variance",
-                    String.format("%.3f %s (${CurrencyFormatter.format(line.variance_cost ?: 0.0)})", v, unitLabel)
+                    String.format(
+                        "%.3f %s (${CurrencyFormatter.format(line.variance_cost ?: 0.0)})",
+                        dq(v),
+                        unitLabel,
+                    ),
                 )
             }
             Row(
@@ -740,7 +798,7 @@ private fun InventoryLineCard(
                 Text("Excluded from spoilage total", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
             } else {
                 line.actual_remaining?.let {
-                    DayCloseRow("Actual count", String.format("%.3f %s", it, unitLabel))
+                    DayCloseRow("Actual count", String.format("%.3f %s", dq(it), unitLabel))
                 }
             }
         }

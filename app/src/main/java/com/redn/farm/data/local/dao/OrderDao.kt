@@ -136,33 +136,55 @@ interface OrderDao {
     suspend fun getUnpaidSummaryAsOf(endMillis: Long): UnpaidSummary
 
     /**
-     * Per-product sold quantity (sum of order_items.quantity) for orders
-     * within [startMillis, endMillis]. Used for COGS and inventory reconciliation.
+     * Per-product sold quantities split by line unit (kg vs piece) for orders
+     * within [startMillis, endMillis]. Used for COGS (WAC is per kg) and inventory ledger.
      */
-    @Query("""
-        SELECT oi.product_id, SUM(oi.quantity) AS total_qty
+    @Query(
+        """
+        SELECT oi.product_id,
+            COALESCE(SUM(CASE WHEN oi.is_per_kg = 1 THEN oi.quantity ELSE 0 END), 0) AS qty_kg_sold,
+            COALESCE(SUM(CASE WHEN oi.is_per_kg = 0 THEN oi.quantity ELSE 0 END), 0) AS qty_pc_sold
         FROM order_items oi
         INNER JOIN orders o ON oi.order_id = o.order_id
         WHERE o.order_date BETWEEN :startMillis AND :endMillis
         GROUP BY oi.product_id
-    """)
-    suspend fun getSoldQtyByProductOnDate(
+        """
+    )
+    suspend fun getSoldQtyBreakdownByProductOnDate(
         startMillis: Long,
-        endMillis: Long
-    ): List<ProductQtySummary>
+        endMillis: Long,
+    ): List<ProductSoldQtyBreakdown>
+
+    /** Per-product line revenue on the business date (aligns with **Top products** / inventory **Sold today**). */
+    @Query(
+        """
+        SELECT oi.product_id, COALESCE(SUM(oi.total_price), 0) AS revenue
+        FROM order_items oi
+        INNER JOIN orders o ON oi.order_id = o.order_id
+        WHERE o.order_date BETWEEN :startMillis AND :endMillis
+        GROUP BY oi.product_id
+        """
+    )
+    suspend fun getProductRevenueOnDate(
+        startMillis: Long,
+        endMillis: Long,
+    ): List<ProductDayRevenueRow>
 
     /**
-     * Per-product sold quantity (all time up to and including [endMillis]).
-     * Used for the all-time running stock ledger (EOD-US-03).
+     * Same as [getSoldQtyBreakdownByProductOnDate] but all orders up to and including [endMillis].
      */
-    @Query("""
-        SELECT oi.product_id, SUM(oi.quantity) AS total_qty
+    @Query(
+        """
+        SELECT oi.product_id,
+            COALESCE(SUM(CASE WHEN oi.is_per_kg = 1 THEN oi.quantity ELSE 0 END), 0) AS qty_kg_sold,
+            COALESCE(SUM(CASE WHEN oi.is_per_kg = 0 THEN oi.quantity ELSE 0 END), 0) AS qty_pc_sold
         FROM order_items oi
         INNER JOIN orders o ON oi.order_id = o.order_id
         WHERE o.order_date <= :endMillis
         GROUP BY oi.product_id
-    """)
-    suspend fun getTotalSoldQtyByProductUpTo(endMillis: Long): List<ProductQtySummary>
+        """
+    )
+    suspend fun getTotalSoldQtyBreakdownByProductUpTo(endMillis: Long): List<ProductSoldQtyBreakdown>
 
     @Query(
         """
@@ -180,7 +202,8 @@ interface OrderDao {
     @Query(
         """
         SELECT oi.product_id, p.product_name,
-            SUM(oi.quantity) AS qty_sold,
+            COALESCE(SUM(CASE WHEN oi.is_per_kg = 1 THEN oi.quantity ELSE 0 END), 0) AS qty_kg_sold,
+            COALESCE(SUM(CASE WHEN oi.is_per_kg = 0 THEN oi.quantity ELSE 0 END), 0) AS qty_pc_sold,
             COALESCE(SUM(oi.total_price), 0) AS revenue
         FROM order_items oi
         INNER JOIN orders o ON oi.order_id = o.order_id
@@ -195,7 +218,7 @@ interface OrderDao {
         startMillis: Long,
         endMillis: Long,
         limit: Int,
-    ): List<ProductRevenueRow>
+    ): List<ProductTopRevenueRow>
 
     @Query(
         """
@@ -295,9 +318,16 @@ data class UnpaidSummary(
     val amount: Double,
 )
 
-data class ProductQtySummary(
+/** Per-product sold qty split by order line unit — convert pc → kg via acquisition piece_count in repository. */
+data class ProductSoldQtyBreakdown(
     val product_id: String,
-    val total_qty: Double,
+    val qty_kg_sold: Double,
+    val qty_pc_sold: Double,
+)
+
+data class ProductDayRevenueRow(
+    val product_id: String,
+    val revenue: Double,
 )
 
 data class ChannelSalesRow(
@@ -307,10 +337,11 @@ data class ChannelSalesRow(
     val total_collected: Double,
 )
 
-data class ProductRevenueRow(
+data class ProductTopRevenueRow(
     val product_id: String,
     val product_name: String,
-    val qty_sold: Double,
+    val qty_kg_sold: Double,
+    val qty_pc_sold: Double,
     val revenue: Double,
 )
 

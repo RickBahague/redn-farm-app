@@ -407,7 +407,8 @@ private fun wrapThermalDetails(text: String): List<String> {
 // ─── EOD / Outstanding inventory (PRN-08, PRN-09) ────────────────────────────
 
 data class ThermalEodChannelRow(val label: String, val orderCount: Int, val amount: Double)
-data class ThermalEodProductRow(val name: String, val qtySold: Double, val revenue: Double)
+/** [qtyDisplay] e.g. `12.00 kg`, `5 pc`, or `1.00 kg + 3 pc` (matches Day Close screen). */
+data class ThermalEodProductRow(val name: String, val qtyDisplay: String, val revenue: Double)
 data class ThermalEodInventoryRow(
     val name: String,
     val theoreticalQty: Double,
@@ -485,7 +486,7 @@ fun buildEodSummary(
             appendLine(p.name.take(THERMAL_LINE_WIDTH))
             appendLine(
                 formatThermalLine(
-                    "  qty ${"%.2f".format(p.qtySold)}",
+                    "  ${p.qtyDisplay}",
                     CurrencyFormatter.format(p.revenue),
                 ),
             )

@@ -64,6 +64,110 @@
 
 ---
 
+## BUG-EOD-02 — Day Close **Top products** hardcoded **kg**; full sold-qty / COGS / ledger alignment; EOD print consistency
+
+### Report
+- **Screen:** **Day Close** (`DayCloseScreen`) — review **all quantity lines** for unit and calculation consistency with **Take Order** / **`order_items`** (**`is_per_kg`**), and align **EOD thermal** output.
+- **Symptoms (pre-fix):**
+  - **Top products (revenue):** always **`X.XX kg`** even for **per-piece** order lines.
+  - **EOD print — TOP PRODUCTS:** **`qty`** with **no unit**.
+  - **COGS (WAC)** and **inventory ledger** (`sold` totals, **outstanding FIFO**): **`SUM(oi.quantity)`** mixed **kg** and **pc** into one number per product, then multiplied by **WAC per kg** — wrong for piece lines.
+
+### Expected behavior
+- **Top products:** show **`kg`**, **`pc`**, or **`kg + pc`** when both occur on the business day (from **`order_items`**).
+- **EOD print:** same display string for top products as on screen.
+- **COGS / theoretical inventory / outstanding FIFO:** sold quantity in **kg-equivalent** for WAC: **`qty_kg + qty_pc / max_piece_count`** (piece count from acquisition aggregate, same basis as existing acquired-qty → kg conversion).
+
+### Root cause *(pre-fix)*
+- UI hard-coded **`kg`**; **`OrderDao`** aggregated **`SUM(quantity)`** without **`is_per_kg`**; **`ThermalEodProductRow`** carried a bare **`Double`**.
+
+### Fix *(implemented 2026-04-10)*
+- **`OrderDao`:** **`ProductSoldQtyBreakdown`** + **`getSoldQtyBreakdownByProductOnDate`** / **`getTotalSoldQtyBreakdownByProductUpTo`**; **`ProductTopRevenueRow`** + **`getTopProductsByRevenue`** with **`qty_kg_sold`** / **`qty_pc_sold`** / **`revenue`**.
+- **`DayCloseSoldQty`:** **`kgEquivalent`** and **`formatTopProductQtyLine`** (internal helpers).
+- **`DayCloseRepository`:** **`computeInventoryRows`**, **`computeAndSaveRevenueCogs`**, **`buildOutstandingInventory`** use **kg-equivalent** sold from breakdown + **`max_piece_count`**.
+- **`DayCloseScreen`** / **`DayCloseViewModel.buildEodPrintText`** / **`ThermalPrintBuilders`** (**`ThermalEodProductRow.qtyDisplay`**) — top products aligned.
+
+### Other Day Close lines *(post-fix)*
+- **Inventory** card quantities: still use **`inventoryUnitByProduct`** (**BUG-EOD-01**); underlying **sold-through** / **sold today** numbers are now **kg-normalized** in the ledger (display unit is **kg** vs **pc** for labels only; **theoretical** math stays in kg).
+- **Sales summary** currency rows, **cash reconciliation**, **employee wages:** no product **qty** unit issue.
+- **Outstanding inventory** thermal **`qty (kg)`:** remaining quantity is **kg-equivalent** by design (**FIFO**); label remains **`kg`**.
+
+### Files
+- `app/src/main/java/com/redn/farm/data/repository/DayCloseSoldQty.kt` *(new)*
+- `app/src/main/java/com/redn/farm/data/repository/DayCloseRepository.kt`
+- `app/src/main/java/com/redn/farm/data/local/dao/OrderDao.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/eod/DayCloseScreen.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/eod/DayCloseViewModel.kt`
+- `app/src/main/java/com/redn/farm/utils/ThermalPrintBuilders.kt`
+
+### Verification
+- Mixed day: per-kg and per-piece top sellers; **Top products** and **printed EOD** show correct units; COGS/inventory refresh after sales.
+- **`./gradlew :app:compileDebugKotlin`** ✅  
+- **`./gradlew :app:testDebugUnitTest --tests "com.redn.farm.data.repository.DayCloseSoldQtyTest"`** ✅
+
+**Status:** `[x]`
+
+---
+
+## BUG-EOD-03 — Day Close **Inventory** card: **pc** rows show **kg** ledger numbers (e.g. 1.667 instead of 5 pc)
+
+### Report
+- **Screen:** **Day Close** → **Inventory** product cards when the unit label is **pc** (**per-piece** latest acquisition, **BUG-EOD-01**).
+- **Symptom:** **Acquired (all time, pc)** (and other ledger lines: sold through close, prior variance, theoretical, sold today, variance, actual count) show values like **1.667** while the real acquisition quantity is **5** pieces (example: 5 pc with **3** pieces/kg → ledger stores **kg** = 5/3).
+- **Impact:** Operators cannot reconcile counts; physical count entry was interpreted as **kg** while the field was labeled **pc**.
+
+### Root cause
+- **`DayCloseInventoryEntity`** fields are documented and computed in **kg** (WAC, theoretical, FIFO).
+- **BUG-EOD-01** only switched the **label** to **kg** / **pc** from latest acquisition mode — **no conversion** for display or for count input.
+
+### Fix *(implemented 2026-04-10; **Sold today** ↔ Sales Summary **2026-04-10** follow-up)*
+- **`EodUiSnapshot.inventoryPiecesPerKgByProduct`** — from **`getTotalAcquiredByProduct().max_piece_count`** (same basis as ledger kg conversion).
+- **`DayCloseSoldQty.inventoryDisplayQuantity`** / **`inventoryCountInputToStoredKg`** — **pc** rows: display **× n**, save count **÷ n**.
+- **`InventoryLineCard`**, **`DayCloseViewModel.enterActualCount`**, **EOD thermal** inventory lines use the helpers.
+- **Sales Summary alignment:** **Sold today** uses **`getSoldQtyBreakdownByProductOnDate`** + **`formatTopProductQtyLine`** + **`getProductRevenueOnDate`** (**`qty · ₱`** like **Top products**). **Sold through close** uses **`getTotalSoldQtyBreakdownByProductUpTo`** (end of business day) + **`formatTopProductQtyLine`** — same kg/pc presentation as **Top products**, not **`dq(total_sold_through_close_date)`** (which was a single kg-equivalent mislabeled as **pc**). **Theoretical (adj.)** arithmetic for **pc** rows: **BUG-EOD-04** (**`inventoryTheoreticalDisplayQuantity`**).
+
+### Files
+- `app/src/main/java/com/redn/farm/data/repository/DayCloseSoldQty.kt`
+- `app/src/main/java/com/redn/farm/data/repository/DayCloseRepository.kt` — **`EodUiSnapshot`**
+- `app/src/main/java/com/redn/farm/data/local/dao/OrderDao.kt` — **`getProductRevenueOnDate`**, **`ProductDayRevenueRow`**
+- `app/src/main/java/com/redn/farm/ui/screens/eod/DayCloseScreen.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/eod/DayCloseViewModel.kt`
+
+### Verification
+- Per-piece product: **Acquired (all time, pc)** matches sum of acquisition **piece** quantities (given consistent **piece_count** aggregate).
+- Enter **actual count** in pieces → variance vs theoretical stays consistent.
+- **Sold today** on an inventory row matches **Top products** (same product, same day) for **qty** and **revenue** when that product had sales.
+- **`./gradlew :app:testDebugUnitTest --tests "com.redn.farm.data.repository.DayCloseSoldQtyTest"`** ✅
+
+**Status:** `[x]`
+
+---
+
+## BUG-EOD-04 — Day Close **Inventory**: **Theoretical (adj.)** vs **per-piece** rows does not match **Acquired − Sold − Prior** arithmetic
+
+### Report
+- **Screen:** **Day Close** → **Inventory** product cards when **Sold through close** shows **`formatTopProductQtyLine`** (**kg** / **pc** split from **`order_items`**, **BUG-EOD-03** follow-up).
+- **Symptom:** **Theoretical (adj.)** was **`inventoryDisplayQuantity(adjusted_theoretical_remaining)`** only. For **pc** products, operators expect **Acquired (all time, pc) − sold-through equivalent − Prior posted var.** to match **Theoretical**; after the sold-through row switched to the order breakdown string, the **single-number** theoretical line could disagree with that mental arithmetic (mixed **kg + pc** sold vs one ledger kg column).
+
+### Root cause
+- Ledger **`adjusted_theoretical_remaining`** is correct in **kg**, but **display** sold-through uses **order line** kg/pc; **`dq(adjusted)`** is not guaranteed to equal **`dq(acquired) − dq(sold_ledger) − dq(prior)`** when the UI sold string is breakdown-based and the eyeball math uses **piece-equivalent** sold from that breakdown.
+
+### Fix *(implemented 2026-04-10)*
+- **`DayCloseSoldQty.inventoryTheoreticalDisplayQuantity`** — resolves **sold kg** from **`ProductSoldQtyBreakdown`** via **`kgEquivalent`** when the breakdown is used on the card (same rule as **Sold through close**), else **`total_sold_through_close_date`**; then **`remaining kg` → `inventoryDisplayQuantity`**.
+- **`InventoryLineCard`**: **Theoretical (adj.)** uses that helper instead of **`dq(line.adjusted_theoretical_remaining)`**.
+
+### Files
+- `app/src/main/java/com/redn/farm/data/repository/DayCloseSoldQty.kt`
+- `app/src/main/java/com/redn/farm/ui/screens/eod/DayCloseScreen.kt`
+
+### Verification
+- **Per-piece** row: **Theoretical** ≈ **Acquired** − **prior** − **sold** where **sold** in display **pc** is **`kgEquivalent(breakdown) × n`** (same **n** as the card).
+- **`./gradlew :app:testDebugUnitTest --tests "com.redn.farm.data.repository.DayCloseSoldQtyTest"`** ✅
+
+**Status:** `[x]`
+
+---
+
 ## BUG-IME-01 — Alphanumeric keyboard must not show grammar/spell suggestions during data entry
 
 ### Report
@@ -1490,6 +1594,9 @@ All per-piece acquisitions already in the DB have inflated SRPs. They will need 
 | BUG-IME-05 | Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(remittance + payment signature)* | `[x]` | **`RemittanceFormScreen`**, **`PaymentFormScreen`** |
 | BUG-IME-06 | Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(day close)* | `[x]` | **`DayCloseScreen`** notes + remarks |
 | BUG-IME-07 | Alphanumeric keyboard must not show grammar/spell suggestions during data entry *(repo-wide audit)* | `[x]` | Central delegation + **BUG-IME-03**–**06** call sites |
+| BUG-EOD-04 | Day Close Inventory **Theoretical (adj.)** did not match **Acquired − Sold − Prior** for **pc** after breakdown **Sold through** | `[x]` | **`DayCloseSoldQty.inventoryTheoreticalDisplayQuantity`** — **BUG-EOD-04** |
+| BUG-EOD-03 | Day Close Inventory **pc** rows showed **kg** numbers; count input wrong unit | `[x]` | **`inventoryPiecesPerKgByProduct`**, **`inventoryDisplayQuantity`** / **`inventoryCountInputToStoredKg`** — **BUG-EOD-03** |
+| BUG-EOD-02 | Day Close: Top products units; sold-qty → COGS/ledger/FIFO; EOD print | `[x]` | **`ProductSoldQtyBreakdown`**, **`DayCloseSoldQty`**, **`ThermalEodProductRow.qtyDisplay`** — see **BUG-EOD-02** section |
 | BUG-PRT-01 | Print: “Print failed” snackbar even when print succeeds | `[x]` | **`connectPrinter`** no resume on **`onDisconnected`**; **`lineWrap`/`cutPaper`** non-fatal; order history snapshot message |
 | BUG-SYS-02 | Logout: direct to Login, no intermediate screen transitions | `[x]` | **`LoginViewModel.logout`** + **`SessionChecker`**: **`popUpTo(graph.id)`** **`inclusive`**; removed duplicate **`NavGraph.onLogout`** |
 | BUG-ORD-08 | Active SRPs: crash expanding product row / price detail | `[x]` | **`return@Column`** under **`LazyColumn`** + **`AnimatedVisibility`** → **`if`/`else`** (**`ActiveSrpsSelectedChannelDetail`**) |
@@ -1534,6 +1641,12 @@ All per-piece acquisitions already in the DB have inflated SRPs. They will need 
 
 | Date | Change |
 |------|--------|
+| 2026-04-10 | **BUG-EOD-04** fixed: **Theoretical (adj.)** uses **`inventoryTheoreticalDisplayQuantity`** — same sold basis as order breakdown so **pc** arithmetic matches **Acquired − Sold − Prior**. |
+| 2026-04-10 | **BUG-EOD-03** extended: **Sold through close** uses **`getTotalSoldQtyBreakdownByProductUpTo`** + **`formatTopProductQtyLine`** (aligned with **Top products** kg/pc split). |
+| 2026-04-10 | **BUG-EOD-03** extended: **Sold today** on inventory card uses **`getSoldQtyBreakdownByProductOnDate`** + **`getProductRevenueOnDate`** — same **qty · ₱** pattern as **Top products** (Sales Summary). |
+| 2026-04-10 | **BUG-EOD-03** fixed: Day Close **Inventory** **pc** labels now convert ledger **kg** ↔ display **pc** (**`inventoryPiecesPerKgByProduct`** + **`DayCloseSoldQty`**); actual count entry uses display **pc**; thermal inventory aligned; tracker **`[x]`**. |
+| 2026-04-10 | **BUG-EOD-02** fixed: Day Close **Top products** + **COGS** + inventory **sold** totals + outstanding **FIFO** use **`is_per_kg`** breakdown → **kg-equivalent** for WAC; UI/thermal **`formatTopProductQtyLine`**; tracker **`[x]`**. |
+| 2026-04-10 | **BUG-EOD-02** logged: Day Close **Top products** hard-coded **kg**; EOD thermal top qty without unit; **`OrderDao`** aggregation / **`is_per_kg`** audit; tracker **`[ ]`**. |
 | 2026-04-10 | **BUG-ORD-08** fixed: **Active SRPs** — removed **`return@Column`** in **`ActiveSrpsSelectedChannelDetail`** (nested under **`LazyColumn`** + **`AnimatedVisibility`**); use **`if`/`else`**; tracker **`[x]`**. |
 | 2026-04-10 | **BUG-ORD-08** logged: **Active SRPs** — crash when expanding product row / price detail; investigation checklist in section. |
 | 2026-04-10 | **BUG-IME-03**–**BUG-IME-07** fixed: preset editor, farm-op form, remittance/payment, day close; **`alphaNumericKeyboardOptions`** delegates to **`dataEntryNoImeSuggestionsKeyboardOptions`** (all prior call sites inherit password-class IME). **BUG-IME-01** section revised. |
