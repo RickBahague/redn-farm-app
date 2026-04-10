@@ -8,6 +8,18 @@
 
 **Stream B (2026-04-10):** **Steps 7–9** completed in codebase — list card SRP badges aligned with `observeAllActiveSrps`; **`ProductActiveStatusFilter`** replaces `showOutOfStock`; full-screen **`ProductPriceHistoryScreen`** + shared **`ProductHistoryUi`** (history also remains summarized on **ProductFormScreen** for convenience).
 
+**Stream C (2026-04-10):** **Step 9** deliverable polish — **`UnifiedHistoryRowContent`** shows disabled source **`AssistChip`**s **Manual** vs **Computed** (PRD-US-07 AC#2; aligns with Step 9 “source chip” wording) on both **`ProductPriceHistoryScreen`** and embedded **ProductFormScreen** history.
+
+---
+
+## Epic closure (2026-04-10)
+
+**Verdict:** **Closed** — product catalog, CRUD, filters, SRP-aware list lines, manual fallback sheet, and unified price/SRP history (**PRD-US-01** … **PRD-US-07**) are implemented and traceable in code. **`./gradlew assembleDebug`** is green.
+
+**Exception (documented):** **Step 5 / PRD-US-08 (in-app “reload seed catalog”)** is **not** shipped as a Manage Products action. **BUG-PRD-02** removed the top-bar **Refresh** / reload-default UI (confusion with per-product delete); **BUG-SYS-01** removed **`DatabaseInitializer.reinitializeDatabase()`** (destructive full DB wipe). **What remains:** first-time DB creation still runs **`DatabaseInitializer.populateDatabase()`** from **`assets/data/products.json`**, **`assets/data/product_prices.json`**, and **`assets/data/customers.json`** via **`RoomDatabase.Callback.onCreate`**. Restoring a **safe**, scoped “re-import products from JSON” (without wiping the whole DB) is **out of scope** for this epic closure — track as a follow-up if **PRD-US-08** must be strictly literal in-app.
+
+**Manual QA:** Smoke items in **Build / tests / manual QA** (below) remain recommended before a release train; they are not automated here.
+
 ---
 
 ## Status legend
@@ -97,6 +109,10 @@ Activities:
 Deliverables:
 - Reinitialize reloads correct data from JSON assets
 
+**Reality vs original Step 5 text (closure audit):**
+- **`populateDatabase()`** ✅ Loads **`data/products.json`**, **`data/product_prices.json`**, **`data/customers.json`** on **`onCreate`**; no v1 manual **CREATE TABLE** in callback (**BUG-SYS-01**).
+- **Manage Products Refresh + `reinitializeDatabase()`** ❌ **Removed** on purpose — **BUG-PRD-02** (reload vs delete confusion), **BUG-SYS-01** (orphan full DB wipe API). See **[Epic closure](#epic-closure-2026-04-10)**.
+
 ---
 
 ### Step 6 — Set Manual Fallback Price (separate action — PRD-US-06)
@@ -168,7 +184,7 @@ Activities:
 Deliverables:
 - Price history screen renders complete history entries and is reachable from the UI
 
-**Implementation notes (2026-04-10):** `ProductRepository.getPriceHistory` (existing) + **`ProductPriceHistoryScreen`** route `product_price_history/{productId}`; **`ProductHistoryUi.kt`** holds `mergeProductPriceHistory` + `UnifiedHistoryRowContent` shared with **ProductFormScreen**. Entry: product card **History** icon; edit form **Price history** app bar action. Acquisition rows use same “preset / per-channel SRP” copy as embedded history (no separate **Computed** chip label — title distinguishes **Manual fallback** vs **Acquisition (preset/custom SRP)**).
+**Implementation notes (2026-04-10):** `ProductRepository.getPriceHistory` (existing) + **`ProductPriceHistoryScreen`** route `product_price_history/{productId}`; **`ProductHistoryUi.kt`** holds `mergeProductPriceHistory` + `UnifiedHistoryRowContent` shared with **ProductFormScreen**. Entry: product card **History** icon; edit form **Price history** app bar action. Each row: date row + **Manual** or **Computed** source chip (read-only **`AssistChip`**); acquisition rows keep **Acquisition (preset/custom SRP)** title, per-channel SRP lines, **`preset_ref`**, and **Current SRP** chip when applicable (**Stream C**).
 
 ---
 
@@ -180,16 +196,16 @@ Deliverables:
 | Step 2 — Fix Add dialog | `[x]` | Remove price fields; add unit/category/default_piece_count; save no longer requires price |
 | Step 3 — Fix Edit dialog | `[x]` | Removed price fields; added unit/category/default_piece_count + active toggle; save updates product only |
 | Step 4 — Wire Delete + Deactivate | `[x]` | Delete icon + confirm dialog + FK failure snackbar; active toggle already in edit dialog; inactive badge shown on list |
-| Step 5 — Wire Reinitialize | `[x]` | Refresh icon + confirm dialog; `populateDatabase()` now loads products/prices/customers from `assets/data/*.json`; removed v1 manual CREATE TABLE SQL |
+| Step 5 — Wire Reinitialize | `[~]` | **JSON seed on `onCreate` only** (`populateDatabase()`); **no** in-app Refresh / full DB reinitialize (**BUG-PRD-02**, **BUG-SYS-01**) — see **Epic closure** |
 | Step 6 — Set manual fallback price | `[x]` | Separate “Set fallback price” bottom sheet; saves per-kg/per-piece via `insertProductPrice()`; clearly labeled as manual fallback |
 | Step 7 — Fix product card price display | `[x]` | `ProductCard` + `observeAllActiveSrps` map + `catalogSrpSummaryAmounts` + list chips (**2026-04-10** verified in code) |
 | Step 8 — Fix filters | `[x]` | `ProductActiveStatusFilter`; repo applies search + unit + category + active; dialog chips (**2026-04-10**) |
-| Step 9 — Price history screen | `[x]` | `ProductPriceHistoryScreen` + `ProductHistoryUi`; nav from list + edit (**2026-04-10**); embedded history on form retained |
+| Step 9 — Price history screen | `[x]` | `ProductPriceHistoryScreen` + `ProductHistoryUi`; nav from list + edit; **Manual** / **Computed** chips (**Stream C**, **2026-04-10**) |
 
 ---
 
 ## Build / tests / manual QA (minimum)
-- `./gradlew assembleDebug` succeeds after each milestone.
+- `./gradlew assembleDebug` succeeds after each milestone *(verified **2026-04-10** at epic closure)*.
 - Manual smoke after Steps 1–4:
   - Add product (no price) -> appears in list
   - Edit product attribute-only -> no new price history row is created

@@ -2,6 +2,7 @@ package com.redn.farm.ui.screens.manage.products
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.MaterialTheme
@@ -9,6 +10,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import com.redn.farm.data.model.Acquisition
 import com.redn.farm.data.model.ProductPrice
 import com.redn.farm.data.pricing.OrderPricingResolver
@@ -54,7 +56,18 @@ fun UnifiedHistoryRowContent(
     when {
         row.manual != null -> {
             val p = row.manual
-            Text(formatMillis(p.date_created), style = MaterialTheme.typography.labelMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(formatMillis(p.date_created), style = MaterialTheme.typography.labelMedium)
+                AssistChip(
+                    onClick = {},
+                    enabled = false,
+                    label = { Text("Manual") },
+                )
+            }
             Text("Manual fallback", style = MaterialTheme.typography.titleSmall)
             p.per_kg_price?.takeIf { it > 0 }?.let {
                 Text("Per kg: ${CurrencyFormatter.format(it)}", style = MaterialTheme.typography.bodyMedium)
@@ -71,7 +84,18 @@ fun UnifiedHistoryRowContent(
         }
         row.acquisition != null -> {
             val a = row.acquisition
-            Text(formatMillis(a.date_acquired), style = MaterialTheme.typography.labelMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(formatMillis(a.date_acquired), style = MaterialTheme.typography.labelMedium)
+                AssistChip(
+                    onClick = {},
+                    enabled = false,
+                    label = { Text("Computed") },
+                )
+            }
             val title = if (a.srp_custom_override) "Acquisition (custom SRP)" else "Acquisition (preset SRP)"
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
