@@ -12,7 +12,10 @@ import com.redn.farm.ui.screens.main.MainScreen
 import com.redn.farm.ui.screens.manage.products.ManageProductsScreen
 import com.redn.farm.ui.screens.manage.customers.ManageCustomersScreen
 import com.redn.farm.ui.screens.order.ActiveSrpsScreen
+import com.redn.farm.ui.screens.order.OrderCustomerPickerScreen
+import com.redn.farm.ui.screens.order.OrderProductPickerScreen
 import com.redn.farm.ui.screens.order.TakeOrderScreen
+import com.redn.farm.ui.screens.order.TakeOrderViewModel
 import com.redn.farm.ui.screens.order.history.OrderHistoryScreen
 import com.redn.farm.ui.screens.order.history.EditOrderScreen
 import com.redn.farm.ui.screens.order.history.OrderDetailScreen
@@ -73,6 +76,8 @@ sealed class Screen(val route: String) {
         fun createRoute(customerId: String) = "customer_form/$customerId"
     }
     object Orders : Screen("orders")
+    object OrderCustomerPicker : Screen("order_customer_picker")
+    object OrderProductPicker : Screen("order_product_picker")
     object OrderHistory : Screen("order_history")
     object ActiveSrps : Screen("active_srps")
     object OrderDetail : Screen("order_detail/{orderId}") {
@@ -291,7 +296,10 @@ fun NavGraph(
                 )
             }
         }
-        composable(Screen.Orders.route) {
+        composable(Screen.Orders.route) { entry ->
+            val ordersEntry = remember(entry) {
+                navController.getBackStackEntry(Screen.Orders.route)
+            }
             RequireRole(navController, Rbac.ROLES_ORDERS_FLOW) {
                 TakeOrderScreen(
                     onNavigateBack = {
@@ -306,7 +314,41 @@ fun NavGraph(
                     },
                     onNavigateToActiveSrps = {
                         navController.navigate(Screen.ActiveSrps.route)
-                    }
+                    },
+                    onNavigateToCustomerPicker = {
+                        navController.navigate(Screen.OrderCustomerPicker.route)
+                    },
+                    onNavigateToProductPicker = {
+                        navController.navigate(Screen.OrderProductPicker.route)
+                    },
+                    viewModel = hiltViewModel(ordersEntry)
+                )
+            }
+        }
+        composable(Screen.OrderCustomerPicker.route) { entry ->
+            val ordersEntry = remember(entry) {
+                navController.getBackStackEntry(Screen.Orders.route)
+            }
+            RequireRole(navController, Rbac.ROLES_ORDERS_FLOW) {
+                val takeOrderVm = hiltViewModel<TakeOrderViewModel>(ordersEntry)
+                OrderCustomerPickerScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onCustomerSelected = { customer ->
+                        takeOrderVm.selectCustomer(customer)
+                        navController.navigateUp()
+                    },
+                    viewModel = takeOrderVm,
+                )
+            }
+        }
+        composable(Screen.OrderProductPicker.route) { entry ->
+            val ordersEntry = remember(entry) {
+                navController.getBackStackEntry(Screen.Orders.route)
+            }
+            RequireRole(navController, Rbac.ROLES_ORDERS_FLOW) {
+                OrderProductPickerScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    viewModel = hiltViewModel(ordersEntry),
                 )
             }
         }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -64,7 +65,7 @@ fun EditOrderScreen(
     var order by remember { mutableStateOf<Order?>(null) }
     var orderItems by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
     var showEditItemDialog by remember { mutableStateOf<OrderItem?>(null) }
-    var showAddProductDialog by remember { mutableStateOf(false) }
+    var showAddProductPicker by remember { mutableStateOf(false) }
     var showPaymentConfirmDialog by remember { mutableStateOf<Boolean?>(null) }
     var hasChanges by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
@@ -99,13 +100,74 @@ fun EditOrderScreen(
         }
     }
 
+    if (showAddProductPicker) {
+        val currentOrder = order
+        if (currentOrder != null) {
+            EditOrderProductPickerScreen(
+                orderChannel = currentOrder.channel,
+                onNavigateBack = { showAddProductPicker = false },
+                onProductSelected = { product, quantity, isPerKg ->
+                    val unitPrice = viewModel.resolveOrderLinePrice(
+                        product.product_id,
+                        currentOrder.channel,
+                        isPerKg
+                    )
+                    val newItem = OrderItem(
+                        order_id = orderId,
+                        product_id = product.product_id,
+                        product_name = product.product_name,
+                        quantity = quantity,
+                        price_per_unit = unitPrice,
+                        is_per_kg = isPerKg,
+                        total_price = quantity * unitPrice
+                    )
+                    order = currentOrder.copy(
+                        total_amount = currentOrder.total_amount + newItem.total_price
+                    )
+                    orderItems = orderItems + newItem
+                    hasChanges = true
+                    showAddProductPicker = false
+                },
+                viewModel = viewModel
+            )
+            return
+        }
+        showAddProductPicker = false
+    }
+
+    showEditItemDialog?.let { item ->
+        val currentOrder = order
+        if (currentOrder != null) {
+            EditOrderItemScreen(
+                item = item,
+                orderChannel = currentOrder.channel,
+                onNavigateBack = { showEditItemDialog = null },
+                onSave = { updatedItem ->
+                    val updatedItems = orderItems.map {
+                        if (it.id == updatedItem.id) updatedItem else it
+                    }
+                    orderItems = updatedItems
+                    order = currentOrder.copy(
+                        total_amount = updatedItems.sumOf { it.total_price },
+                        order_update_date = System.currentTimeMillis()
+                    )
+                    hasChanges = true
+                    showEditItemDialog = null
+                },
+                viewModel = viewModel
+            )
+            return
+        }
+        showEditItemDialog = null
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("${if (order?.isOrderFinalized == true) "View" else "Edit"} Order #$orderId") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 actions = {
@@ -348,7 +410,7 @@ fun EditOrderScreen(
                                 style = MaterialTheme.typography.titleMedium
                             )
                             if (!currentOrder.isOrderFinalized) {
-                                IconButton(onClick = { showAddProductDialog = true }) {
+                                IconButton(onClick = { showAddProductPicker = true }) {
                                     Icon(Icons.Default.Add, "Add Product")
                                 }
                             }
@@ -396,56 +458,7 @@ fun EditOrderScreen(
         // Dialogs remain unchanged
         order?.let { currentOrder ->
             if (!currentOrder.isOrderFinalized) {
-                showEditItemDialog?.let { item ->
-                    EditOrderItemDialog(
-                        item = item,
-                        orderChannel = currentOrder.channel,
-                        onDismiss = { showEditItemDialog = null },
-                        onSave = { updatedItem ->
-                            orderItems = orderItems.map {
-                                if (it.id == updatedItem.id) updatedItem else it
-                            }
-                            order = currentOrder.copy(
-                                total_amount = orderItems.sumOf { it.total_price },
-                                order_update_date = System.currentTimeMillis()
-                            )
-                            hasChanges = true
-                            showEditItemDialog = null
-                        },
-                        viewModel = viewModel
-                    )
-                }
-
-                if (showAddProductDialog) {
-                    ProductSelectionDialog(
-                        orderChannel = currentOrder.channel,
-                        onDismiss = { showAddProductDialog = false },
-                        onProductSelected = { product, quantity, isPerKg ->
-                            val unitPrice = viewModel.resolveOrderLinePrice(
-                                product.product_id,
-                                currentOrder.channel,
-                                isPerKg
-                            )
-                            val newItem = OrderItem(
-                                order_id = orderId,
-                                product_id = product.product_id,
-                                product_name = product.product_name,
-                                quantity = quantity,
-                                price_per_unit = unitPrice,
-                                is_per_kg = isPerKg,
-                                total_price = quantity * unitPrice
-                            )
-                            order?.let { co ->
-                                val newTotal = co.total_amount + newItem.total_price
-                                order = co.copy(total_amount = newTotal)
-                            }
-                            orderItems = orderItems + newItem
-                            hasChanges = true
-                            showAddProductDialog = false
-                        },
-                        viewModel = viewModel
-                    )
-                }
+                // Add/edit item flows are rendered as full-screen overlays above this scaffold.
             }
 
             showPaymentConfirmDialog?.let { newStatus ->
@@ -908,10 +921,10 @@ private fun TotalAmountCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EditOrderItemDialog(
+private fun EditOrderItemScreen(
     item: OrderItem,
     orderChannel: String,
-    onDismiss: () -> Unit,
+    onNavigateBack: () -> Unit,
     onSave: (OrderItem) -> Unit,
     viewModel: OrderHistoryViewModel
 ) {
@@ -922,102 +935,105 @@ private fun EditOrderItemDialog(
     val product = products.find { it.product_id == item.product_id }
     val focusManager = LocalFocusManager.current
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit Item") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .imePadding()
-                    .padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = item.product_name,
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Text(
-                    text = "Channel: ${SalesChannel.label(SalesChannel.normalize(orderChannel))} — unit price from active SRP or fallback.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                OutlinedTextField(
-                    value = quantity,
-                    onValueChange = {},
-                    label = { Text("Quantity") },
-                    readOnly = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    trailingIcon = {
-                        IconButton(onClick = {
-                            numericPadVisible = true
-                            focusManager.clearFocus()
-                        }) {
-                            Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
-                        }
-                    },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (product != null && viewModel.productSupportsDualUnit(product)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Edit Item") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    TextButton(
+                        onClick = {
+                            quantity.toDoubleOrNull()?.let { newQuantity ->
+                                val newUnitPrice = viewModel.resolveOrderLinePrice(item.product_id, orderChannel, isPerKg)
+                                onSave(
+                                    item.copy(
+                                        quantity = newQuantity,
+                                        is_per_kg = isPerKg,
+                                        price_per_unit = newUnitPrice,
+                                        total_price = newQuantity * newUnitPrice
+                                    )
+                                )
+                            }
+                        },
+                        enabled = quantity.toDoubleOrNull() != null
                     ) {
-                        Text(if (isPerKg) "Per kilogram" else "Per piece")
-                        Switch(
-                            checked = isPerKg,
-                            onCheckedChange = { isPerKg = it }
-                        )
+                        Text("Save")
                     }
                 }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+                .imePadding(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = item.product_name,
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                text = "Channel: ${SalesChannel.label(SalesChannel.normalize(orderChannel))} — unit price from active SRP or fallback.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
-                val unitPrice = viewModel.resolveOrderLinePrice(item.product_id, orderChannel, isPerKg)
-                Text(
-                    text = "Unit price: ${CurrencyFormatter.format(unitPrice)}",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
+            OutlinedTextField(
+                value = quantity,
+                onValueChange = {},
+                label = { Text("Quantity") },
+                readOnly = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                trailingIcon = {
+                    IconButton(onClick = {
+                        numericPadVisible = true
+                        focusManager.clearFocus()
+                    }) {
+                        Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
 
-                quantity.toDoubleOrNull()?.let { qty ->
-                    Text(
-                        text = "Line total: ${CurrencyFormatter.format(qty * unitPrice)}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.align(Alignment.End)
+            if (product != null && viewModel.productSupportsDualUnit(product)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(if (isPerKg) "Per kilogram" else "Per piece")
+                    Switch(
+                        checked = isPerKg,
+                        onCheckedChange = { isPerKg = it }
                     )
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    quantity.toDoubleOrNull()?.let { newQuantity ->
-                        val newUnitPrice = viewModel.resolveOrderLinePrice(item.product_id, orderChannel, isPerKg)
-                        onSave(
-                            item.copy(
-                                quantity = newQuantity,
-                                is_per_kg = isPerKg,
-                                price_per_unit = newUnitPrice,
-                                total_price = newQuantity * newUnitPrice
-                            )
-                        )
-                    }
-                },
-                enabled = quantity.isNotEmpty() && quantity.toDoubleOrNull() != null
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
+
+            val unitPrice = viewModel.resolveOrderLinePrice(item.product_id, orderChannel, isPerKg)
+            Text(
+                text = "Unit price: ${CurrencyFormatter.format(unitPrice)}",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            quantity.toDoubleOrNull()?.let { qty ->
+                Text(
+                    text = "Line total: ${CurrencyFormatter.format(qty * unitPrice)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.align(Alignment.End)
+                )
             }
         }
-    )
+    }
 
     NumericPadBottomSheet(
         visible = numericPadVisible,
@@ -1032,9 +1048,9 @@ private fun EditOrderItemDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProductSelectionDialog(
+private fun EditOrderProductPickerScreen(
     orderChannel: String,
-    onDismiss: () -> Unit,
+    onNavigateBack: () -> Unit,
     onProductSelected: (Product, Double, Boolean) -> Unit,
     viewModel: OrderHistoryViewModel
 ) {
@@ -1058,150 +1074,152 @@ private fun ProductSelectionDialog(
         }
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (selectedProduct == null) "Select Product" else "Add Product") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .imePadding()
-                    .padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (selectedProduct == null) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Search Products") },
-                        leadingIcon = { Icon(Icons.Default.Search, "Search") },
-                        trailingIcon = if (searchQuery.isNotEmpty()) {
-                            {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(Icons.Default.Clear, "Clear search")
-                                }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(if (selectedProduct == null) "Select Product" else "Add Product") },
+                navigationIcon = {
+                    IconButton(
+                        onClick = {
+                            if (selectedProduct == null) {
+                                onNavigateBack()
+                            } else {
+                                selectedProduct = null
+                                quantity = ""
                             }
-                        } else null,
-                        singleLine = true,
-                        keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
-                    )
-
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
+                        }
                     ) {
-                        items(filteredProducts) { product ->
-                            ListItem(
-                                headlineContent = { Text(product.product_name) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selectedProduct = product
-                                        isPerKg = viewModel.defaultIsPerKgForProductLine(product)
-                                        quantity = ""
-                                    }
-                            )
-                        }
-                    }
-                } else {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        selectedProduct?.let { product ->
-                            Text(
-                                text = product.product_name,
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Text(
-                                text = "Channel: ${SalesChannel.label(SalesChannel.normalize(orderChannel))}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            val unitPrice = viewModel.resolveOrderLinePrice(product.product_id, orderChannel, isPerKg)
-                            Text(
-                                text = "Unit price: ${CurrencyFormatter.format(unitPrice)}",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-
-                            OutlinedTextField(
-                                value = quantity,
-                                onValueChange = {},
-                                label = { Text("Quantity") },
-                                readOnly = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                trailingIcon = {
-                                    IconButton(onClick = {
-                                        numericPadVisible = true
-                                        focusManager.clearFocus()
-                                    }) {
-                                        Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
-                                    }
-                                },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            if (viewModel.productSupportsDualUnit(product)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(if (isPerKg) "Per kilogram" else "Per piece")
-                                    Switch(
-                                        checked = isPerKg,
-                                        onCheckedChange = { isPerKg = it }
-                                    )
-                                }
-                            }
-
-                            quantity.toDoubleOrNull()?.let { qty ->
-                                val u = viewModel.resolveOrderLinePrice(product.product_id, orderChannel, isPerKg)
-                                Text(
-                                    text = "Line total: ${CurrencyFormatter.format(qty * u)}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.align(Alignment.End)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    selectedProduct?.let { product ->
-                        quantity.toDoubleOrNull()?.let { qty ->
-                            onProductSelected(product, qty, isPerKg)
-                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                enabled = selectedProduct != null && quantity.isNotEmpty() && quantity.toDoubleOrNull() != null
-            ) {
-                Text("Add")
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = {
-                    if (selectedProduct == null) {
-                        onDismiss()
-                    } else {
-                        selectedProduct = null
-                        quantity = ""
+                actions = {
+                    if (selectedProduct != null) {
+                        TextButton(
+                            onClick = {
+                                selectedProduct?.let { product ->
+                                    quantity.toDoubleOrNull()?.let { qty ->
+                                        onProductSelected(product, qty, isPerKg)
+                                    }
+                                }
+                            },
+                            enabled = quantity.toDoubleOrNull() != null
+                        ) {
+                            Text("Add")
+                        }
                     }
                 }
-            ) {
-                Text(if (selectedProduct == null) "Cancel" else "Back")
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .imePadding(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (selectedProduct == null) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Search Products") },
+                    leadingIcon = { Icon(Icons.Default.Search, "Search") },
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Clear, "Clear search")
+                            }
+                        }
+                    } else null,
+                    singleLine = true,
+                    keyboardOptions = alphaNumericKeyboardOptions(imeAction = ImeAction.Search),
+                )
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredProducts) { product ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedProduct = product
+                                    isPerKg = viewModel.defaultIsPerKgForProductLine(product)
+                                    quantity = ""
+                                }
+                        ) {
+                            Text(
+                                text = product.product_name,
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                Text(
+                    text = selectedProduct?.product_name ?: "",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Text(
+                    text = "Channel: ${SalesChannel.label(SalesChannel.normalize(orderChannel))}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                val unitPrice = viewModel.resolveOrderLinePrice(selectedProduct!!.product_id, orderChannel, isPerKg)
+                Text(
+                    text = "Unit price: ${CurrencyFormatter.format(unitPrice)}",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                OutlinedTextField(
+                    value = quantity,
+                    onValueChange = {},
+                    label = { Text("Quantity") },
+                    readOnly = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            numericPadVisible = true
+                            focusManager.clearFocus()
+                        }) {
+                            Icon(Icons.Default.Dialpad, contentDescription = "Open numeric pad")
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (viewModel.productSupportsDualUnit(selectedProduct!!)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(if (isPerKg) "Per kilogram" else "Per piece")
+                        Switch(
+                            checked = isPerKg,
+                            onCheckedChange = { isPerKg = it }
+                        )
+                    }
+                }
+
+                quantity.toDoubleOrNull()?.let { qty ->
+                    val u = viewModel.resolveOrderLinePrice(selectedProduct!!.product_id, orderChannel, isPerKg)
+                    Text(
+                        text = "Line total: ${CurrencyFormatter.format(qty * u)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.align(Alignment.End)
+                    )
+                }
             }
         }
-    )
+    }
 
     NumericPadBottomSheet(
         visible = numericPadVisible,

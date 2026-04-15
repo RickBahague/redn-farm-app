@@ -61,6 +61,38 @@ Draw every table, every FK, every nullable column, and every index. Decide:
 
 During active development, **destructive migration is acceptable**. Define the crossover point (e.g. "first production install") at which you must write incremental migrations, and put it in writing.
 
+### 2.5 Establish the project file structure early
+
+Establish this layout at project creation. Later phases fill it out but should not change the top-level shape.
+
+```
+app/src/main/java/com/your/package/
+  data/
+    local/          ← Room entities, DAOs, FarmDatabase, converters
+    model/          ← domain models (no Room annotations)
+    repository/     ← one repository per entity group
+    pricing/        ← pure computation engine (no Android imports)
+    export/         ← CsvExportService
+  ui/
+    screens/        ← one sub-folder per feature
+      orders/       ←   OrdersScreen.kt + OrdersViewModel.kt
+      products/     ←   ProductsScreen.kt + ProductsViewModel.kt
+      ...
+    theme/          ← Material3 theme, type, color
+  di/               ← Hilt modules: DatabaseModule, RepositoryModule
+  navigation/       ← NavGraph.kt (all routes, Screen sealed class)
+  utils/            ← SessionManager, Rbac, formatters, print builders
+  MainActivity.kt
+```
+
+`app/src/main/assets/`:
+```
+data/products.json          ← seed product catalog
+data/product_prices.json    ← seed prices
+data/customers.json         ← seed customers
+database/farm.db            ← pre-populated Room DB (optional; see §3 Phase 0)
+```
+
 ---
 
 ## 3. Phase sequence that worked
@@ -88,7 +120,30 @@ Phase 6 — Export & Audit
 
 **Why first:** Every subsequent phase depends on the schema. A schema change in Phase 3 forces rework across Phases 1 and 2. Get it right here.
 
+**Migration strategy during development:** Add `.fallbackToDestructiveMigration()` to the `Room.databaseBuilder` call. This drops and recreates the DB on every schema bump — acceptable while no production data exists. Remove it before the first production install and replace with incremental `Migration` objects. Put the crossover condition in writing in DESIGN.md: e.g., *"fallback removed when: first user device is provisioned."*
+
+```kotlin
+Room.databaseBuilder(context, FarmDatabase::class.java, "farm.db")
+    .fallbackToDestructiveMigration()   // ← REMOVE before first production install
+    .addCallback(FarmDatabase.callback)
+    .build()
+```
+
+**Pre-populated seed database (optional):** If the app requires a large seed catalog (products, customers, price lists), place a pre-populated Room-compatible SQLite file at `assets/database/farm.db` and use `createFromAsset`:
+
+```kotlin
+Room.databaseBuilder(context, FarmDatabase::class.java, "farm.db")
+    .createFromAsset("database/farm.db")
+    .fallbackToDestructiveMigration()
+    .addCallback(FarmDatabase.callback)
+    .build()
+```
+
+The `onCreate` callback still fires and can add runtime seed data (e.g., default admin users) that should not be baked into the asset file.
+
 **Key decision:** version number + migration strategy. Write it in DESIGN.md now.
+
+**Phase 0 deliverables:** `FarmDatabase.kt`, all `*Entity.kt` files, all `*Dao.kt` files, `DatabaseModule.kt` (Hilt), `./gradlew assembleDebug` green with no UI yet.
 
 ### Phase 1 — Restore / Build all CRUD
 
@@ -101,6 +156,8 @@ Phase 6 — Export & Audit
 - Smoke test on device before proceeding
 
 **Why second:** Business logic built on top of a broken CRUD layer is painful to debug. Confirm the data flows first.
+
+**Phase 1 deliverables:** All CRUD screens functional on a real device; list → add → save → return flow verified manually; `./gradlew assembleDebug` green.
 
 ### Phase 2 — Business Logic Layer
 
@@ -118,6 +175,8 @@ acquisition.preset_ref              ← which preset was used
 ```
 This was one of the most important architectural decisions in the Farm App. Without it, re-editing old records would silently recompute them with new preset values.
 
+**Phase 2 deliverables:** Preset editor UI, preset history screen, `channels_snapshot_json` and `preset_ref` written on every configured computation, DB schema updated, green build.
+
 ### Phase 3 — Computation Engine
 
 **Goal:** A pure, testable computation layer with no Android dependencies.
@@ -131,6 +190,8 @@ This was one of the most important architectural decisions in the Farm App. With
 
 **Write the tests before wiring the UI.** If your formula is wrong, you want to know from a failing JUnit test, not from a confused user.
 
+**Phase 3 deliverables:** Pure engine class(es) in `data/pricing/`, `*CalculatorTest.kt` in `src/test/java/...`, all formula tests passing (`./gradlew testDebugUnitTest`).
+
 ### Phase 4 — Integration
 
 **Goal:** Wire the computation engine into the save/display flows.
@@ -141,6 +202,8 @@ This was one of the most important architectural decisions in the Farm App. With
 
 **Key pattern — live preview:**
 Show the user what the system will compute *before* they commit. In the Farm App, the acquisition form shows SRP previews while the user types quantity and cost. This catches formula or input errors before they're stored.
+
+**Phase 4 deliverables:** Repository layer calls engine on save; ViewModel exposes live preview state; forms show computed values before the user commits; verified on device with real data.
 
 ### Phase 5 — Auth & Roles
 
@@ -158,6 +221,8 @@ Minimum deliverables:
 - Dashboard tile filtering by role
 - In-screen write guards (hide add/edit buttons for read-only roles)
 
+**Phase 5 deliverables:** `Rbac.kt`, `SessionManager.kt`, nav graph guards active, dashboard tiles filtered by role, ViewModel write guards present, `RbacTest.kt` passing in `src/test/`.
+
 ### Phase 6 — Export & Audit
 
 **Goal:** Every table exportable to CSV; every key action has an audit trail.
@@ -169,6 +234,8 @@ Minimum deliverables:
 
 **Don't skip export.** Even internal apps need data recovery paths, accounting integration, and debugging.
 
+**Phase 6 deliverables:** `CsvExportService.kt`, export screen with per-table selection, all tables exportable including snapshot columns, `device_id` present in every row, CSV opened in a spreadsheet and verified.
+
 ---
 
 ## 4. Architecture decisions
@@ -178,6 +245,39 @@ Minimum deliverables:
 This stack is the right default for this class of app. No alternatives needed.
 
 **Caveat — mixed DI:** The Farm App ended up with a mix of Hilt-injected and manually-constructed ViewModels. This causes duplicate repository instances. Pick one pattern and stick to it. **Use Hilt everywhere** — the manual factory pattern adds boilerplate with no benefit.
+
+**Correct Hilt ViewModel pattern:**
+
+```kotlin
+// ViewModel
+@HiltViewModel
+class OrderViewModel @Inject constructor(
+    private val orderRepository: OrderRepository,
+    private val sessionManager: SessionManager
+) : ViewModel() { ... }
+
+// DatabaseModule — provides DB instance and all DAOs
+@Module @InstallIn(SingletonComponent::class)
+object DatabaseModule {
+    @Provides @Singleton
+    fun provideDatabase(@ApplicationContext ctx: Context): FarmDatabase =
+        Room.databaseBuilder(ctx, FarmDatabase::class.java, "farm.db")
+            .fallbackToDestructiveMigration()
+            .addCallback(FarmDatabase.callback)
+            .build()
+
+    @Provides fun provideOrderDao(db: FarmDatabase): OrderDao = db.orderDao()
+    // one @Provides per DAO
+}
+
+// RepositoryModule — binds interface to implementation (if using interfaces)
+@Module @InstallIn(SingletonComponent::class)
+abstract class RepositoryModule {
+    @Binds abstract fun bindOrderRepository(impl: OrderRepositoryImpl): OrderRepository
+}
+```
+
+If repositories are concrete classes (no interface), skip `RepositoryModule` and annotate the repository with `@Inject constructor` — Hilt will inject the DAO automatically via `DatabaseModule`.
 
 ### 4.2 StateFlow for UI state
 
@@ -202,6 +302,21 @@ This separation means you can change the DB schema without touching ViewModels o
 ### 4.5 Single NavGraph file
 
 All routes defined in one `NavGraph.kt` as a `Screen` sealed class with `createRoute()` helpers. Every parameterized route (e.g. `edit_order/{orderId}`) has a typed helper. This is the right pattern — nav bugs are much easier to track when there is one file to read.
+
+**String parameters with spaces:** Navigation routes are URL-like — spaces in parameter values break routing silently. Encode on the way in and decode on the way out:
+
+```kotlin
+object EmployeePayments : Screen("employee_payments/{employeeId}/{employeeName}") {
+    fun createRoute(id: Int, name: String) =
+        "employee_payments/$id/${name.replace(" ", "_")}"
+}
+
+// Receiving end
+val rawName = backStackEntry.arguments?.getString("employeeName") ?: ""
+val employeeName = rawName.replace("_", " ")
+```
+
+Apply this to any route parameter that may contain spaces (names, descriptions). For IDs and numeric values it is not needed.
 
 ### 4.6 Computation engine is a pure Kotlin object
 
@@ -249,6 +364,57 @@ Never use `created_at` for business logic. Use it only for tiebreaking queries (
 ### 5.5 Consistent timestamp storage
 
 Pick one and enforce it everywhere. The Farm App mixed `Long` (epoch millis) in some entities and `LocalDateTime` (converted via DateTimeConverter as epoch seconds) in others. This caused subtle off-by-1000 bugs. **Use epoch millis (`Long`) everywhere** — it is unambiguous, JSON-friendly, and needs no converter.
+
+### 5.6 `Flow` vs `suspend` in DAOs
+
+Room DAO functions come in two forms — do not mix them:
+
+| Return type | Annotation | Use for |
+|---|---|---|
+| `Flow<T>` / `Flow<List<T>>` | none | reactive queries; UI observes live updates |
+| `T` / `List<T>` / `Unit` | `suspend` | one-shot reads, inserts, updates, deletes |
+
+**Do NOT call a `suspend` DAO function inside `Flow.map { }`.** It blocks the flow dispatcher and causes subtle threading bugs. If you need to enrich a flow with a one-shot lookup, call the one-shot function outside the flow or use `flatMapLatest`.
+
+```kotlin
+// ✅ Correct — reactive DAO, no suspend
+val products: Flow<List<ProductEntity>> = productDao.getAllProducts()
+
+// ✅ Correct — one-shot mutation, suspend
+suspend fun saveOrder(entity: OrderEntity) = orderDao.insert(entity)
+
+// ❌ Wrong — suspend DAO called inside Flow.map
+productDao.getAllProducts().map { list ->
+    list.map { productDao.getPriceById(it.id) }  // getPriceById is suspend → deadlock risk
+}
+```
+
+### 5.7 Coroutines and dispatchers
+
+All async work in ViewModels uses `viewModelScope`. DB operations run on `Dispatchers.IO`. Computation engine calls run on `Dispatchers.Default`.
+
+```kotlin
+// Mutation (insert / update / delete)
+fun saveOrder(draft: OrderDraft) {
+    viewModelScope.launch(Dispatchers.IO) {
+        orderRepository.save(draft)
+    }
+}
+
+// Live preview (computation, not persisted)
+fun updatePreview(input: SrpInput) {
+    viewModelScope.launch(Dispatchers.Default) {
+        val result = srpCalculator.compute(input)
+        _previewState.update { result }
+    }
+}
+
+// Flow → StateFlow (initialised once in init {})
+val orders: StateFlow<List<Order>> = orderRepository.getAllOrders()
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+```
+
+**Never** call `runBlocking` in a ViewModel or Composable. **Never** perform DB work on the main thread — Room will throw `IllegalStateException` by default; do not disable this check.
 
 ---
 
@@ -304,6 +470,36 @@ Set `WindowCompat.setDecorFitsSystemWindows(window, false)` in `MainActivity`. A
 | Android print (`printText`) | Other devices; full-page receipts | `PrintManager` + WebView |
 
 Build both from day one. The Sunmi SDK is device-specific and not testable in an emulator — stub it behind an interface if you need unit tests.
+
+**Sunmi SDK setup:**
+
+1. Add the AIDL interface files to `app/src/main/aidl/com/sunmi/peripheral/printer/` (obtain from the Sunmi developer portal).
+2. Bind the service in `MainActivity` or a dedicated `PrinterManager` singleton:
+
+```kotlin
+private var sunmiPrinter: SunmiPrinterService? = null
+
+private val printerConnection = object : ServiceConnection {
+    override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+        sunmiPrinter = SunmiPrinterService.Stub.asInterface(binder)
+    }
+    override fun onServiceDisconnected(name: ComponentName) {
+        sunmiPrinter = null
+    }
+}
+
+// In onCreate or onResume:
+Intent("com.sunmi.peripheral.printer").also { intent ->
+    intent.setPackage("com.sunmi.peripheral.printer")
+    bindService(intent, printerConnection, Context.BIND_AUTO_CREATE)
+}
+```
+
+3. Always check `sunmiPrinter != null` before printing — the service is absent on non-Sunmi hardware and emulators; calls on a null reference silently do nothing.
+4. Wrap all printer calls in `try/catch (RemoteException)`.
+5. The "Print failed" snackbar firing on success is caused by checking the wrong `InnerResultCallback` path — ensure your success and failure branches are wired to the correct callback methods.
+
+**Line width:** Sunmi V2 Pro paper is 58mm; usable characters at the default font = **32 characters per line**. Enforce this in `ThermalPrintBuilders.kt` with a `formatThermalLine(label, value, width = 32)` helper that pads and truncates to fit.
 
 ### 7.2 Central print builder module
 
@@ -364,6 +560,22 @@ Activating a new preset must:
 
 Do this in a single `@Transaction` DAO method. Never let a crash leave two active presets.
 
+```kotlin
+// In PricingPresetDao
+@Transaction
+suspend fun activatePreset(presetId: String, activatedBy: String, activatedAt: Long) {
+    deactivateAll()                                    // UPDATE all rows → is_active = 0
+    setActive(presetId, activatedAt)                   // UPDATE target row → is_active = 1
+    insertActivationLog(PresetActivationLogEntity(     // INSERT audit row
+        presetId = presetId,
+        activatedBy = activatedBy,
+        activatedAt = activatedAt
+    ))
+}
+```
+
+`@Transaction` wraps all three operations in a single SQLite transaction — if any step throws, all are rolled back. Use this pattern for any multi-step DB operation that must be atomic.
+
 ---
 
 ## 9. RBAC implementation pattern
@@ -404,6 +616,17 @@ Rules:
 
 ## 10. Testing strategy
 
+### Test file locations
+
+| Test type | Source set | Run command |
+|-----------|-----------|-------------|
+| JVM unit (engine, RBAC, domain helpers) | `src/test/java/com/your/pkg/` | `./gradlew testDebugUnitTest` |
+| Instrumented (Room, DAO) | `src/androidTest/java/com/your/pkg/` | `./gradlew connectedAndroidTest` |
+
+Run a single class: `./gradlew :app:testDebugUnitTest --tests "*.SrpCalculatorTest"`
+
+Files in the wrong source set will either not compile or not run on CI. JVM tests go in `src/test/`; anything that needs a real Android context or Room in-memory DB goes in `src/androidTest/`.
+
 ### What to test
 
 | Layer | Test type | Priority |
@@ -435,7 +658,7 @@ Not all docs are worth maintaining. These are:
 |-----|-------|---------------|
 | `DESIGN.md` | Schema, navigation, patterns | Yes — it is the source of truth |
 | `USER_STORIES.md` | ACs drive implementation | Yes — add new stories, never delete old ones |
-| `KNOWN_ISSUES.md` | Tracks open issues and follow-ups with workarounds | Yes — keep release blockers visible |
+| `KNOWN_ISSUES.md` | Open bugs, deferred ACs, tech debt, and known behavioral gaps — one entry per issue with impact and workaround | Yes — add on discovery; review before each release to identify blockers |
 | `CLAUDE.md` | Build commands, architecture summary for AI agents | Yes — always current |
 | Phase trackers (temporary working docs) | Sequencing and status | No — remove them when done |
 | `code_summary.md` | LOC, file inventory | Regenerate on demand |
@@ -480,8 +703,8 @@ A well-maintained `CLAUDE.md` eliminates 80% of the context-setting needed at th
 
 | Pitfall | What happened | Prevention |
 |---------|---------------|------------|
-| **Mixed DI pattern** | Some VMs use Hilt, others use manual factory; duplicate repository instances | Use Hilt everywhere from Phase 0 |
-| **Timestamp inconsistency** | Some entities use epoch millis, others use epoch seconds; off-by-1000 bugs | Pick one (millis) and enforce it in code review |
+| **Mixed DI pattern** | Some VMs use Hilt, others use manual factory; duplicate repository instances | Use Hilt everywhere from Phase 0; see §4.1 |
+| **Timestamp inconsistency** | Some entities use epoch millis, others use epoch seconds; off-by-1000 bugs | Pick one (millis) and enforce it; see §5.5 |
 | **Print builder duplication** | Same `buildString` block copied into two screen files | Build central `ThermalPrintBuilders.kt` on first print requirement |
 | **Formula in wrong layer** | Spoilage not applied correctly to per-piece (BUG-ACQ-07) | All formula logic in the pure engine; none in Repository or UI |
 | **Stale bug tracker** | Tracker says `[x]` but fix was incomplete (BUG-ACQ-06) | Verify on device before marking done; include verification steps in the bug entry |
@@ -490,22 +713,41 @@ A well-maintained `CLAUDE.md` eliminates 80% of the context-setting needed at th
 | **Dialog for complex forms** | 8-field form crammed into AlertDialog; keyboard covers save button | Apply the 4-field rule strictly from Phase 1 |
 | **Per-unit-type blindness in print** | Print builder always showed `/kg` SRP, even for per-piece acquisitions | Every price display checks `is_per_kg`; per-piece products must never show kg-labelled prices |
 | **Numeric pad opens while scrolling** | Press detection on the field fires during scroll gestures | Icon-only open on scrollable screens; see §6.3 |
+| **`suspend` DAO called inside `Flow.map`** | Blocks the flow dispatcher; threading bugs or deadlocks | Reactive DAO functions must not be `suspend`; see §5.6 |
+| **String param with spaces in nav route** | Route silently fails when employee name contains a space | Encode spaces as `_` in `createRoute()`; decode on the receiving end; see §4.5 |
 
 ---
 
 ## 14. Suggested phase checklist for a new app
 
+Each phase has a hard **gate** — do not proceed until the gate condition is met.
+
 ```
 [ ] DESIGN.md: actors, schema, nav routes, auth rules
 [ ] USER_STORIES.md: all stories with ACs
 [ ] Roles matrix (even if RBAC not enforced yet)
+
+--- Phase 0 gate: ./gradlew assembleDebug green with all entities + DAOs ---
 [ ] FarmDatabase with all entities and DAOs — compile green
+[ ] DatabaseModule (Hilt) provides DB + all DAOs
+[ ] fallbackToDestructiveMigration() in place; removal condition written in DESIGN.md
+
+--- Phase 1 gate: all CRUD flows work end-to-end on a real device ---
 [ ] Phase 1: all CRUD screens working — smoke test on device
+
+--- Phase 3 gate: ./gradlew testDebugUnitTest green ---
 [ ] Phase 2: configurable rules / presets in DB with admin UI
 [ ] Phase 3: pure computation engine + JVM unit tests pass
+
+--- Phase 4 gate: save + live preview verified on device with real data ---
 [ ] Phase 4: engine wired into save + live preview
+
+--- Phase 5 gate: no route reachable without correct role ---
 [ ] Phase 5: RBAC — nav guards + VM double-check
+
+--- Phase 6 gate: all tables exported; CSV opened in spreadsheet and verified ---
 [ ] Phase 6: CSV export all tables with device_id
+
 [ ] scripts/dev.sh with install / fresh / log / pull-exports
 [ ] CLAUDE.md with build commands + architecture summary
 [ ] KNOWN_ISSUES.md tracking open issues
@@ -516,15 +758,15 @@ A well-maintained `CLAUDE.md` eliminates 80% of the context-setting needed at th
 
 ## 15. Things this app would do differently in v2
 
-**Bugs:** Every defect worth fixing should be captured in **`docs/KNOWN_ISSUES.md`** (or the external issue tracker) with clear description, impact, and workaround, not only “architecture” items. Examples include **BUG-ARC-***, **BUG-FOP-***, **BUG-ORD-***, **BUG-ACQ-***, and **BUG-PRD-***.
+**Bugs:** Every defect worth fixing should be captured in **`docs/KNOWN_ISSUES.md`** (or the external issue tracker) with clear description, impact, and workaround, not only "architecture" items. Examples include **BUG-ARC-***, **BUG-FOP-***, **BUG-ORD-***, **BUG-ACQ-***, and **BUG-PRD-***.
 
 **Tracker snapshot (architecture-heavy):** reference `docs/KNOWN_ISSUES.md` for current open architecture/process issues (including BUG-ARC follow-ups).
 
-1. **Hilt everywhere from day 1** — no manual ViewModelFactory anywhere
-2. **Epoch millis everywhere** — no `LocalDateTime` with converters
-3. **RBAC defined in Phase 0** — not retrofitted in Phase 5
-4. **Incremental migrations planned from the start** — even if not written yet; reserve the version numbers
+1. **Hilt everywhere from day 1** (→ §4.1) — no manual ViewModelFactory anywhere
+2. **Epoch millis everywhere** (→ §5.5) — no `LocalDateTime` with converters
+3. **RBAC defined in Phase 0** (→ §9) — not retrofitted in Phase 5
+4. **Incremental migrations planned from the start** (→ §3 Phase 0) — even if not written yet; remove `fallbackToDestructiveMigration()` before the first production install
 5. **`dev.sh fresh` is the default test command** — destructive migration means stale data causes phantom bugs; always test on a clean install
-6. **Central numeric pad + date picker components** — built in Phase 1, not discovered later when three screens already do it differently
-7. **Formula tests written before formula is wired** — never assume the formula matches the spec until a test proves it
-8. **`is_per_kg` check in every price display** — make it a code review checklist item, not a bug to find later
+6. **Central numeric pad + date picker components** (→ §6.3) — built in Phase 1, not discovered later when three screens already do it differently
+7. **Formula tests written before formula is wired** (→ §10) — never assume the formula matches the spec until a test passes
+8. **`is_per_kg` check in every price display** (→ §7.3) — make it a code review checklist item, not a bug to find later

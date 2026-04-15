@@ -11,13 +11,19 @@ See [USER_STORIES.md](./USER_STORIES.md) for full acceptance criteria.
 | AUTH-US-01 | Login to the app | ✅ |
 | AUTH-US-02 | Log out | ✅ |
 | AUTH-US-03 | Persist session across app restarts | ✅ |
-| AUTH-US-04 | Manage user accounts | 📋 |
-| AUTH-US-05 | Change own password | 📋 |
+| AUTH-US-04 | Manage user accounts | ✅ |
+| AUTH-US-05 | Change own password | ✅ |
 | SYS-US-01 | First-time database initialization | ✅ |
 | SYS-US-04 | Schema recreate and evolution record | ✅ |
 | SYS-US-02 | Main dashboard navigation hub | ✅ |
 | SYS-US-03 | About screen | ✅ |
-| MGT-US-00 | Settings screen and Pricing Presets navigation | 📋 |
+| MGT-US-00 | Settings screen and Pricing Presets navigation | ✅ |
+| MGT-US-01 | Define spoilage rate and hauling costs | ✅ |
+| MGT-US-02 | Configure per-channel markup and rounding | ✅ |
+| MGT-US-03 | Manage product categories with per-category overrides | ✅ |
+| MGT-US-04 | Preview SRP impact before saving preset changes | ✅ |
+| MGT-US-05 | View preset history and trace SRPs to their preset | ✅ |
+| MGT-US-06 | Activate a saved preset | ✅ |
 | PRD-US-01 | View the product catalog | ✅ |
 | PRD-US-02 | Add a new product | ✅ |
 | PRD-US-03 | Edit a product | ✅ |
@@ -43,9 +49,3 @@ See [USER_STORIES.md](./USER_STORIES.md) for full acceptance criteria.
 | DISB-US-03 | Edit or delete a disbursement | ✅ |
 | EXP-US-01 | Export data to CSV | ✅ |
 | EXP-US-02 | Clear specific data tables | ✅ |
-| MGT-US-01 | Define spoilage rate and hauling costs | 📋 |
-| MGT-US-02 | Configure per-channel markup and rounding | 📋 |
-| MGT-US-03 | Manage product categories with per-category overrides | 📋 |
-| MGT-US-04 | Preview SRP impact before saving preset changes | 📋 |
-| MGT-US-05 | View preset history and trace SRPs to their preset | 📋 |
-| MGT-US-06 | Activate a saved preset | 📋 |

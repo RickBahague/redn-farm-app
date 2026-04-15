@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -29,10 +30,10 @@ fun TakeOrderScreen(
     onNavigateBack: () -> Unit,
     onNavigateToOrderHistory: () -> Unit,
     onNavigateToActiveSrps: () -> Unit = {},
+    onNavigateToCustomerPicker: () -> Unit,
+    onNavigateToProductPicker: () -> Unit,
     viewModel: TakeOrderViewModel = hiltViewModel()
 ) {
-    var showCustomerDialog by remember { mutableStateOf(false) }
-    var showProductDialog by remember { mutableStateOf(false) }
     var showNewOrderDialog by remember { mutableStateOf(false) }
     
     val selectedCustomer by viewModel.selectedCustomer.collectAsState()
@@ -57,7 +58,7 @@ fun TakeOrderScreen(
                 title = { Text("Take Order") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 actions = {
@@ -118,7 +119,7 @@ fun TakeOrderScreen(
             // Customer Selection
             OutlinedCard(
                 modifier = Modifier.fillMaxWidth(),
-                onClick = { showCustomerDialog = true }
+                onClick = onNavigateToCustomerPicker
             ) {
                 Column(
                     modifier = Modifier
@@ -167,7 +168,7 @@ fun TakeOrderScreen(
 
             // Add Product Button
             OutlinedButton(
-                onClick = { showProductDialog = true },
+                onClick = onNavigateToProductPicker,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(Icons.Default.Add, "Add Product")
@@ -201,26 +202,6 @@ fun TakeOrderScreen(
             OrderSummaryCard(
                 items = cartItems,
                 total = cartTotal
-            )
-        }
-
-        if (showCustomerDialog) {
-            CustomerSelectionDialog(
-                onDismiss = { showCustomerDialog = false },
-                onCustomerSelected = { customer ->
-                    viewModel.selectCustomer(customer)
-                    showCustomerDialog = false
-                }
-            )
-        }
-
-        if (showProductDialog) {
-            ProductSelectionDialog(
-                onDismiss = { showProductDialog = false },
-                onProductSelected = { product, quantity, isPerKg ->
-                    viewModel.addToCart(product, quantity, isPerKg)
-                    showProductDialog = false
-                }
             )
         }
 

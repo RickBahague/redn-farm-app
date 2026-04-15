@@ -11,7 +11,7 @@ See [USER_STORIES.md](./USER_STORIES.md) for full acceptance criteria.
 | AUTH-US-01 | Login to the app | ✅ |
 | AUTH-US-02 | Log out | ✅ |
 | AUTH-US-03 | Persist session across app restarts | ✅ |
-| AUTH-US-05 | Change own password | 📋 |
+| AUTH-US-05 | Change own password | ✅ |
 | SYS-US-03 | About screen | ✅ |
 | FOP-US-01 | Log a farm operation | ✅ |
 | FOP-US-02 | View farm operation history | ✅ |

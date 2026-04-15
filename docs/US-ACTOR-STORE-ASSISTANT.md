@@ -11,24 +11,24 @@ See [USER_STORIES.md](./USER_STORIES.md) for full acceptance criteria.
 | AUTH-US-01 | Login to the app | ✅ |
 | AUTH-US-02 | Log out | ✅ |
 | AUTH-US-03 | Persist session across app restarts | ✅ |
-| AUTH-US-05 | Change own password | 📋 |
+| AUTH-US-05 | Change own password | ✅ |
 | SYS-US-03 | About screen | ✅ |
-| ORD-US-01 | Take a new customer order (channel-based SRP pre-fill) | ✅/📋 |
-| ORD-US-02 | Apply per-kg or per-piece SRP based on product unit type | ✅/📋 |
+| ORD-US-01 | Take a new customer order (channel-based SRP pre-fill) | ✅ |
+| ORD-US-02 | Apply per-kg or per-piece SRP based on product unit type | ✅ |
 | ORD-US-03 | View order history | ✅ |
-| ORD-US-04 | Edit an unpaid order | ✅/📋 |
+| ORD-US-04 | Edit an unpaid order | ✅ |
 | ORD-US-05 | Mark an order as paid | ✅ |
 | ORD-US-06 | Mark an order as delivered | ✅ |
 | ORD-US-07 | Delete an unpaid order | ✅ |
-| ORD-US-08 | View active SRPs before taking an order | 📋 |
+| ORD-US-08 | View active SRPs before taking an order | ✅ |
 | ORD-US-09 | Print an order | ✅ |
-| ORD-US-10 | View order detail | 📋 |
+| ORD-US-10 | View order detail | ✅ |
 | CUS-US-01 | View all customers | ✅ |
 | CUS-US-02 | Add a new customer | ✅ |
 | CUS-US-03 | Edit a customer | ✅ |
 | CUS-US-04 | Delete a customer | ✅ |
-| CUS-US-05 | Customer type maps to a default sales channel | 📋 |
-| INV-US-06 | Active SRP is always the most recent acquisition | 📋 |
+| CUS-US-05 | Customer type maps to a default sales channel | ✅ |
+| INV-US-06 | Active SRP is always the most recent acquisition | ✅ |
 | REM-US-01 | Record a remittance | ✅ |
 | REM-US-02 | View remittance history | ✅ |
 | REM-US-03 | Edit or delete a remittance | ✅ *(remittance rows only once **DISB-US-01–03** ship)* |
