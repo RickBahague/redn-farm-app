@@ -493,27 +493,6 @@ fun buildEodSummary(
         }
     }
     appendLine(thermalDividerLight())
-    appendLine("INVENTORY CLOSE")
-    inventory.forEach { row ->
-        appendLine(row.name.take(THERMAL_LINE_WIDTH))
-        appendLine(
-            formatThermalLine(
-                " th",
-                "%.2f %s".format(row.theoreticalQty, row.unitLabel),
-            ),
-        )
-        appendLine(
-            formatThermalLine(
-                " act",
-                row.actualQty?.let { "%.2f %s".format(it, row.unitLabel) } ?: "—",
-            ),
-        )
-        row.varianceQty?.let { v ->
-            appendLine(formatThermalLine(" var", "%.2f %s".format(v, row.unitLabel)))
-        }
-    }
-    appendLine(formatThermalLine("Var cost", CurrencyFormatter.format(totalVarianceCost)))
-    appendLine(thermalDividerLight())
     appendLine("CASH")
     appendLine(formatThermalLine("Exp cash", CurrencyFormatter.format(expectedCash)))
     appendLine(formatThermalLine("Remitted", CurrencyFormatter.format(remitted)))
@@ -548,8 +527,31 @@ fun buildEodSummary(
         }
     }
     appendLine(thermalDividerLight())
-    appendLine(formatThermalLine("Employee wages paid today", CurrencyFormatter.format(wagesToday)))
+    appendLine(formatThermalLine("Wages paid today", CurrencyFormatter.format(wagesToday)))
+
+    appendLine(thermalDividerLight())
+    appendLine("INVENTORY CLOSE")
+    inventory.forEach { row ->
+        appendLine(row.name.take(THERMAL_LINE_WIDTH))
+        appendLine(
+            formatThermalLine(
+                " Expected",
+                "%.2f %s".format(row.theoreticalQty, row.unitLabel),
+            ),
+        )
+        appendLine(
+            formatThermalLine(
+                " Actual",
+                row.actualQty?.let { "%.2f %s".format(it, row.unitLabel) } ?: "—",
+            ),
+        )
+        row.varianceQty?.let { v ->
+            appendLine(formatThermalLine(" Variance", "%.2f %s".format(v, row.unitLabel)))
+        }
+    }
+    appendLine(formatThermalLine("Var cost", CurrencyFormatter.format(totalVarianceCost)))
     appendLine(thermalDividerHeavy())
+
     if (isDraft) {
         appendLine(formatThermalLine("Printed by", printedBy.take(18)))
         appendLine(formatThermalLine("Printed at", formatThermalDate(printedAtMillis)))
