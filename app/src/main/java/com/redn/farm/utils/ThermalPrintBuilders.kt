@@ -479,17 +479,14 @@ fun buildEodSummary(
     }
     appendLine(thermalDividerLight())
     appendLine("TOP PRODUCTS (rev)")
+    val topProductsNameWidth = 10
     if (topProducts.isEmpty()) {
         appendLine("—")
     } else {
+        appendLine(formatThermalLine("Item".take(topProductsNameWidth), "Qty · Rev"))
         topProducts.forEach { p ->
-            appendLine(p.name.take(THERMAL_LINE_WIDTH))
-            appendLine(
-                formatThermalLine(
-                    "  ${p.qtyDisplay}",
-                    CurrencyFormatter.format(p.revenue),
-                ),
-            )
+            val compact = "${p.qtyDisplay} · ${CurrencyFormatter.format(p.revenue)}"
+            appendLine(formatThermalLine(p.name.take(topProductsNameWidth), compact))
         }
     }
     appendLine(thermalDividerLight())
@@ -526,28 +523,19 @@ fun buildEodSummary(
             appendLine(formatThermalLine("Listed total", CurrencyFormatter.format(outstandingPrintedTotal)))
         }
     }
-    appendLine(thermalDividerLight())
-    appendLine(formatThermalLine("Wages paid today", CurrencyFormatter.format(wagesToday)))
+    //appendLine(thermalDividerLight())
+    //appendLine(formatThermalLine("Wages paid today", CurrencyFormatter.format(wagesToday)))
 
     appendLine(thermalDividerLight())
     appendLine("INVENTORY CLOSE")
+    val inventoryNameWidth = 10
+    appendLine(formatThermalLine("Item".take(inventoryNameWidth), "E / A / V"))
     inventory.forEach { row ->
-        appendLine(row.name.take(THERMAL_LINE_WIDTH))
-        appendLine(
-            formatThermalLine(
-                " Expected",
-                "%.2f %s".format(row.theoreticalQty, row.unitLabel),
-            ),
-        )
-        appendLine(
-            formatThermalLine(
-                " Actual",
-                row.actualQty?.let { "%.2f %s".format(it, row.unitLabel) } ?: "—",
-            ),
-        )
-        row.varianceQty?.let { v ->
-            appendLine(formatThermalLine(" Variance", "%.2f %s".format(v, row.unitLabel)))
-        }
+        val expected = "%.2f".format(row.theoreticalQty)
+        val actual = row.actualQty?.let { "%.2f".format(it) } ?: "—"
+        val variance = row.varianceQty?.let { "%.2f".format(it) } ?: "—"
+        val compactSummary = "$expected / $actual / $variance ${row.unitLabel}"
+        appendLine(formatThermalLine(row.name.take(inventoryNameWidth), compactSummary))
     }
     appendLine(formatThermalLine("Var cost", CurrencyFormatter.format(totalVarianceCost)))
     appendLine(thermalDividerHeavy())
