@@ -319,26 +319,23 @@
 
 ## Docs
 
-| File | Lines |
-|------|-------|
-| `USER_STORIES.md` | 1,270 |
-| `apis.md` | 831 |
-| `PricingReference.md` | 786 |
-| `bugs.md` | 711 |
-| `BACKLOG.md` | 502 |
-| `printing.md` | 475 |
-| `user_review_screens.md` | 459 |
-| `UI-Improvement-Plan.md` | 452 |
-| `user_review_product_management.md` | 405 |
-| `user_review_screens_stories.md` | 352 |
-| `DESIGN.md` | 308 |
-| `rebuild_plan.md` | 281 |
-| `EPIC3_PRODUCT_MANAGEMENT_TRACKER.md` | 194 |
-| `PHASE1_TRACKER.md` | 178 |
-| `PHASE2_TRACKER.md` | 162 |
-| `UI_IMPROVEMENT_TRACKER.md` | 140 |
-| `user_roles.md` | 120 |
-| `PHASE4_TRACKER.md` | 108 |
-| `INV_ACQUISITION_SRP_TRACKER.md` | 101 |
-| *(others)* | — |
-| **Total** | **8,295** |
+Current canonical docs set (post-cleanup):
+
+- `USER_STORIES.md`
+- `US-ACTOR-MANAGEMENT.md`
+- `US-ACTOR-STORE-ASSISTANT.md`
+- `US-ACTOR-PURCHASING-ASSISTANT.md`
+- `US-ACTOR-FARMER.md`
+- `DESIGN.md`
+- `user_roles.md`
+- `schema_evolution.sql`
+- `figma/UI-Spec.md`
+- `PricingReference.md`
+- `pricing_clarif.md`
+- `printing.md`
+- `KNOWN_ISSUES.md`
+- `build_framework.md`
+- `other_uses.md`
+- `code_summary.md`
+- `apis.md`
+- `server_design.md`

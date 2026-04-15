@@ -10,6 +10,7 @@
 ---
 
 ## Global Notes (naming + interaction patterns)
+- Final layout baseline: handheld POS portrait form factor (Sunmi V2 Pro class, **5.99" / 720x1440**), favoring single-column screens with a 2-column dashboard grid.
 - Currency formatting: `₱` PHP, typically 2 decimals.
 - “Chips” = `FilterChip` row for mode/channel selection.
 - “Sheet” = `ModalBottomSheet` used for the numeric pad.

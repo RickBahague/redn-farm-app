@@ -273,7 +273,7 @@ Always in `Scaffold.bottomBar` or a full-width `FilledButton` at the bottom of a
 
 Build one `NumericPadBottomSheet` composable and reuse it everywhere quantity, price, or amount is entered. Hardcoding numeric input into multiple screens diverges quickly. The Farm App built this in Phase 2 and used it across acquisition, order, payment, and remittance flows.
 
-**Scroll vs. press:** Do not open the pad from **`collectIsPressedAsState()`** (or similar) on the **read-only field** inside a **vertically scrolling** form (e.g. pricing preset editor). A scrolling finger briefly presses children as it moves, which opens the pad by mistake. Prefer opening the pad **only from an explicit control** (dialpad trailing icon). If you need tap-on-field for a tiny non-scroll dialog, gate it behind a parameter (Farm App: `NumericPadOutlinedTextField(..., openPadOnFieldPress = true)` only where the trade-off is acceptable). Track regressions in **`docs/bugs.md`**.
+**Scroll vs. press:** Do not open the pad from **`collectIsPressedAsState()`** (or similar) on the **read-only field** inside a **vertically scrolling** form (e.g. pricing preset editor). A scrolling finger briefly presses children as it moves, which opens the pad by mistake. Prefer opening the pad **only from an explicit control** (dialpad trailing icon). If you need tap-on-field for a tiny non-scroll dialog, gate it behind a parameter (Farm App: `NumericPadOutlinedTextField(..., openPadOnFieldPress = true)` only where the trade-off is acceptable). Track regressions in `docs/KNOWN_ISSUES.md`.
 
 ### 6.4 Live computation preview
 
@@ -435,9 +435,9 @@ Not all docs are worth maintaining. These are:
 |-----|-------|---------------|
 | `DESIGN.md` | Schema, navigation, patterns | Yes — it is the source of truth |
 | `USER_STORIES.md` | ACs drive implementation | Yes — add new stories, never delete old ones |
-| `bugs.md` | Tracks open/closed bugs with root cause | Yes — every bug gets a root cause |
+| `KNOWN_ISSUES.md` | Tracks open issues and follow-ups with workarounds | Yes — keep release blockers visible |
 | `CLAUDE.md` | Build commands, architecture summary for AI agents | Yes — always current |
-| Phase trackers (`PHASE1_TRACKER.md`, etc.) | Sequencing and status | No — close them when done, don't update retroactively |
+| Phase trackers (temporary working docs) | Sequencing and status | No — remove them when done |
 | `code_summary.md` | LOC, file inventory | Regenerate on demand |
 
 Docs that waste time:
@@ -508,7 +508,7 @@ A well-maintained `CLAUDE.md` eliminates 80% of the context-setting needed at th
 [ ] Phase 6: CSV export all tables with device_id
 [ ] scripts/dev.sh with install / fresh / log / pull-exports
 [ ] CLAUDE.md with build commands + architecture summary
-[ ] bugs.md tracking open issues
+[ ] KNOWN_ISSUES.md tracking open issues
 [ ] code_summary.md (generated)
 ```
 
@@ -516,9 +516,9 @@ A well-maintained `CLAUDE.md` eliminates 80% of the context-setting needed at th
 
 ## 15. Things this app would do differently in v2
 
-**Bugs:** Every defect worth fixing should be filed in **`docs/bugs.md`** with report, root cause (once known), fix, files, verification, and **`[ ]` / `[x]`** status — not only “architecture” items. Examples: **BUG-ARC-*** (structure, Room, millis), **BUG-FOP-*** (farm ops UX), **BUG-ORD-***, **BUG-ACQ-***, **BUG-PRD-***, etc. That file is the single tracker; this section lists **v2 conventions**, not every bug id.
+**Bugs:** Every defect worth fixing should be captured in **`docs/KNOWN_ISSUES.md`** (or the external issue tracker) with clear description, impact, and workaround, not only “architecture” items. Examples include **BUG-ARC-***, **BUG-FOP-***, **BUG-ORD-***, **BUG-ACQ-***, and **BUG-PRD-***.
 
-**Tracker snapshot (architecture-heavy):** **`docs/bugs.md`** — **BUG-ARC-01** through **BUG-ARC-09** (e.g. §15.2 epoch millis: **BUG-ARC-09**; Room/domain migration: **BUG-ARC-02** / **BUG-ARC-04**). See **`bugs.md`** for the full list and open items.
+**Tracker snapshot (architecture-heavy):** reference `docs/KNOWN_ISSUES.md` for current open architecture/process issues (including BUG-ARC follow-ups).
 
 1. **Hilt everywhere from day 1** — no manual ViewModelFactory anywhere
 2. **Epoch millis everywhere** — no `LocalDateTime` with converters

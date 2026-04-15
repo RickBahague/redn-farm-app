@@ -412,7 +412,7 @@ Prepared by: __________________
 - Content is identical to the existing `OrderDetailScreen` receipt (PRN-implemented)
 - Requires order items to be loaded — trigger a one-shot DAO query at click time
 - Show a `Snackbar("Printing…")` while the coroutine runs; `Snackbar("Print failed")` on error
-- This is noted in `UI-Improvement-Plan.md` UI-15 as a follow-up to the existing print button
+- This follows the adopted UI convention to keep print actions prominent in order flows.
 
 ---
 

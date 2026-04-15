@@ -31,7 +31,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 | 🔧 | Partially implemented |
 | 📋 | Planned / not yet built |
 
-**Closing gaps:** Stories marked **✅ (partial)** or **🔧** are tracked with implementation steps in [`PARTIAL_IMPLEMENTATION_PLAN.md`](./PARTIAL_IMPLEMENTATION_PLAN.md).
+**Closing gaps:** Stories marked **✅ (partial)** or **🔧** should be tracked directly in this document and, when unresolved, mirrored in `KNOWN_ISSUES.md`.
 
 ---
 
@@ -258,7 +258,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a store assistant, **I want to** see the current active selling prices for all products across all channels **so that** I can answer customer price questions and confirm prices before placing an order.
 
 **Actor:** Store Assistant  
-**Status:** ✅ *(implementation tracker: [`INV_ACQUISITION_SRP_TRACKER.md`](./INV_ACQUISITION_SRP_TRACKER.md) — `ActiveSrpsScreen`)*  
+**Status:** ✅ *(implemented in `ActiveSrpsScreen`; see pricing sections in `DESIGN.md` and formulas in `PricingReference.md`)*  
 
 **Canonical reference:** PricingReference.md US-3a, FR-PC-36
 
@@ -463,7 +463,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a purchasing assistant, **I want to** record when and where I acquired produce **so that** there is a record of inventory intake and cost.
 
 **Actor:** Purchasing Assistant  
-**Status:** ✅ *(per-piece **§5.1.1** — [`INV_ACQUISITION_SRP_TRACKER.md`](./INV_ACQUISITION_SRP_TRACKER.md))*  
+**Status:** ✅ *(per-piece **§5.1.1** — see `PricingReference.md` and `pricing_clarif.md`)*  
 
 **Acceptance criteria:**
 1. I can select a product, enter quantity, price per unit, acquisition date, and source location (Farm / Market / Supplier / Other). In **per kg** mode, quantity is kg (decimal); in **per piece** mode, quantity is **total pieces** in the lot (**PricingReference.md** §5.1.1).
@@ -521,7 +521,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a store assistant or purchasing assistant, **I want** to know which SRP is considered "active" for a product **so that** orders and price lists always reflect the latest purchase cost.
 
 **Actor:** Store Assistant, Purchasing Assistant  
-**Status:** ✅ *(latest by **date_acquired**, tiebreak **created_at** — [`INV_ACQUISITION_SRP_TRACKER.md`](./INV_ACQUISITION_SRP_TRACKER.md))*  
+**Status:** ✅ *(latest by **date_acquired**, tiebreak **created_at**; behavior documented in `DESIGN.md`)*  
 
 **Acceptance criteria:**
 1. The **active SRP** for a product is the SRP computed from the **most recently saved acquisition** for that product, determined by acquisition date (not save timestamp).
@@ -537,7 +537,7 @@ This document is the **source of truth** for all user stories in the RedN Farm A
 **As** a purchasing assistant, **I want** the app to automatically compute suggested selling prices for each sales channel whenever I enter an acquisition **so that** the store always has consistent, formula-driven SRPs derived from actual purchase cost — without me having to do the math manually.
 
 **Actor:** Purchasing Assistant  
-**Status:** ✅ *(pipeline + per-piece **§5.1.1** — [`INV_ACQUISITION_SRP_TRACKER.md`](./INV_ACQUISITION_SRP_TRACKER.md), `SrpCalculator` / `AcquisitionRepository`)*  
+**Status:** ✅ *(pipeline + per-piece **§5.1.1** — `SrpCalculator` / `AcquisitionRepository`; see `PricingReference.md` and `pricing_clarif.md`)*  
 
 **Pricing formula** *(normative in this story; shared IDs in **PricingReference.md** §4.3, §4.3.1 (CLARIF-01 — **`docs/pricing_clarif.md`**), §5.1.1, §5.2 **FR-PC-02**, **FR-PC-10–14**, **US-6** — spec **0.9.33-draft**+; pipeline order: **\(C_{\text{bulk}} + A\)** before channel markup)*
 

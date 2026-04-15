@@ -1,5 +1,7 @@
 # Server-Side Application Design — RedN Farm
 
+> Status: **Not yet implemented** (future backend architecture; retained for planning).
+
 **Version:** 0.1-draft  
 **Date:** 2026-04-06  
 **Companion documents:** `docs/apis.md`, `docs/DESIGN.md`, `docs/user_roles.md`, `docs/PricingReference.md`  

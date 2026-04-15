@@ -292,6 +292,21 @@ The `DatabaseMigrationScreen` is shown if it is somehow reached; it checks for a
 
 ---
 
+## 9.1 UI Conventions (Sunmi handheld POS)
+
+These conventions capture the implemented UI baseline for the primary target form factor (**5.99" portrait, 720x1440**) and should be kept aligned with `docs/figma/UI-Spec.md`.
+
+- **Layout baseline:** single-column feature screens; dashboard uses a 2-column tile grid (`MainScreen`) for quick thumb scanning.
+- **Primary action placement:** high-frequency actions are bottom-anchored (e.g., order total/place order in `Scaffold.bottomBar`, payment form save/cancel at bottom) for thumb reach.
+- **Numeric entry pattern:** quantity/amount/price fields use a shared `ModalBottomSheet` numeric pad (`NumericPadBottomSheet`) instead of relying on decimal IME.
+- **Keyboard-safe forms:** form containers use `imePadding()` + scroll-safe layouts; `MainActivity` edge-to-edge configuration supports consistent insets behavior.
+- **Complex form rule:** multi-field workflows are full-screen routes (e.g., `PaymentFormScreen`) rather than `AlertDialog`; dialogs are reserved for lightweight confirmations.
+- **Touch target standard:** interactive chips/buttons honor POS-friendly hit areas (48dp minimum touch target, 56dp full-width primary buttons where applicable).
+- **Status and role visibility:** order status uses visual chips; dashboard tiles are role-filtered through `Rbac` to reduce irrelevant actions per actor.
+- **Print UX conventions:** printing is treated as first-class on POS surfaces (prominent print actions in detail flows), while thermal rendering remains defined in `ThermalPrintBuilders` and `docs/printing.md`.
+
+---
+
 ## 10. Printing
 
 `PrinterUtils` (in `utils/`) supports two modes:
@@ -339,7 +354,7 @@ The Sunmi printer connection is managed as a coroutine-suspended bind (`suspendC
 
 4. ~~**`Converters.kt`**~~ — removed; it was never registered on **`FarmDatabase`** (**DI-04** / **BUG-ARC-09**). Active Room converters live under **`data/local/converters/`**.
 
-5. **Date/time storage inconsistency**: Domain paths for farm ops, order-history filters, and acquire flows now standardize on **epoch millis** where models cross layers; some entities or UI helpers may still differ — see **`BUG-ARC-09`** and **`BACKLOG.md`** **DI-05**.
+5. **Date/time storage consistency follow-up**: Domain paths for farm ops, order-history filters, and acquire flows now standardize on **epoch millis** where models cross layers; some entities or UI helpers may still differ — see **`BUG-ARC-09`** and `KNOWN_ISSUES.md`.
 
 ---
 

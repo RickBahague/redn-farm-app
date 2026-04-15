@@ -1,5 +1,7 @@
 # API Design — RedN Farm App
 
+> Status: **Not yet implemented** (future backend scope; kept as a planning reference).
+
 **Created:** 2026-04-03  
 **App:** `com.redn.farm` (Android / Sunmi V2 Pro POS)  
 **Web counterpart:** Drupal-based web app (separate product)  
