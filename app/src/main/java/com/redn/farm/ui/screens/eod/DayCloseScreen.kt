@@ -509,43 +509,6 @@ private fun DayCloseReadyContent(
         }
 
         item {
-            DayCloseSectionCard(title = "Employee Day Summary") {
-                Text(
-                    "Net pay formula (BUG-EMP-01): gross wage + cash advance.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(4.dp))
-                if (snap.employeePayments.isEmpty()) {
-                    Text(
-                        "No employee payments recorded today",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    snap.employeePayments.forEach { row ->
-                        val p = row.payment
-                        val net = p.amount + (p.cash_advance_amount ?: 0.0)
-                        DayCloseRow("Employee", row.employeeName)
-                        DayCloseRow("Gross wage", CurrencyFormatter.format(p.amount))
-                        DayCloseRow("Cash advance", CurrencyFormatter.format(p.cash_advance_amount ?: 0.0))
-                        DayCloseRow("Net pay", CurrencyFormatter.format(net))
-                        Spacer(Modifier.height(4.dp))
-                    }
-                    DayCloseRow("Total wages", CurrencyFormatter.format(snap.wagesTotalToday))
-                }
-            }
-        }
-
-        item {
-            EmployeeNotesCard(
-                notes = state.close.notes,
-                canEdit = !state.close.is_finalized,
-                onSaveNotes = onSaveNotes,
-            )
-        }
-
-        item {
             Spacer(Modifier.height(8.dp))
             if (state.close.is_finalized && state.isAdmin) {
                 OutlinedButton(

@@ -572,11 +572,15 @@ fun buildOutstandingInventoryReport(
     appendLine(thermalDividerHeavy())
     appendLine(formatThermalLine("As of", formatThermalDate(asOfMillis)))
     appendLine(thermalDividerLight())
+    val inventoryNameWidth = 10
+    appendLine(formatThermalLine("Item".take(inventoryNameWidth), "Qty (kg) / DOH"))
     lines.forEach { (name, qtyKg, days) ->
-        appendLine(name.take(THERMAL_LINE_WIDTH))
-        appendLine(formatThermalLine(" qty (kg)", "%.3f".format(qtyKg)))
-        appendLine(formatThermalLine(" days on hand", days.toString()))
-        appendLine(thermalDividerLight())
+        appendLine(
+            formatThermalLine(
+                name.take(inventoryNameWidth),
+                "${"%.2f".format(qtyKg)} / $days",
+            ),
+        )
     }
     appendLine(formatThermalLine("TOTAL VALUE", CurrencyFormatter.format(totalValue)))
     appendLine(thermalDividerHeavy())
